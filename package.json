@@ -1,0 +1,19 @@
+{
+  "name": "wbai-archive",
+  "version": "1.0.0",
+  "description": "A modern, dark-mode redesign of the WBAI 99.5 FM on-demand broadcast archive, with a light zero-dependency Node proxy for live listings, on-air data, artwork, and audio.",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Catskill909/wbai-archive.git"
+  },
+  "license": "MIT",
+  "private": true
+}

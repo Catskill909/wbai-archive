@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WBAI 99.5 — On-Demand Archive</title>
+<meta name="description" content="Search, stream, and browse WBAI 99.5 FM's on-demand broadcast archive — Free Speech Radio, Pacifica Radio in New York City.">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📻</text></svg>">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip-link" href="#listing">Skip to show listing</a>
+
+<header class="appbar">
+  <div class="appbar-inner">
+    <a class="brand" href="#top" aria-label="WBAI 99.5 archive home">
+      <span class="dial" aria-hidden="true"><span></span></span>
+      <span class="brand-text">
+        <span class="brand-word">WBAI</span>
+        <span class="brand-name">99.5 FM · Archive</span>
+      </span>
+    </a>
+    <button class="live-strip" id="liveStrip" type="button" aria-label="Play WBAI live stream">
+      <span class="live-play" id="livePlay" aria-hidden="true">
+        <span class="spinner"></span>
+        <svg id="liveIcon" viewBox="0 0 24 24" fill="#ffffff"><path d="M8 5v14l11-7z"/></svg>
+      </span>
+      <span class="live-art" aria-hidden="true">
+        <img id="livePhoto" alt="">
+      </span>
+      <span class="live-copy">
+        <span class="live-label"><span class="dot" aria-hidden="true"></span>On Air</span>
+        <span class="live-now" id="liveNow">Loading current show…</span>
+        <span class="live-next" id="liveNext"></span>
+      </span>
+    </button>
+    <div class="appbar-actions">
+      <a class="btn btn-filled" href="https://wbai.org/donate/" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-10-9.1C.4 8.4 2 5 5.4 5c1.9 0 3.3 1 4.6 2.6C11.3 6 12.7 5 14.6 5 18 5 19.6 8.4 18 11.9 15.5 16.4 12 21 12 21z"/></svg>
+        <span class="donate-label">Donate</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="hero-lockup">
+      <span class="hero-dial" aria-hidden="true"><span></span></span>
+      <div>
+        <div class="hero-wordmark">WBAI</div>
+        <div class="hero-sub">Free Speech Radio · 99.5 FM</div>
+      </div>
+    </div>
+    <h1>On‑demand archive</h1>
+    <p>Progressive &amp; independent news, arts &amp; music — Pacifica Radio in New York City. Every broadcast stays here for a limited window before it rotates out: spoken-word and public-affairs shows longer, music programs briefer under licensing terms. Search, filter by category, or sort the columns to find something to hear.</p>
+    <p class="fine">Music programs are streamable here only — copyright terms prevent podcast download for those shows. Look for the feed badge on programs that do offer RSS. Listings and audio below are pulled from WBAI's real broadcast archive.</p>
+  </section>
+
+  <div class="controls">
+    <label class="search-field" for="q">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="q" type="search" placeholder="Search shows — “Democracy Now”, “jazz”, “housing”…" autocomplete="off">
+    </label>
+    <div class="chip-row" id="chips" role="group" aria-label="Filter by category"></div>
+    <div class="result-meta">
+      <span class="result-count" id="resultCount"></span>
+      <span class="result-count" id="clock"></span>
+    </div>
+  </div>
+
+  <section class="listing" id="listing">
+    <div class="grid" id="grid">
+      <div class="row head" role="row">
+        <span role="columnheader"><button class="sortbtn" data-sort="title" data-active="true">Show <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l6 8H6z"/></svg></button></span>
+        <span role="columnheader"><button class="sortbtn" data-sort="date">Aired <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 19l-6-8h12z"/></svg></button></span>
+        <span role="columnheader">Duration</span>
+        <span role="columnheader"><button class="sortbtn" data-sort="daysLeft">Retention <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 19l-6-8h12z"/></svg></button></span>
+        <span role="columnheader" aria-hidden="true"></span>
+      </div>
+      <div id="rows"></div>
+      <div class="empty" id="emptyState" hidden>No shows match your search. Try a different title or category.</div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <a class="brand" href="#top" aria-label="WBAI 99.5">
+        <span class="dial" aria-hidden="true"><span></span></span>
+        <span class="brand-text">
+          <span class="brand-word">WBAI</span>
+          <span class="brand-name">99.5 FM · New York City</span>
+        </span>
+      </a>
+      <p>Free Speech Radio. Progressive &amp; independent news, arts &amp; music, listener-supported and broadcasting as part of the Pacifica Foundation.</p>
+      <div class="social-row">
+        <a class="social-btn" href="https://www.twitter.com/WBAI" target="_blank" rel="noopener noreferrer" aria-label="WBAI on X">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4l7.5 9.5L4.3 20H7l5-5.7 4 5.7h4l-7.8-10L19.6 4H17l-4.6 5.2L8.5 4z"/></svg>
+        </a>
+        <a class="social-btn" href="https://www.facebook.com/WBAIRadio" target="_blank" rel="noopener noreferrer" aria-label="WBAI on Facebook">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 8.5h2.5V5.2C16 5.1 14.9 5 13.7 5 11.1 5 9.4 6.6 9.4 9.5v2.1H6.5V15h2.9v9h3.4v-9h2.8l.5-3.4h-3.3V9.8c0-1 .3-1.3 1.2-1.3z"/></svg>
+        </a>
+        <a class="social-btn" href="https://www.instagram.com/wbainyc/" target="_blank" rel="noopener noreferrer" aria-label="WBAI on Instagram">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="4.5"/><circle cx="12" cy="12" r="3.6"/><circle cx="16.6" cy="7.4" r="1" fill="currentColor" stroke="none"/></svg>
+        </a>
+        <a class="social-btn" href="https://www.linkedin.com/company/wbai/" target="_blank" rel="noopener noreferrer" aria-label="WBAI on LinkedIn">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 9h3v10H5zM6.5 4a1.8 1.8 0 1 1 0 3.6A1.8 1.8 0 0 1 6.5 4zM11 9h2.9v1.4h.04c.4-.76 1.4-1.6 2.9-1.6 3.1 0 3.66 2 3.66 4.7V19h-3v-4.9c0-1.17-.02-2.68-1.64-2.68-1.65 0-1.9 1.28-1.9 2.6V19H11z"/></svg>
+        </a>
+        <a class="social-btn" href="https://bsky.app/profile/wbai.org" target="_blank" rel="noopener noreferrer" aria-label="WBAI on Bluesky">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 9.2C10.6 6.6 8.2 4.6 5.6 4c-1 0-1.6.5-1.6 1.6 0 2 .5 5.7 3 7.6-1.9-.3-3.5.2-3.5 1.8 0 1.3 1.6 2.1 3.6 2.3-1.3.6-2 1.4-2 2.3 0 1.5 1.7 2.4 3.7 1 1.3-.9 2.4-2.4 3.2-3.9.8 1.5 1.9 3 3.2 3.9 2 1.4 3.7.5 3.7-1 0-.9-.7-1.7-2-2.3 2-.2 3.6-1 3.6-2.3 0-1.6-1.6-2.1-3.5-1.8 2.5-1.9 3-5.6 3-7.6C21.6 4.5 21 4 20 4c-2.6.6-5 2.6-6.4 5.2-.6 1-.8 1.6-1.1 2.3-.3-.7-.5-1.3-1.1-2.3z"/></svg>
+        </a>
+      </div>
+    </div>
+    <div class="footer-col">
+      <h2>Listen</h2>
+      <ul>
+        <li><a href="https://wbai.org/listen-live/" target="_blank" rel="noopener noreferrer">Listen live</a></li>
+        <li><a href="https://wbai.org/schedule/" target="_blank" rel="noopener noreferrer">Schedule</a></li>
+        <li><a href="https://wbai.org/programlist/" target="_blank" rel="noopener noreferrer">Programs A–Z</a></li>
+        <li><a href="https://wbai.org/archive/" target="_blank" rel="noopener noreferrer">Full archive</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h2>Station</h2>
+      <ul>
+        <li><a href="https://wbai.org/about.html" target="_blank" rel="noopener noreferrer">About WBAI</a></li>
+        <li><a href="https://wbai.org/mission.html" target="_blank" rel="noopener noreferrer">Mission</a></li>
+        <li><a href="https://wbai.org/pacifica.html" target="_blank" rel="noopener noreferrer">Pacifica Foundation</a></li>
+        <li><a href="https://wbai.org/news/" target="_blank" rel="noopener noreferrer">News</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h2>Support &amp; contact</h2>
+      <ul>
+        <li><a href="https://wbai.org/donate/" target="_blank" rel="noopener noreferrer">Donate</a></li>
+        <li><a href="https://wbai.org/volunteers-interns.php" target="_blank" rel="noopener noreferrer">Volunteer</a></li>
+        <li><a href="https://wbai.org/contact.php" target="_blank" rel="noopener noreferrer">Contact</a></li>
+        <li><a href="https://wbai.org" target="_blank" rel="noopener noreferrer">wbai.org</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>A service of the Pacifica Foundation · built by KPFTx</p>
+    <p>WBAI 99.5 FM · New York, NY</p>
+  </div>
+</footer>
+<p class="concept-note">Unofficial redesign of the WBAI archive, not affiliated with or endorsed by WBAI or the Pacifica Foundation. Show listings, artwork, audio, and on-air data are proxied live from WBAI’s own systems (archive2.wbai.org and confessor2.wbai.org); Listen Live, Donate, and every station link go to the real <a href="https://wbai.org" target="_blank" rel="noopener noreferrer">wbai.org</a>.</p>
+
+<audio id="liveAudio" preload="none"></audio>
+
+<div class="player-bar" id="playerBar" hidden>
+  <button class="player-toggle" id="playerToggle" type="button" aria-label="Play or pause">
+    <svg id="playerIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+  </button>
+  <div class="player-main">
+    <div class="player-info">
+      <span class="player-title" id="playerTitle">&mdash;</span>
+      <span class="player-sub" id="playerSub"></span>
+    </div>
+  </div>
+  <span class="player-status" id="playerStatus"></span>
+  <button class="player-close" id="playerClose" type="button" aria-label="Close player">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+  <audio id="mainAudio" preload="none"></audio>
+</div>
+<script src="/app.js" defer></script>
+</body>
+</html>
