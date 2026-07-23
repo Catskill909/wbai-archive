@@ -70,6 +70,7 @@
 
   var rowsEl = document.getElementById('rows');
   var emptyEl = document.getElementById('emptyState');
+  var loadingEl = document.getElementById('loadingState');
   var countEl = document.getElementById('resultCount');
   var clockEl = document.getElementById('clock');
 
@@ -128,6 +129,7 @@
       return (a.dt - b.dt)*dir;
     });
 
+    loadingEl.hidden = true;
     countEl.textContent = list.length + (list.length===1 ? ' show':' shows') + ' found';
     emptyEl.hidden = list.length!==0;
 
@@ -456,9 +458,53 @@
         fetch('/data/shows-fallback.json', {cache:'no-store'})
           .then(function(r){ return r.json(); })
           .then(function(data){ ingest(data.shows || []); })
-          .catch(function(){ countEl.textContent = 'Could not load the archive.'; emptyEl.hidden = false; });
+          .catch(function(){ loadingEl.hidden = true; countEl.textContent = 'Could not load the archive.'; emptyEl.hidden = false; });
       });
   }
+
+  // ---------------- Slide-out menu drawer ----------------
+  (function(){
+    var btn = document.getElementById('menuBtn');
+    var panel = document.getElementById('menuPanel');
+    var scrim = document.getElementById('menuScrim');
+    var closeBtn = document.getElementById('menuClose');
+    if(!btn || !panel || !scrim || !closeBtn) return;
+    var lastFocus = null;
+
+    function openMenu(){
+      lastFocus = document.activeElement;
+      panel.classList.add('show');
+      scrim.classList.add('show');
+      panel.setAttribute('aria-hidden', 'false');
+      btn.setAttribute('aria-expanded', 'true');
+      document.body.classList.add('menu-open');
+      closeBtn.focus();
+      document.addEventListener('keydown', onKey);
+    }
+    function closeMenu(){
+      panel.classList.remove('show');
+      scrim.classList.remove('show');
+      panel.setAttribute('aria-hidden', 'true');
+      btn.setAttribute('aria-expanded', 'false');
+      document.body.classList.remove('menu-open');
+      document.removeEventListener('keydown', onKey);
+      if(lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+    function onKey(e){
+      if(e.key === 'Escape'){ closeMenu(); return; }
+      if(e.key !== 'Tab') return;
+      // keep keyboard focus inside the open drawer
+      var f = panel.querySelectorAll('a[href], button:not([disabled])');
+      if(!f.length) return;
+      var first = f[0], last = f[f.length-1];
+      if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    }
+
+    btn.addEventListener('click', openMenu);
+    closeBtn.addEventListener('click', closeMenu);
+    scrim.addEventListener('click', closeMenu);
+  })();
 
   renderChips();
   loadArchive();

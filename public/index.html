@@ -42,6 +42,9 @@
         </svg>
         <span class="donate-label">Donate</span>
       </a>
+      <button class="menu-btn" id="menuBtn" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="menuPanel">
+        <span class="menu-btn-lines" aria-hidden="true"><span></span><span></span><span></span></span>
+      </button>
     </div>
   </div>
 </header>
@@ -80,20 +83,28 @@
         <span role="columnheader" aria-hidden="true"></span>
       </div>
       <div id="rows"></div>
+      <div class="loading" id="loadingState" role="status" aria-live="polite">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <span class="loading-text">Loading the archive…</span>
+      </div>
       <div class="empty" id="emptyState" hidden>No shows match your search. Try a different title or category.</div>
     </div>
   </section>
 </main>
 
-<footer>
-  <div class="footer-inner">
-    <div class="footer-brand">
-      <a class="brand" href="#top" aria-label="WBAI 99.5">
-        <span class="brand-text">
-          <img class="brand-logo" src="/assets/header.png" width="1024" height="248" alt="WBAI">
-          <span class="brand-name">99.5 FM · New York City</span>
-        </span>
-      </a>
+<div class="menu-scrim" id="menuScrim"></div>
+<aside class="menu-panel" id="menuPanel" aria-label="Site menu" aria-hidden="true">
+  <div class="menu-head">
+    <span class="brand-text">
+      <img class="brand-logo menu-logo" src="/assets/header.png" width="1024" height="248" alt="WBAI">
+      <span class="brand-name">99.5 FM · New York City</span>
+    </span>
+    <button class="menu-close" id="menuClose" type="button" aria-label="Close menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="menu-body">
+    <div class="menu-brand">
       <p>Free Speech Radio. Progressive &amp; independent news, arts &amp; music, listener-supported and broadcasting as part of the Pacifica Foundation.</p>
       <div class="social-row">
         <a class="social-btn" href="https://www.twitter.com/WBAI" target="_blank" rel="noopener noreferrer" aria-label="WBAI on X">
@@ -113,40 +124,44 @@
         </a>
       </div>
     </div>
-    <div class="footer-col">
-      <h2>Listen</h2>
-      <ul>
-        <li><a href="https://wbai.org/listen-live/" target="_blank" rel="noopener noreferrer">Listen live</a></li>
-        <li><a href="https://wbai.org/schedule/" target="_blank" rel="noopener noreferrer">Schedule</a></li>
-        <li><a href="https://wbai.org/programlist/" target="_blank" rel="noopener noreferrer">Programs A–Z</a></li>
-        <li><a href="https://wbai.org/archive/" target="_blank" rel="noopener noreferrer">Full archive</a></li>
-      </ul>
-    </div>
-    <div class="footer-col">
-      <h2>Station</h2>
-      <ul>
-        <li><a href="https://wbai.org/about.html" target="_blank" rel="noopener noreferrer">About WBAI</a></li>
-        <li><a href="https://wbai.org/mission.html" target="_blank" rel="noopener noreferrer">Mission</a></li>
-        <li><a href="https://wbai.org/pacifica.html" target="_blank" rel="noopener noreferrer">Pacifica Foundation</a></li>
-        <li><a href="https://wbai.org/news/" target="_blank" rel="noopener noreferrer">News</a></li>
-      </ul>
-    </div>
-    <div class="footer-col">
-      <h2>Support &amp; contact</h2>
-      <ul>
-        <li><a href="https://wbai.org/donate/" target="_blank" rel="noopener noreferrer">Donate</a></li>
-        <li><a href="https://wbai.org/volunteers-interns.php" target="_blank" rel="noopener noreferrer">Volunteer</a></li>
-        <li><a href="https://wbai.org/contact.php" target="_blank" rel="noopener noreferrer">Contact</a></li>
-        <li><a href="https://wbai.org" target="_blank" rel="noopener noreferrer">wbai.org</a></li>
-      </ul>
+
+    <nav class="menu-nav">
+      <div class="menu-group">
+        <h2>Listen</h2>
+        <ul>
+          <li><a href="https://wbai.org/listen-live/" target="_blank" rel="noopener noreferrer">Listen live</a></li>
+          <li><a href="https://wbai.org/schedule/" target="_blank" rel="noopener noreferrer">Schedule</a></li>
+          <li><a href="https://wbai.org/programlist/" target="_blank" rel="noopener noreferrer">Programs A–Z</a></li>
+          <li><a href="https://wbai.org/archive/" target="_blank" rel="noopener noreferrer">Full archive</a></li>
+        </ul>
+      </div>
+      <div class="menu-group">
+        <h2>Station</h2>
+        <ul>
+          <li><a href="https://wbai.org/about.html" target="_blank" rel="noopener noreferrer">About WBAI</a></li>
+          <li><a href="https://wbai.org/mission.html" target="_blank" rel="noopener noreferrer">Mission</a></li>
+          <li><a href="https://wbai.org/pacifica.html" target="_blank" rel="noopener noreferrer">Pacifica Foundation</a></li>
+          <li><a href="https://wbai.org/news/" target="_blank" rel="noopener noreferrer">News</a></li>
+        </ul>
+      </div>
+      <div class="menu-group">
+        <h2>Support &amp; contact</h2>
+        <ul>
+          <li><a href="https://wbai.org/donate/" target="_blank" rel="noopener noreferrer">Donate</a></li>
+          <li><a href="https://wbai.org/volunteers-interns.php" target="_blank" rel="noopener noreferrer">Volunteer</a></li>
+          <li><a href="https://wbai.org/contact.php" target="_blank" rel="noopener noreferrer">Contact</a></li>
+          <li><a href="https://wbai.org" target="_blank" rel="noopener noreferrer">wbai.org</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <div class="menu-foot">
+      <p>A service of the Pacifica Foundation · built by KPFTx</p>
+      <p>WBAI 99.5 FM · New York, NY</p>
+      <p class="menu-note">Unofficial redesign of the WBAI archive, not affiliated with or endorsed by WBAI or the Pacifica Foundation. Show listings, artwork, audio, and on-air data are proxied live from WBAI’s own systems (archive2.wbai.org and confessor2.wbai.org); Listen Live, Donate, and every station link go to the real <a href="https://wbai.org" target="_blank" rel="noopener noreferrer">wbai.org</a>.</p>
     </div>
   </div>
-  <div class="footer-bottom">
-    <p>A service of the Pacifica Foundation · built by KPFTx</p>
-    <p>WBAI 99.5 FM · New York, NY</p>
-  </div>
-</footer>
-<p class="concept-note">Unofficial redesign of the WBAI archive, not affiliated with or endorsed by WBAI or the Pacifica Foundation. Show listings, artwork, audio, and on-air data are proxied live from WBAI’s own systems (archive2.wbai.org and confessor2.wbai.org); Listen Live, Donate, and every station link go to the real <a href="https://wbai.org" target="_blank" rel="noopener noreferrer">wbai.org</a>.</p>
+</aside>
 
 <audio id="liveAudio" preload="none"></audio>
 

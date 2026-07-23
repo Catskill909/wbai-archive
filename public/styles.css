@@ -240,11 +240,8 @@
   .search-field input::placeholder{color:var(--ink-faint);}
 
   .chip-row{
-    display:flex; gap:.5rem; overflow-x:auto; padding-bottom:.15rem;
-    scrollbar-width:thin;
+    display:flex; flex-wrap:wrap; gap:.5rem;
   }
-  .chip-row::-webkit-scrollbar{height:6px;}
-  .chip-row::-webkit-scrollbar-thumb{background:var(--outline-strong); border-radius:99px;}
   .chip{
     flex:none; border:1px solid var(--outline-strong); background:var(--surface-1);
     color:var(--ink-dim); padding:.45rem .95rem; border-radius:999px;
@@ -270,6 +267,9 @@
        the sticky header row 57px down from the top of the table. */
     border:1px solid var(--outline); border-radius:16px; overflow:clip;
     background:var(--surface-1); box-shadow:var(--shadow);
+    /* reserve vertical space so the footer sits below the fold while the
+       archive fetch is in flight — no jump when rows arrive. */
+    min-height:min(70vh, 640px);
   }
   .row{
     display:grid;
@@ -340,49 +340,121 @@
   @media (prefers-reduced-motion:reduce){ .btn-spin{animation-duration:1.4s;} }
 
   .empty{padding:3rem 1rem; text-align:center; color:var(--ink-faint);}
+
+  /* Centered load state while the archive fetch resolves. Grows to fill the
+     grid's reserved min-height so the spinner sits mid-panel. */
+  .loading{
+    flex:1 1 auto;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:1rem; padding:4rem 1rem; color:var(--ink-faint);
+  }
+  .loading[hidden]{display:none;}
+  .loading-spinner{
+    width:40px; height:40px; border-radius:50%;
+    border:3px solid color-mix(in srgb, var(--ink) 12%, transparent);
+    border-top-color:var(--accent-2);
+    animation:spin .7s linear infinite;
+  }
+  .loading-text{
+    font-family:var(--font-display); font-size:.72rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:.12em; color:var(--ink-dim);
+  }
+  @media (prefers-reduced-motion:reduce){ .loading-spinner{animation-duration:1.4s;} }
+
   .scroll-sentinel{height:1px;}
 
-  /* ---------------- Footer ---------------- */
-  footer{
-    border-top:1px solid var(--outline); background:var(--surface-1);
-    padding:2.2rem 1rem 2rem;
+  /* ---------------- Hamburger button ---------------- */
+  .menu-btn{
+    width:42px; height:42px; border-radius:12px; flex:none;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:var(--surface-3); border:1px solid var(--outline-strong);
+    color:var(--ink); cursor:pointer;
+    transition:background .15s ease, border-color .15s ease;
   }
-  .footer-inner{
-    max-width:1180px; margin:0 auto;
-    display:grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap:1.75rem;
+  .menu-btn:hover{ background:color-mix(in srgb, var(--ink) 6%, var(--surface-3)); border-color:var(--accent-2); }
+  .menu-btn-lines{ display:flex; flex-direction:column; gap:4px; width:18px; }
+  .menu-btn-lines span{ display:block; height:2px; border-radius:2px; background:currentColor; transition:transform .28s cubic-bezier(.4,0,.2,1), opacity .18s ease; }
+  .menu-btn[aria-expanded="true"] .menu-btn-lines span:nth-child(1){ transform:translateY(6px) rotate(45deg); }
+  .menu-btn[aria-expanded="true"] .menu-btn-lines span:nth-child(2){ opacity:0; }
+  .menu-btn[aria-expanded="true"] .menu-btn-lines span:nth-child(3){ transform:translateY(-6px) rotate(-45deg); }
+  @media (prefers-reduced-motion:reduce){ .menu-btn-lines span{transition:none;} }
+
+  /* ---------------- Slide-out menu drawer ---------------- */
+  .menu-scrim{
+    position:fixed; inset:0; z-index:150;
+    background:color-mix(in srgb, #000 55%, transparent);
+    -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition:opacity .25s ease, visibility 0s linear .25s;
   }
-  .footer-brand{display:flex; flex-direction:column; gap:.6rem;}
-  .footer-brand .brand{pointer-events:none;}
-  .footer-brand p{margin:0; font-size:.82rem; color:var(--ink-dim); max-width:32ch; line-height:1.5;}
-  .footer-col h2{
+  .menu-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .25s ease; }
+
+  .menu-panel{
+    position:fixed; top:0; right:0; z-index:160;
+    height:100dvh; width:min(400px, 92vw);
+    display:flex; flex-direction:column;
+    background:var(--surface-1); border-left:1px solid var(--outline);
+    box-shadow:-24px 0 60px rgba(0,0,0,.45);
+    transform:translateX(100%); visibility:hidden;
+    transition:transform .34s cubic-bezier(.4,0,.2,1), visibility 0s linear .34s;
+    will-change:transform;
+  }
+  .menu-panel.show{ transform:translateX(0); visibility:visible; transition:transform .34s cubic-bezier(.4,0,.2,1); }
+  @media (prefers-reduced-motion:reduce){
+    .menu-scrim, .menu-panel{ transition-duration:0s; }
+  }
+  body.menu-open{ overflow:hidden; }
+
+  .menu-head{
+    flex:none; display:flex; align-items:center; justify-content:space-between; gap:1rem;
+    padding:1rem 1.1rem 1rem 1.3rem; border-bottom:1px solid var(--outline);
+  }
+  .menu-logo{ height:22px; }
+  .menu-close{
+    width:38px; height:38px; flex:none; border-radius:50%;
+    border:1px solid var(--outline-strong); background:var(--surface-2); color:var(--ink);
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .menu-close:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .menu-close svg{ width:16px; height:16px; }
+
+  .menu-body{
+    flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    padding:1.4rem 1.3rem 2rem; display:flex; flex-direction:column; gap:1.7rem;
+  }
+  .menu-brand{ display:flex; flex-direction:column; gap:.9rem; }
+  .menu-brand p{ margin:0; font-size:.84rem; color:var(--ink-dim); line-height:1.55; }
+
+  .menu-nav{ display:flex; flex-direction:column; gap:1.5rem; }
+  .menu-group h2{
     font-family:var(--font-display); text-transform:uppercase; letter-spacing:.08em;
-    font-size:.68rem; font-weight:700; color:var(--ink-faint); margin:0 0 .7rem;
+    font-size:.66rem; font-weight:700; color:var(--ink-faint); margin:0 0 .55rem;
   }
-  .footer-col ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.5rem;}
-  .footer-col a{color:var(--ink-dim); text-decoration:none; font-size:.85rem;}
-  .footer-col a:hover{color:var(--accent-2); text-decoration:underline;}
+  .menu-group ul{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.1rem; }
+  .menu-group a{
+    display:block; padding:.55rem .65rem; margin:0 -.65rem; border-radius:9px;
+    color:var(--ink); text-decoration:none; font-size:.92rem;
+    transition:background .15s ease, color .15s ease;
+  }
+  .menu-group a:hover{ background:var(--surface-hover); color:var(--accent-2); }
+
   .social-row{display:flex; gap:.5rem; flex-wrap:wrap;}
   .social-btn{
-    width:34px;height:34px;border-radius:50%; border:1px solid var(--outline-strong);
+    width:36px;height:36px;border-radius:50%; border:1px solid var(--outline-strong);
     display:flex; align-items:center; justify-content:center; color:var(--ink-dim);
     text-decoration:none; transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
   .social-btn:hover{background:var(--accent-2); border-color:var(--accent-2); color:var(--accent-2-ink);}
   .social-btn svg{width:16px;height:16px;}
-  .footer-bottom{
-    max-width:1180px; margin:1.6rem auto 0; padding-top:1.2rem; border-top:1px solid var(--outline);
-    display:flex; flex-wrap:wrap; gap:.5rem 1.2rem; align-items:center; justify-content:space-between;
+
+  .menu-foot{
+    border-top:1px solid var(--outline); padding-top:1.2rem;
+    display:flex; flex-direction:column; gap:.5rem;
   }
-  .footer-bottom p{margin:0; font-size:.78rem; color:var(--ink-faint);}
-  .concept-note{
-    max-width:1180px; margin:0 auto; padding:0 1rem 5rem;
-    font-size:.72rem; color:var(--ink-faint); line-height:1.5;
-  }
-  .concept-note a{color:var(--ink-faint); text-decoration:underline;}
-  @media (max-width:760px){
-    .footer-inner{grid-template-columns:1fr 1fr;}
-    .footer-brand{grid-column:1 / -1;}
-  }
+  .menu-foot p{ margin:0; font-size:.78rem; color:var(--ink-faint); }
+  .menu-note{ line-height:1.5; }
+  .menu-note a{ color:var(--ink-faint); text-decoration:underline; }
 
   /* ================= Responsive ================= */
   @media (max-width: 900px){
