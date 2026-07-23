@@ -180,6 +180,12 @@
   /* compact donate button in the appbar */
   .appbar-actions .btn{padding:.36rem .8rem; font-size:.76rem;}
   .appbar-actions .btn svg{width:14px;height:14px;}
+  /* stacked donate button: hand-holding-heart icon over a bold label */
+  .appbar-actions .btn-donate{
+    flex-direction:column; gap:.1rem; padding:.3rem .9rem; text-decoration:none;
+  }
+  .appbar-actions .btn-donate svg{width:22px;height:22px;}
+  .btn-donate .donate-label{font-weight:800; font-size:.64rem; letter-spacing:.02em; line-height:1; text-decoration:none;}
   .btn{
     display:inline-flex; align-items:center; gap:.4rem; justify-content:center;
     border-radius:999px; border:1px solid transparent; cursor:pointer;
