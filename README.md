@@ -93,6 +93,7 @@ terminate TLS in front of it.
 │   ├── index.html                # markup
 │   ├── styles.css                # all styles (design tokens, light/dark)
 │   ├── app.js                    # front-end logic (fetches the API)
+│   ├── assets/                   # station logo (header.png) + app icon
 │   └── data/shows-fallback.json  # offline snapshot fallback
 └── docs/
     ├── ARCHITECTURE.md

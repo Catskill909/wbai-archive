@@ -6,7 +6,8 @@
 <title>WBAI 99.5 — On-Demand Archive</title>
 <meta name="description" content="Search, stream, and browse WBAI 99.5 FM's on-demand broadcast archive — Free Speech Radio, Pacifica Radio in New York City.">
 <meta name="color-scheme" content="dark light">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📻</text></svg>">
+<link rel="icon" type="image/png" href="/assets/icon-256.png">
+<link rel="apple-touch-icon" href="/assets/icon-256.png">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -15,9 +16,8 @@
 <header class="appbar">
   <div class="appbar-inner">
     <a class="brand" href="#top" aria-label="WBAI 99.5 archive home">
-      <span class="dial" aria-hidden="true"><span></span></span>
       <span class="brand-text">
-        <span class="brand-word">WBAI</span>
+        <img class="brand-logo" src="/assets/header.png" width="1024" height="248" alt="WBAI">
         <span class="brand-name">99.5 FM · Archive</span>
       </span>
     </a>
@@ -47,15 +47,13 @@
 <main id="top">
   <section class="hero">
     <div class="hero-lockup">
-      <span class="hero-dial" aria-hidden="true"><span></span></span>
-      <div>
-        <div class="hero-wordmark">WBAI</div>
-        <div class="hero-sub">Free Speech Radio · 99.5 FM</div>
-      </div>
+      <img class="hero-logo" src="/assets/header.png" width="1024" height="248" alt="WBAI 99.5 FM">
+      <div class="hero-sub">Free Speech Radio · 99.5 FM</div>
     </div>
-    <h1>On‑demand archive</h1>
-    <p>Progressive &amp; independent news, arts &amp; music — Pacifica Radio in New York City. Every broadcast stays here for a limited window before it rotates out: spoken-word and public-affairs shows longer, music programs briefer under licensing terms. Search, filter by category, or sort the columns to find something to hear.</p>
-    <p class="fine">Music programs are streamable here only — copyright terms prevent podcast download for those shows. Look for the feed badge on programs that do offer RSS. Listings and audio below are pulled from WBAI's real broadcast archive.</p>
+    <div class="hero-copy">
+      <h1>On‑demand archive</h1>
+      <p>Progressive &amp; independent news, arts &amp; music — Pacifica Radio in New York City. Every broadcast stays here for a limited window before it rotates out: spoken-word and public-affairs shows longer, music programs briefer under licensing terms. Search, filter by category, or sort the columns to find something to hear.</p>
+    </div>
   </section>
 
   <div class="controls">
@@ -89,9 +87,8 @@
   <div class="footer-inner">
     <div class="footer-brand">
       <a class="brand" href="#top" aria-label="WBAI 99.5">
-        <span class="dial" aria-hidden="true"><span></span></span>
         <span class="brand-text">
-          <span class="brand-word">WBAI</span>
+          <img class="brand-logo" src="/assets/header.png" width="1024" height="248" alt="WBAI">
           <span class="brand-name">99.5 FM · New York City</span>
         </span>
       </a>
@@ -155,15 +152,23 @@
   <button class="player-toggle" id="playerToggle" type="button" aria-label="Play or pause">
     <svg id="playerIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
   </button>
+  <span class="player-art" aria-hidden="true">
+    <img id="playerPhoto" alt="">
+  </span>
   <div class="player-main">
     <div class="player-info">
       <span class="player-title" id="playerTitle">&mdash;</span>
       <span class="player-sub" id="playerSub"></span>
     </div>
+    <div class="player-scrub">
+      <span class="player-time" id="playerCurrent">0:00</span>
+      <input class="player-range" id="playerRange" type="range" min="0" max="0" value="0" step="1" aria-label="Seek within show" disabled>
+      <span class="player-time" id="playerDuration">0:00</span>
+    </div>
   </div>
   <span class="player-status" id="playerStatus"></span>
   <button class="player-close" id="playerClose" type="button" aria-label="Close player">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
   </button>
   <audio id="mainAudio" preload="none"></audio>
 </div>

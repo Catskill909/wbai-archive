@@ -73,12 +73,38 @@
   var countEl = document.getElementById('resultCount');
   var clockEl = document.getElementById('clock');
 
+  // ---------------- Infinite scroll ----------------
+  // Render the filtered list in pages and append more as the sentinel scrolls
+  // into view, so the DOM never holds all ~500 rows at once.
+  var PAGE_SIZE = 40;
+  var filtered = [];   // current filtered + sorted list
+  var shown = 0;       // how many of `filtered` are in the DOM
+
+  var sentinel = document.createElement('div');
+  sentinel.className = 'scroll-sentinel';
+  sentinel.setAttribute('aria-hidden', 'true');
+  rowsEl.parentNode.insertBefore(sentinel, rowsEl.nextSibling);
+
+  var io = ('IntersectionObserver' in window)
+    ? new IntersectionObserver(function(entries){
+        if(entries[0].isIntersecting) showMore();
+      }, { rootMargin: '600px 0px' })
+    : null;
+  if(io) io.observe(sentinel);
+
+  function showMore(){
+    if(shown >= filtered.length) return;
+    var next = filtered.slice(shown, shown + PAGE_SIZE);
+    rowsEl.insertAdjacentHTML('beforeend', renderRows(next));
+    shown += next.length;
+    // Without an observer (old browsers), fall back to rendering everything.
+    if(!io) while(shown < filtered.length) showMore();
+  }
+
   function svgPlay(){ return '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>'; }
   function svgPause(){ return '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'; }
   function svgRss(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="5" cy="19" r="1.5" fill="currentColor" stroke="none"/><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/></svg>'; }
-  function svgOpen(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 4h6v6M20 4L10 14M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>'; }
   function svgSpin(){ return '<span class="btn-spin"></span>'; }
-  function svgWave(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 12v0M8 8v8M12 5v14M16 8v8M20 12v0"/></svg>'; }
 
   function esc(s){
     return String(s).replace(/[&<>"']/g, function(c){
@@ -105,7 +131,15 @@
     countEl.textContent = list.length + (list.length===1 ? ' show':' shows') + ' found';
     emptyEl.hidden = list.length!==0;
 
-    rowsEl.innerHTML = list.map(function(r){
+    // reset paging: show the first page, append the rest on scroll
+    filtered = list;
+    shown = 0;
+    rowsEl.innerHTML = '';
+    showMore();
+  }
+
+  function renderRows(list){
+    return list.map(function(r){
       var c = CAT_BY_KEY[r.cat];
       var rc = retentionClass(r.daysLeft);
       var dparts = splitDateText(r.dateText);
@@ -118,7 +152,6 @@
       '<div class="row body" role="row">'+
         '<div class="show-cell">'+
           '<span class="show-thumb" style="--c:'+c.color+'" aria-hidden="true">'+
-            '<span class="ph">'+svgWave()+'</span>'+
             (photo ? '<img loading="lazy" alt="" src="'+photo+'">' : '')+
           '</span>'+
           '<span style="min-width:0;">'+
@@ -131,8 +164,7 @@
         '<div class="cell-mono cell-duration">'+esc(r.length)+'</div>'+
         '<div><span class="retention '+rc+'">'+retentionLabel(r.daysLeft)+'</span></div>'+
         '<div class="row-actions">'+
-          '<button class="play-btn'+(isPlaying?' playing':'')+(isLoading?' loading':'')+'" data-mp3="'+esc(r.mp3)+'" data-title="'+esc(r.title)+'" data-sub="'+esc(subLine)+'" aria-label="'+(isLoading?'Loading':(isPlaying?'Pause':'Play'))+' '+esc(r.title)+'">'+btnInner+'</button>'+
-          (r.hasRSS ? '<a class="dl-btn" href="'+esc(r.mp3)+'" target="_blank" rel="noopener noreferrer" aria-label="Open the recording of '+esc(r.title)+' in a new tab">'+svgOpen()+'</a>' : '')+
+          '<button class="play-btn'+(isPlaying?' playing':'')+(isLoading?' loading':'')+'" data-mp3="'+esc(r.mp3)+'" data-title="'+esc(r.title)+'" data-sub="'+esc(subLine)+'" data-photo="'+esc(photo)+'" aria-label="'+(isLoading?'Loading':(isPlaying?'Pause':'Play'))+' '+esc(r.title)+'">'+btnInner+'</button>'+
         '</div>'+
       '</div>');
     }).join('');
@@ -147,9 +179,43 @@
   var playerIcon = document.getElementById('playerIcon');
   var playerToggle = document.getElementById('playerToggle');
   var playerClose = document.getElementById('playerClose');
+  var playerRange = document.getElementById('playerRange');
+  var playerCurrent = document.getElementById('playerCurrent');
+  var playerDuration = document.getElementById('playerDuration');
+  var playerPhoto = document.getElementById('playerPhoto');
+  // fall back to the station icon (art background) if a show photo fails to load
+  playerPhoto.addEventListener('error', function(){ playerPhoto.removeAttribute('src'); });
+
+  function setPlayerPhoto(src){
+    if(src){ playerPhoto.src = src; }
+    else { playerPhoto.removeAttribute('src'); }
+  }
 
   var nowPlaying = { mp3:null };
   var loadingMp3 = null;
+  var seeking = false;   // true while the user drags the scrubber
+
+  function formatTime(sec){
+    if(!isFinite(sec) || sec < 0) return '0:00';
+    sec = Math.floor(sec);
+    var h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+    var mm = h ? (m<10?'0'+m:''+m) : ''+m;
+    return (h ? h+':' : '') + mm + ':' + (s<10?'0'+s:''+s);
+  }
+  function setScrubFill(){
+    var max = +playerRange.max || 0;
+    var pct = max ? (+playerRange.value / max) * 100 : 0;
+    playerRange.style.setProperty('--pct', pct);
+  }
+  function resetScrubber(){
+    seeking = false;
+    playerRange.disabled = true;
+    playerRange.max = 0;
+    playerRange.value = 0;
+    setScrubFill();
+    playerCurrent.textContent = '0:00';
+    playerDuration.textContent = '0:00';
+  }
 
   function showPlayerBar(){
     playerBar.hidden = false;
@@ -183,12 +249,14 @@
     refreshToggleIcon();
   }
 
-  function playTrack(mp3, title, sub){
+  function playTrack(mp3, title, sub, photo){
     nowPlaying.mp3 = mp3;
     loadingMp3 = mp3;
     playerTitle.textContent = title;
     playerSub.textContent = sub;
+    setPlayerPhoto(photo);
     setStatus('Loading…');
+    resetScrubber();
     showPlayerBar();
     liveAudio.pause();
     audio.src = mp3;
@@ -199,6 +267,32 @@
   audio.addEventListener('playing', function(){ loadingMp3 = null; setStatus('Playing'); updatePlayButtons(); });
   audio.addEventListener('pause', function(){ loadingMp3 = null; if(!audio.ended) setStatus('Paused'); updatePlayButtons(); });
   audio.addEventListener('ended', function(){ loadingMp3 = null; setStatus('Finished'); updatePlayButtons(); });
+
+  // ---- scrubber wiring ----
+  audio.addEventListener('loadedmetadata', function(){
+    if(isFinite(audio.duration) && audio.duration > 0){
+      playerRange.max = Math.floor(audio.duration);
+      playerRange.disabled = false;
+      playerDuration.textContent = formatTime(audio.duration);
+    }
+    setScrubFill();
+  });
+  audio.addEventListener('timeupdate', function(){
+    if(seeking) return;
+    playerRange.value = Math.floor(audio.currentTime);
+    playerCurrent.textContent = formatTime(audio.currentTime);
+    setScrubFill();
+  });
+  // live preview while dragging; commit the seek on release
+  playerRange.addEventListener('input', function(){
+    seeking = true;
+    playerCurrent.textContent = formatTime(+playerRange.value);
+    setScrubFill();
+  });
+  playerRange.addEventListener('change', function(){
+    if(isFinite(audio.duration)) audio.currentTime = +playerRange.value;
+    seeking = false;
+  });
   audio.addEventListener('waiting', function(){ setStatus('Buffering…'); });
   audio.addEventListener('error', function(){
     loadingMp3 = null;
@@ -214,16 +308,15 @@
     if(nowPlaying.mp3 === mp3 && !audio.paused && !audio.ended){
       audio.pause();
     } else {
-      playTrack(mp3, btn.dataset.title, btn.dataset.sub);
+      playTrack(mp3, btn.dataset.title, btn.dataset.sub, btn.dataset.photo);
     }
   });
 
-  // Show-artwork thumbnails: reveal on load, fall back to placeholder on error.
-  rowsEl.addEventListener('load', function(e){
-    if(e.target && e.target.tagName === 'IMG') e.target.classList.add('loaded');
-  }, true);
+  // Show artwork is layered on top of the category placeholder and paints itself
+  // once decoded (cached or not — no load event to miss). If it errors, hide it
+  // so the placeholder shows through.
   rowsEl.addEventListener('error', function(e){
-    if(e.target && e.target.tagName === 'IMG'){ e.target.classList.remove('loaded'); e.target.removeAttribute('src'); }
+    if(e.target && e.target.tagName === 'IMG') e.target.classList.add('failed');
   }, true);
 
   playerToggle.addEventListener('click', function(){
@@ -235,6 +328,7 @@
     audio.removeAttribute('src');
     audio.load();
     nowPlaying.mp3 = null;
+    resetScrubber();
     hidePlayerBar();
     updatePlayButtons();
   });
