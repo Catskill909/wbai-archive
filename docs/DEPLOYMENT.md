@@ -17,6 +17,12 @@ does this for you.
 4. **Environment variables (optional):**
    - `PORT` — defaults to `8080`; leave unless you have a reason to change it.
    - `NODE_ENV=production` — already set in the image.
+   - `PROGRAMS_PATH` / `SHOWINFO_PATH` — where the show-info caches are written;
+     default `/app/data/*.json`.
+   - **Persistent storage (recommended):** mount a volume at **`/app/data`**.
+     The compose file already declares one. Without it the show-info caches are
+     rebuilt after each redeploy — the app works either way, but the program
+     directory is re-scraped and the on-air harvest starts from empty.
 5. **Health check:** the container defines `HEALTHCHECK` against `/healthz`.
    Coolify will also surface it; no extra config needed.
 6. **Deploy.** First load triggers a live scrape of the WBAI archive (cached for
@@ -24,11 +30,12 @@ does this for you.
 
 ### Notes
 
-- **No build secrets or database.** The app is stateless; all state is an
-  in-memory cache that repopulates from WBAI on demand.
+- **No build secrets or database.** The only state is caches — in memory, plus
+  two rebuildable JSON files under `/app/data`. Deleting them is always safe.
 - **Outbound network access is required.** The container must be able to reach
-  `archive2.wbai.org`, `confessor2.wbai.org`, and `streaming.wbai.org` over
-  HTTPS. In restricted networks, allow-list those hosts.
+  `archive2.wbai.org`, `confessor2.wbai.org`, `wbai.org`, and
+  `streaming.wbai.org` over HTTPS. In restricted networks, allow-list those
+  hosts.
 - **Scaling:** it's fine to run a single instance. If you run several, each keeps
   its own cache — that's harmless (each just scrapes independently).
 
@@ -67,4 +74,5 @@ archive.example.org {
 curl -s https://YOUR-DOMAIN/healthz            # {"ok":true}
 curl -s https://YOUR-DOMAIN/api/nowplaying     # current + next show
 curl -s https://YOUR-DOMAIN/api/archive | head # {"updated":…,"count":…,"shows":[…]}
+curl -s https://YOUR-DOMAIN/api/programs | head -c 200   # {"updated":…,"count":149,…}
 ```

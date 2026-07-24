@@ -7,6 +7,7 @@
  *   - Serve the static front-end from ./public
  *   - GET /api/archive     live scrape of archive2.wbai.org -> JSON (cached)
  *   - GET /api/nowplaying  proxy of the on-air / up-next feed -> JSON (cached)
+ *   - GET /api/showinfo    per-show descriptions harvested from that feed
  *   - GET /pix/<file>      image proxy for show artwork (allow-listed filenames)
  *
  * No third-party dependencies: only Node's standard library plus the built-in
@@ -19,12 +20,17 @@ const path = require('path');
 
 const PORT = process.env.PORT || 8080;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const SHOWINFO_PATH = process.env.SHOWINFO_PATH || path.join(__dirname, 'data', 'showinfo.json');
+const PROGRAMS_PATH = process.env.PROGRAMS_PATH || path.join(__dirname, 'data', 'programs.json');
+const PROGRAMS_TTL = 24 * 60 * 60 * 1000;
 
 const UPSTREAM = {
   archive: 'https://archive2.wbai.org/',
   schedule: 'https://confessor2.wbai.org/playlist/pub_sched.php',
   nowplaying: 'https://confessor2.wbai.org/playlist/_pl_current_ary.php',
   pixBase: 'https://confessor2.wbai.org/pix/',
+  programList: 'https://wbai.org/programlist/',
+  program: 'https://wbai.org/program.php?program=',
 };
 
 const CAT_MAP = {
@@ -44,6 +50,17 @@ function unescapeHtml(s) {
     .replace(/&#0?39;/g, "'")
     .replace(/&apos;/g, "'")
     .replace(/&ensp;|&nbsp;/g, ' ')
+    // typographic entities are common in the program descriptions
+    .replace(/&rsquo;|&lsquo;/g, "'")
+    .replace(/&rdquo;|&ldquo;/g, '"')
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&hellip;/g, '…')
+    .replace(/&middot;/g, '·')
+    .replace(/&reg;/g, '®')
+    .replace(/&trade;/g, '™')
+    .replace(/&copy;/g, '©')
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
     .trim();
 }
@@ -154,6 +171,219 @@ async function getArchive() {
   return payload;
 }
 
+// ---------------------------------------------------------- show info cache
+
+/**
+ * WBAI exposes rich per-show fields (description, host, links, artwork) only for
+ * the show that is on air and the one up next — there is no bulk endpoint for
+ * them. So every now-playing poll donates its two records to this map, keyed by
+ * the same altid the archive rows carry, and coverage fills in as the schedule
+ * rotates. It is a cache, never a source of truth: if the file cannot be read or
+ * written the server simply runs on whatever it has learned since boot.
+ */
+// Both on-disk caches (this one and the program directory) read and write through
+// these two helpers; a failure on either side is logged once and ignored, so an
+// unwritable data dir only costs the cache, never the request.
+function readJsonFile(file, fallback) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return (parsed && typeof parsed === 'object') ? parsed : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+const saveTimers = new Map();
+function writeJsonSoon(file, getData, delayMs = 10000) {
+  if (saveTimers.has(file)) return;
+  const t = setTimeout(() => {
+    saveTimers.delete(file);
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(getData()));
+    } catch (e) {
+      console.warn(`[cache] ${path.basename(file)} running memory-only:`, e.message);
+    }
+  }, delayMs);
+  if (t.unref) t.unref();
+  saveTimers.set(file, t);
+}
+
+const showInfo = readJsonFile(SHOWINFO_PATH, {});
+let showInfoUpdated = Object.keys(showInfo).length ? Date.now() : 0;
+
+function saveShowInfoSoon() {
+  writeJsonSoon(SHOWINFO_PATH, () => showInfo);
+}
+
+function clean(s) {
+  return typeof s === 'string' ? s.trim() : '';
+}
+
+// Artwork arrives either as a full upstream URL or a bare filename; both become
+// a path on our own /pix proxy. WBAI.png is the generic station fallback some
+// records carry instead of real art, and has no _med_ id, so it drops out here.
+function pixPath(candidates) {
+  for (const c of candidates) {
+    const m = clean(c).match(/([A-Za-z0-9_]+_med_\d+\.jpg)/);
+    if (m) return '/pix/' + m[1];
+  }
+  return '';
+}
+
+function recordShowInfo(sh) {
+  const altid = clean(sh && sh.sh_altid);
+  if (!altid) return;
+  const next = {
+    name: clean(sh.sh_name),
+    dj: clean(sh.sh_djname),
+    desc: clean(sh.sh_desc),
+    shortdesc: clean(sh.sh_shortdesc),
+    url: clean(sh.sh_url),
+    facebook: clean(sh.sh_facebook),
+    photo: pixPath([sh.sh_med_photo, sh.sh_photo]),
+  };
+  // empty fields are dropped rather than stored, so a show that loses its
+  // description upstream keeps the copy we already have
+  Object.keys(next).forEach(k => { if (!next[k]) delete next[k]; });
+  if (!Object.keys(next).length) return;
+
+  const prev = showInfo[altid];
+  const changed = !prev || Object.keys(next).some(k => prev[k] !== next[k]);
+  if (!changed) return;
+  showInfoUpdated = Date.now();
+  showInfo[altid] = Object.assign({}, prev, next, { seen: showInfoUpdated });
+  saveShowInfoSoon();
+}
+
+// ------------------------------------------------------- program directory
+
+/**
+ * wbai.org publishes a program page per show — host, description, website,
+ * Facebook and Twitter — and /programlist/ enumerates all of them. Unlike the
+ * on-air feed this covers the whole schedule, so it is where the info sheet gets
+ * its host and description from for shows that are not currently on air.
+ *
+ * Keyed by a normalised title, because the archive rows have no program id: the
+ * only thing the two systems share is the show's name.
+ */
+const programCache = readJsonFile(PROGRAMS_PATH, { updated: 0, programs: {} });
+let programsRefreshing = false;
+
+function normTitle(s) {
+  return unescapeHtml(String(s || ''))
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+// Strips markup to readable text. The description blocks on these pages contain
+// list markup — and, on some of them, an injected third-party <script> — so tags
+// are removed here and the result is only ever rendered as text.
+function htmlToText(html) {
+  return unescapeHtml(
+    String(html || '')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<br\s*\/?>|<\/p>|<\/li>|<\/div>/gi, ' ')
+      .replace(/<li[^>]*>/gi, ' · ')
+      .replace(/<[^>]+>/g, '')
+  ).replace(/\s+/g, ' ').trim().slice(0, 1500);
+}
+
+function httpUrl(s) {
+  const v = clean(s);
+  return /^https?:\/\//i.test(v) ? v : '';
+}
+
+// One row per program: id, title and "Hosted by …" up to the separator image.
+function parseProgramList(html) {
+  const out = [];
+  const re = /<a href="\.\.\/program\.php\?program=(\d+)"[^>]*>([\s\S]*?)<\/a>\s*<\/strong>\s*<br\s*\/?>([\s\S]*?)<\/p>/gi;
+  let m;
+  while ((m = re.exec(html))) {
+    const title = htmlToText(m[2]);
+    if (!title) continue;
+    const hostPart = m[3].split(/<img/i)[0];
+    out.push({
+      id: m[1],
+      title,
+      host: htmlToText(hostPart).replace(/^hosted by:?\s*/i, ''),
+    });
+  }
+  return out;
+}
+
+function parseProgramPage(html) {
+  const pick = (re) => { const m = html.match(re); return m ? m[1] : ''; };
+  return {
+    title: htmlToText(pick(/<span class="pagetitle">([\s\S]*?)<\/span>/i)),
+    airs: htmlToText(pick(/<hr[^>]*>\s*<p>([\s\S]*?)<\/p>/i)),
+    host: htmlToText(pick(/class="hostname"[^>]*>\s*<strong>([\s\S]*?)<\/strong>/i)).replace(/^hosted by:?\s*/i, ''),
+    url: httpUrl(pick(/<b>\s*Web Site:\s*<\/b>\s*<a\s+href=\s*"([^"]+)"/i)),
+    facebook: httpUrl(pick(/<b>\s*Facebook:\s*<\/b>\s*<a\s+href=\s*"([^"]+)"/i)),
+    twitter: httpUrl(pick(/<b>\s*Twitter:\s*<\/b>\s*<a\s+href=\s*"([^"]+)"/i)),
+    desc: htmlToText(pick(/<div class=['"]description['"][^>]*>([\s\S]*?)<\/div>/i)),
+  };
+}
+
+// Small worker pool: 149 pages once a day is nothing, but they still go out a
+// few at a time rather than all at once.
+async function mapPool(items, limit, fn) {
+  const results = [];
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      try { results[idx] = await fn(items[idx]); } catch (e) { results[idx] = null; }
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function refreshPrograms() {
+  if (programsRefreshing) return;
+  programsRefreshing = true;
+  try {
+    const listing = parseProgramList(await fetchText(UPSTREAM.programList));
+    if (!listing.length) throw new Error('parsed zero programs');
+
+    const pages = await mapPool(listing, 4, async (p) => {
+      const detail = parseProgramPage(await fetchText(UPSTREAM.program + encodeURIComponent(p.id)));
+      return Object.assign({}, p, detail, { title: detail.title || p.title, host: detail.host || p.host });
+    });
+
+    const programs = {};
+    pages.forEach((p, idx) => {
+      const src = p || listing[idx];       // keep list-only data if a page failed
+      const key = normTitle(src.title);
+      if (!key) return;
+      const rec = {};
+      ['title', 'host', 'desc', 'airs', 'url', 'facebook', 'twitter'].forEach((k) => {
+        if (clean(src[k])) rec[k] = clean(src[k]);
+      });
+      programs[key] = rec;
+    });
+
+    programCache.programs = programs;
+    programCache.updated = Date.now();
+    writeJsonSoon(PROGRAMS_PATH, () => programCache, 1000);
+    console.log(`[programs] directory refreshed: ${Object.keys(programs).length} shows`);
+  } catch (e) {
+    console.warn('[programs] refresh failed, keeping cache:', e.message);
+  } finally {
+    programsRefreshing = false;
+  }
+}
+
+// Refresh in the background: a cold cache never blocks a request, it just means
+// the first visitors see the sheet without a description.
+function refreshProgramsIfStale() {
+  if (Date.now() - (programCache.updated || 0) < PROGRAMS_TTL) return;
+  refreshPrograms();
+}
+
 // --------------------------------------------------------------- nowplaying
 
 const nowCache = makeCache(15 * 1000); // 15 seconds
@@ -163,8 +393,12 @@ async function getNowPlaying() {
   if (cached) return cached;
   const text = await fetchText(UPSTREAM.nowplaying);
   const data = JSON.parse(text);
+  // data[0] is the station's global config block — it carries upstream
+  // credentials, so it is never read, forwarded or logged.
   const cur = (data[1] && data[1].current) || {};
   const nxt = (data[2] && data[2].next) || {};
+  recordShowInfo(cur);
+  recordShowInfo(nxt);
   // rewrite the upstream photo URL to our own image proxy path
   let photo = '';
   const pm = (cur.sh_photo || '').match(/pix\/([A-Za-z0-9_]+_med_\d+\.jpg)/);
@@ -301,6 +535,23 @@ const server = http.createServer(async (req, res) => {
       const data = await getNowPlaying();
       return sendJson(res, data, 200, 10);
     }
+    if (url === '/api/showinfo') {
+      // harvested lazily by the now-playing poll; empty until the first one lands
+      await getNowPlaying().catch(() => {});
+      return sendJson(res, {
+        updated: showInfoUpdated,
+        count: Object.keys(showInfo).length,
+        shows: showInfo,
+      }, 200, 60);
+    }
+    if (url === '/api/programs') {
+      refreshProgramsIfStale();
+      return sendJson(res, {
+        updated: programCache.updated || 0,
+        count: Object.keys(programCache.programs || {}).length,
+        programs: programCache.programs || {},
+      }, 200, 600);
+    }
     if (url === '/healthz') {
       return sendJson(res, { ok: true });
     }
@@ -323,4 +574,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`WBAI Archive server listening on :${PORT}`);
+  refreshProgramsIfStale();
 });

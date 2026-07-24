@@ -24,7 +24,7 @@
     <button class="live-strip" id="liveStrip" type="button" aria-label="Play WBAI live stream">
       <span class="live-play" id="livePlay" aria-hidden="true">
         <span class="spinner"></span>
-        <svg id="liveIcon" viewBox="0 0 24 24" fill="#ffffff"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="liveIcon" width="17" height="17" viewBox="0 0 24 24" fill="#ffffff"><path d="M8 5v14l11-7z"/></svg>
       </span>
       <span class="live-art" aria-hidden="true">
         <img id="livePhoto" alt="">
@@ -37,9 +37,6 @@
     </button>
     <div class="appbar-actions">
       <a class="btn btn-filled btn-donate" href="https://wbai.org/donate/" target="_blank" rel="noopener noreferrer">
-        <svg viewBox="0 0 576 512" fill="currentColor" aria-hidden="true">
-          <path d="M163.9 136.9c-29.4-29.8-29.4-78.2 0-108s77-29.8 106.4 0l17.7 18 17.7-18c29.4-29.8 77-29.8 106.4 0s29.4 78.2 0 108L310.5 240.1c-6.2 6.3-14.3 9.4-22.5 9.4s-16.3-3.1-22.5-9.4L163.9 136.9zM568.2 336.3c13.1 17.8 9.3 42.8-8.5 55.9L433.1 485.5c-23.4 17.2-51.6 26.5-80.7 26.5L192 512 32 512c-17.7 0-32-14.3-32-32l0-64c0-17.7 14.3-32 32-32l36.8 0 44.9-36c22.7-18.2 50.9-28 80-28l78.3 0 16 0 64 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-64 0-16 0c-8.8 0-16 7.2-16 16s7.2 16 16 16l120.6 0 119.7-88.2c17.8-13.1 42.8-9.3 55.9 8.5zM193.6 384c0 0 0 0 0 0l-.9 0c.3 0 .6 0 .9 0z"/>
-        </svg>
         <span class="donate-label">Donate</span>
       </a>
       <button class="menu-btn" id="menuBtn" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="menuPanel">
@@ -56,7 +53,8 @@
       <div class="hero-sub">Free Speech Radio · 99.5 FM</div>
     </div>
     <div class="hero-copy">
-      <h1>On‑demand archive</h1>
+      <!-- heading kept for the document outline / screen readers, not shown -->
+      <h1 class="visually-hidden">On‑demand archive</h1>
       <p>Progressive &amp; independent news, arts &amp; music — Pacifica Radio in New York City. Every broadcast stays here for a limited window before it rotates out: spoken-word and public-affairs shows longer, music programs briefer under licensing terms. Search, filter by category, or sort the columns to find something to hear.</p>
     </div>
   </section>
@@ -69,7 +67,17 @@
     <div class="chip-row" id="chips" role="group" aria-label="Filter by category"></div>
     <div class="result-meta">
       <span class="result-count" id="resultCount"></span>
-      <span class="result-count" id="clock"></span>
+      <div class="result-meta-right">
+        <span class="result-count" id="clock"></span>
+        <div class="view-toggle" id="viewToggle" role="group" aria-label="Change layout">
+          <button class="view-btn" data-view="list" type="button" aria-pressed="true" aria-label="List view" title="List view">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="4" width="4" height="4" rx="1"/><rect x="9" y="5" width="12" height="2" rx="1"/><rect x="3" y="10" width="4" height="4" rx="1"/><rect x="9" y="11" width="12" height="2" rx="1"/><rect x="3" y="16" width="4" height="4" rx="1"/><rect x="9" y="17" width="12" height="2" rx="1"/></svg>
+          </button>
+          <button class="view-btn" data-view="grid" type="button" aria-pressed="false" aria-label="Gallery view" title="Gallery view">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -83,7 +91,7 @@
         <span role="columnheader" aria-hidden="true"></span>
       </div>
       <div id="rows"></div>
-      <div class="loading" id="loadingState" role="status" aria-live="polite">
+      <div class="loading-panel" id="loadingState" role="status" aria-live="polite">
         <span class="loading-spinner" aria-hidden="true"></span>
         <span class="loading-text">Loading the archive…</span>
       </div>
@@ -163,11 +171,23 @@
   </div>
 </aside>
 
+<!-- Show info dialog. Body is painted by app.js from the archive row plus any
+     harvested show record; empty fields are left out entirely. -->
+<div class="sheet-scrim" id="sheetScrim"></div>
+<div class="sheet" id="showSheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" aria-hidden="true">
+  <button class="sheet-close" id="sheetClose" type="button" aria-label="Close show info">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+  <!-- head/description/meta scroll; the controls stay pinned in the footer -->
+  <div class="sheet-body" id="sheetBody"></div>
+  <div class="sheet-foot" id="sheetFoot"></div>
+</div>
+
 <audio id="liveAudio" preload="none"></audio>
 
 <div class="player-bar" id="playerBar" hidden>
   <button class="player-toggle" id="playerToggle" type="button" aria-label="Play or pause">
-    <svg id="playerIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    <svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
   </button>
   <span class="player-art" aria-hidden="true">
     <img id="playerPhoto" alt="">

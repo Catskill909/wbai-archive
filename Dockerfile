@@ -9,6 +9,11 @@ COPY package.json ./
 COPY server.js ./
 COPY public ./public
 
+# Writable spot for the harvested show-info cache. Mount a volume here to keep
+# it across redeploys; without one the app just relearns it from the live feed.
+RUN mkdir -p /app/data && chown node:node /app/data
+VOLUME ["/app/data"]
+
 ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080

@@ -4,3 +4,5 @@ npm-debug.log
 .env
 .env.*
 *.log
+# harvested show-info cache (rebuilt from the live feed)
+data/

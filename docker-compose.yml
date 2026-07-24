@@ -10,9 +10,15 @@ services:
       - NODE_ENV=production
     ports:
       - "8080:8080"
+    volumes:
+      # keeps the harvested show-info cache across redeploys
+      - wbai-data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  wbai-data:

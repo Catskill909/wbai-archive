@@ -10,12 +10,16 @@
  │ app.js    │ GET / │  GET /              → public/*           │      │  (show table HTML) │
  │ styles.css│──────▶│  GET /api/archive   → scrape + parse ───┼─────▶│                    │
  └──────────┘       │  GET /api/nowplaying → proxy + normalize ┼─────▶│ confessor2.wbai.org│
-      │             │  GET /pix/<file>    → image proxy ───────┼─────▶│  (now-playing +    │
-      │  <audio>    │  GET /healthz                            │      │   artwork /pix)    │
-      └─────────────┼──────────────────────────────────────────┘      └────────────────────┘
-        live stream │  (media plays directly from WBAI hosts,
-        + archive    │   allowed by the page's media-src CSP)
+      │             │  GET /api/showinfo  → harvested records  │      │  (now-playing +    │
+      │             │  GET /api/programs  → directory scrape ──┼─────▶│   artwork /pix)    │
+      │             │  GET /pix/<file>    → image proxy ───────┼─────▶│                    │
+      │  <audio>    │  GET /healthz                            │      │ wbai.org           │
+      └─────────────┼──────────────────────────────────────────┘      │  (program pages)   │
+        live stream │  (media plays directly from WBAI hosts,  │      └────────────────────┘
+        + archive    │   allowed by the page's media-src CSP)  │
         mp3s ────────┼──────────────────────────────────────────▶  streaming.wbai.org / archive2
+                    │  data/  ← on-disk caches (rebuildable)   │
+                    └──────────────────────────────────────────┘
 ```
 
 ## Why the server exists
@@ -57,6 +61,39 @@ megabytes of audio through the app.
 3. Rewrite the upstream artwork URL to our own `/pix/…` proxy path.
 4. Cache for 15 seconds (the upstream itself suggests a ~10s reload cadence).
 
+### `GET /api/programs`
+
+The archive rows carry no description and no reliable host, so the info sheet's
+prose comes from wbai.org's own program pages.
+
+1. Scrape `wbai.org/programlist/` for every `program.php?program=<id>` link, with
+   the title and "Hosted by …" line beside it (~149 programs).
+2. Fetch each program page through a 4-at-a-time worker pool and parse the
+   `pagetitle`, airtime, host, Web Site / Facebook / Twitter links, and the
+   `.description` block. Description HTML is flattened to text — some of those
+   pages carry an injected third-party `<script>`, and none of it is ever
+   rendered as markup.
+3. Key the result by a **normalised title** (lowercased, non-alphanumerics
+   collapsed): the archive and wbai.org share nothing else. The front end matches
+   rows against those keys through widening tiers — exact, ignore-spacing,
+   qualifier prefix, equal word-sets once filler words like "show"/"radio" are
+   set aside, then a Dice coefficient ≥ 0.72. That covers ~477 of 535 rows; the
+   remainder are shows wbai.org simply doesn't list.
+4. Refresh at boot and every 24h, in the background — a cold cache never blocks a
+   request, it just means the first visitor sees a sheet without a description.
+
+### `GET /api/showinfo`
+
+WBAI's schedule database exposes its richest per-show record (`sh_desc`,
+`sh_djname`, `sh_url`, `sh_facebook`, artwork) only for the show **on air** and
+the one **up next**. Every now-playing poll therefore donates its two records to
+a map keyed by `sh_altid` — the same altid the archive rows carry — so coverage
+fills in as the schedule rotates. It is strictly additive: an empty upstream
+field never overwrites a value already held.
+
+`data[0]` of that feed is the station's global config block, which contains
+upstream credentials. It is never read, forwarded, or logged.
+
 ### `GET /pix/<file>`
 - The filename is validated against `^[A-Za-z0-9_]+_med_\d+\.jpg$` before any
   upstream request — this prevents the proxy from being used as an open relay
@@ -70,6 +107,29 @@ server serves the **last good** cached value if it has one; `/api/archive`
 additionally falls back to the shipped snapshot at
 `public/data/shows-fallback.json`, and the front-end falls back to that same file
 if `/api/archive` itself is unreachable. The archive is never a blank page.
+
+The two show-info caches additionally persist to disk (`data/programs.json`,
+`data/showinfo.json`, overridable via `PROGRAMS_PATH` / `SHOWINFO_PATH`) because
+one is expensive to rebuild and the other accrues slowly. Writes are debounced
+and every read and write is wrapped: an unwritable `data/` logs a single line and
+degrades to memory-only. Deleting the directory is always safe.
+
+## Front-end data merge
+
+The info sheet reads three sources, most specific first:
+
+| Field | Archive row | `/api/showinfo` | `/api/programs` |
+| --- | --- | --- | --- |
+| title, air date, length, retention, mp3, RSS | ✅ | | |
+| host | ✅ when present | `sh_djname` | "Hosted by" |
+| description | | `sh_desc` / `sh_shortdesc` | program page |
+| website, Facebook, Twitter | | `sh_url`, `sh_facebook` | program page |
+| artwork | `/pix/…` | `/pix/…` | |
+
+Every block is rendered only when its value is non-empty — that single filter is
+what keeps the sheet from showing labelled blanks for shows WBAI documents
+thinly. `/api/programs` is fetched lazily on the first sheet open (it's the
+largest payload in the app), and the open sheet repaints itself when it lands.
 
 ## Front-end
 

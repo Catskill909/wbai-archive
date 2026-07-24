@@ -22,6 +22,9 @@
     --danger:#e8604a;
     --danger-bg: rgba(232,96,74,0.14);
     --shadow: 0 1px 2px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.35);
+    /* raised-card elevation: top highlight rim + contact shadow + soft ambient */
+    --elev-1: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.45), 0 6px 16px -4px rgba(0,0,0,0.55);
+    --elev-2: inset 0 1px 0 rgba(255,255,255,0.07), 0 2px 4px rgba(0,0,0,0.45), 0 14px 30px -8px rgba(0,0,0,0.6);
     --font-display: 'Arial Narrow', 'Helvetica Neue Condensed', 'Roboto Condensed', sans-serif;
     --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace;
@@ -51,6 +54,8 @@
       --danger:#c8371e;
       --danger-bg: rgba(200,55,30,0.10);
       --shadow: 0 1px 2px rgba(30,20,10,0.08), 0 6px 20px rgba(30,20,10,0.08);
+      --elev-1: inset 0 1px 0 rgba(255,255,255,0.55), 0 1px 2px rgba(30,20,10,0.10), 0 6px 16px -4px rgba(30,20,10,0.16);
+      --elev-2: inset 0 1px 0 rgba(255,255,255,0.65), 0 2px 4px rgba(30,20,10,0.12), 0 14px 30px -8px rgba(30,20,10,0.22);
     }
   }
   :root[data-theme="dark"]{
@@ -64,6 +69,9 @@
     --warn:#e0a63a; --warn-bg: rgba(224,166,58,0.14);
     --danger:#e8604a; --danger-bg: rgba(232,96,74,0.14);
     --shadow: 0 1px 2px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.35);
+    /* raised-card elevation: top highlight rim + contact shadow + soft ambient */
+    --elev-1: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.45), 0 6px 16px -4px rgba(0,0,0,0.55);
+    --elev-2: inset 0 1px 0 rgba(255,255,255,0.07), 0 2px 4px rgba(0,0,0,0.45), 0 14px 30px -8px rgba(0,0,0,0.6);
   }
   :root[data-theme="light"]{
     color-scheme: light;
@@ -76,6 +84,8 @@
     --warn:#a8730f; --warn-bg: rgba(168,115,15,0.14);
     --danger:#c8371e; --danger-bg: rgba(200,55,30,0.10);
     --shadow: 0 1px 2px rgba(30,20,10,0.08), 0 6px 20px rgba(30,20,10,0.08);
+      --elev-1: inset 0 1px 0 rgba(255,255,255,0.55), 0 1px 2px rgba(30,20,10,0.10), 0 6px 16px -4px rgba(30,20,10,0.16);
+      --elev-2: inset 0 1px 0 rgba(255,255,255,0.65), 0 2px 4px rgba(30,20,10,0.12), 0 14px 30px -8px rgba(30,20,10,0.22);
   }
 
   *{box-sizing:border-box;}
@@ -93,6 +103,12 @@
 
   .skip-link{position:absolute;left:-9999px;top:0;background:var(--accent);color:var(--accent-ink);padding:.6rem 1rem;border-radius:0 0 8px 0;z-index:200;}
   .skip-link:focus{left:0;}
+
+  /* off-canvas for sighted users, still read by assistive tech */
+  .visually-hidden{
+    position:absolute; width:1px; height:1px; margin:-1px; padding:0;
+    overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0;
+  }
 
   :focus-visible{outline:2px solid var(--accent-2); outline-offset:2px;}
 
@@ -126,14 +142,21 @@
 
   .live-strip{
     display:flex; align-items:center; gap:.65rem; min-width:0; flex:0 1 420px;
-    background:var(--surface-3);
+    /* lifted off the appbar: gentle top-lit gradient + material elevation */
+    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 5%, var(--surface-3)), var(--surface-3));
     border:1px solid var(--outline-strong);
     border-radius:12px; padding:.4rem .9rem .4rem .4rem; cursor:pointer;
     text-align:left; font-family:inherit; color:var(--ink);
-    box-shadow:0 1px 3px rgba(0,0,0,.3);
-    transition:background .15s ease, box-shadow .15s ease;
+    box-shadow:var(--elev-1);
+    transition:background .15s ease, box-shadow .18s ease, transform .18s ease;
   }
-  .live-strip:hover{ background:color-mix(in srgb, var(--ink) 6%, var(--surface-3)); box-shadow:0 3px 10px rgba(0,0,0,.35); }
+  .live-strip:hover{
+    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 10%, var(--surface-3)), color-mix(in srgb, var(--ink) 4%, var(--surface-3)));
+    box-shadow:var(--elev-2);
+    transform:translateY(-1px);
+  }
+  .live-strip:active{ transform:translateY(0); box-shadow:var(--elev-1); }
+  @media (prefers-reduced-motion:reduce){ .live-strip, .live-strip:hover{ transform:none; } }
   .live-play{
     width:40px;height:40px;border-radius:50%;flex:none;
     background:var(--accent); display:flex; align-items:center; justify-content:center;
@@ -177,15 +200,61 @@
   /* push the live/on-air player (and the actions after it) to the right edge */
   .live-strip{margin-left:auto;}
   .appbar-actions{display:flex; gap:.55rem;}
+  /* Tablet and up: the live player sits dead-centre in the appbar. Brand and actions
+     each take an equal share of the leftover space, so the strip lands on the middle
+     axis of the 1180px column rather than being shoved right. */
+  @media (min-width:761px){
+    /* no min-width:0 — auto min-size keeps the wordmark and donate pill from clipping
+       if the viewport gets tight; centring simply gives way instead of breaking them */
+    .appbar-inner .brand{flex:1 1 0;}
+    .appbar-inner .appbar-actions{flex:1 1 0; justify-content:flex-end;}
+    .appbar-inner .live-strip{margin-left:0; flex:0 1 440px;}
+  }
   /* compact donate button in the appbar */
   .appbar-actions .btn{padding:.36rem .8rem; font-size:.76rem;}
   .appbar-actions .btn svg{width:14px;height:14px;}
-  /* stacked donate button: hand-holding-heart icon over a bold label */
+  /* wordmark donate pill: deepened accent, soft sheen on hover */
   .appbar-actions .btn-donate{
-    flex-direction:column; gap:.1rem; padding:.3rem .9rem; text-decoration:none;
+    --donate:color-mix(in srgb, var(--accent) 86%, #3d0f06);
+    position:relative; overflow:hidden; isolation:isolate;
+    padding:.46rem 1.15rem; text-decoration:none;
+    background:linear-gradient(160deg,
+      color-mix(in srgb, var(--donate) 92%, white) 0%,
+      var(--donate) 55%,
+      color-mix(in srgb, var(--donate) 88%, black) 100%);
+    box-shadow:
+      0 1px 2px color-mix(in srgb, var(--donate) 40%, transparent),
+      0 4px 12px color-mix(in srgb, var(--donate) 26%, transparent),
+      inset 0 1px 0 rgba(255,255,255,.22);
   }
-  .appbar-actions .btn-donate svg{width:22px;height:22px;}
-  .btn-donate .donate-label{font-weight:800; font-size:.64rem; letter-spacing:.02em; line-height:1; text-decoration:none;}
+  /* diagonal highlight that sweeps across on hover */
+  .appbar-actions .btn-donate::after{
+    content:""; position:absolute; inset:0; z-index:-1;
+    background:linear-gradient(105deg, transparent 35%, rgba(255,255,255,.28) 50%, transparent 65%);
+    transform:translateX(-130%);
+    transition:transform .55s ease;
+  }
+  .appbar-actions .btn-donate:hover{
+    background:linear-gradient(160deg,
+      color-mix(in srgb, var(--donate) 86%, white) 0%,
+      color-mix(in srgb, var(--donate) 96%, white) 55%,
+      var(--donate) 100%);
+    transform:translateY(-1px);
+    box-shadow:
+      0 2px 4px color-mix(in srgb, var(--donate) 42%, transparent),
+      0 8px 20px color-mix(in srgb, var(--donate) 32%, transparent),
+      inset 0 1px 0 rgba(255,255,255,.28);
+  }
+  .appbar-actions .btn-donate:hover::after{transform:translateX(130%);}
+  .appbar-actions .btn-donate:active{transform:translateY(0) scale(.97);}
+  @media (prefers-reduced-motion:reduce){
+    .appbar-actions .btn-donate, .appbar-actions .btn-donate:hover{transform:none;}
+    .appbar-actions .btn-donate::after{transition:none; display:none;}
+  }
+  .btn-donate .donate-label{
+    font-family:var(--font-display); font-weight:800; font-size:.72rem;
+    text-transform:uppercase; letter-spacing:.09em; line-height:1; text-decoration:none;
+  }
   .btn{
     display:inline-flex; align-items:center; gap:.4rem; justify-content:center;
     border-radius:999px; border:1px solid transparent; cursor:pointer;
@@ -210,11 +279,6 @@
   }
   .hero-lockup{flex:none;}
   .hero-copy{flex:1 1 auto; min-width:0;}
-  .hero h1{
-    font-family:var(--font-display); font-weight:700; letter-spacing:.01em;
-    font-size:clamp(1.5rem, 1.1rem + 1.8vw, 2.3rem);
-    margin:0 0 .4rem; text-wrap:balance;
-  }
   .hero p{color:var(--ink-dim); margin:0; max-width:none; line-height:1.55; font-size:.95rem;}
   /* stack the lockup above the copy on narrow screens */
   @media (max-width:720px){
@@ -257,7 +321,20 @@
   .chip:hover{border-color:var(--ink-faint);}
 
   .result-meta{display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;}
+  .result-meta-right{display:flex; align-items:center; gap:.85rem;}
   .result-count{font-size:.8rem; color:var(--ink-faint); font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
+
+  /* Segmented list / gallery view switch */
+  .view-toggle{display:inline-flex; gap:2px; padding:2px; border:1px solid var(--outline-strong); border-radius:999px; background:var(--surface-1); flex:none;}
+  .view-btn{
+    width:32px; height:28px; padding:0; border:none; border-radius:999px;
+    background:transparent; color:var(--ink-faint); cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center;
+    transition:background .15s ease, color .15s ease;
+  }
+  .view-btn svg{width:16px; height:16px;}
+  .view-btn:hover{color:var(--ink);}
+  .view-btn[aria-pressed="true"]{background:color-mix(in srgb, var(--accent-2) 22%, var(--surface-1)); color:var(--ink);}
 
   /* ---------------- Data list / table ---------------- */
   .listing{max-width:1180px; margin:0 auto; padding:0 1rem 5rem;}
@@ -294,6 +371,25 @@
   .sortbtn[data-active="true"] svg{opacity:1; color:var(--accent-2);}
 
   .show-cell{display:flex; align-items:center; gap:.7rem; min-width:0;}
+  /* The title + category block is itself the control that opens the info sheet,
+     so the whole text column is a target, not just the little More link. */
+  .show-text{ min-width:0; display:flex; flex-direction:column; align-items:flex-start; }
+  .show-open{
+    display:block; width:100%; min-width:0; text-align:left;
+    border:0; padding:0; margin:0; background:none; color:inherit; font:inherit;
+    cursor:pointer;
+  }
+  .show-open:hover .show-title,
+  .show-open:focus-visible .show-title{ color:var(--accent-2); }
+  .show-open:hover ~ .more-link{ text-decoration:underline; }
+
+  /* plain text link under the title, the visible cue for what the block does */
+  .more-link{
+    display:inline-block; margin-top:.25rem; padding:0; border:0; background:none;
+    font-family:inherit; font-size:.74rem; font-weight:700; letter-spacing:.02em;
+    color:var(--accent-2); cursor:pointer;
+  }
+  .more-link:hover{ text-decoration:underline; }
   .show-thumb{
     position:relative; width:44px;height:44px;border-radius:9px; flex:none; overflow:hidden;
     /* station icon shows when a show has no photo (or its photo fails to load) */
@@ -332,6 +428,7 @@
   .play-btn:hover{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
   .play-btn.loading{background:var(--surface-2); border-color:var(--outline-strong); cursor:default;}
   .play-btn svg{width:14px;height:14px;}
+  .play-glyph{display:inline-flex; align-items:center; justify-content:center;}
   .btn-spin{
     display:inline-block; width:15px;height:15px; border-radius:50%;
     border:2px solid color-mix(in srgb, var(--ink) 22%, transparent); border-top-color:var(--accent-2);
@@ -343,12 +440,14 @@
 
   /* Centered load state while the archive fetch resolves. Grows to fill the
      grid's reserved min-height so the spinner sits mid-panel. */
-  .loading{
+  /* NOTE: keep this scoped to .loading-panel — a bare `.loading` selector also
+     matches the play buttons, which toggle a `loading` class while buffering. */
+  .loading-panel{
     flex:1 1 auto;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:1rem; padding:4rem 1rem; color:var(--ink-faint);
   }
-  .loading[hidden]{display:none;}
+  .loading-panel[hidden]{display:none;}
   .loading-spinner{
     width:40px; height:40px; border-radius:50%;
     border:3px solid color-mix(in srgb, var(--ink) 12%, transparent);
@@ -456,6 +555,155 @@
   .menu-note{ line-height:1.5; }
   .menu-note a{ color:var(--ink-faint); text-decoration:underline; }
 
+  /* ---------------- Show info sheet ---------------- */
+  /* Same scrim treatment as the drawer, but the panel is a centered card. */
+  .sheet-scrim{
+    position:fixed; inset:0; z-index:170;
+    background:color-mix(in srgb, #000 62%, transparent);
+    -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition:opacity .22s ease, visibility 0s linear .22s;
+  }
+  .sheet-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .22s ease; }
+
+  .sheet{
+    position:fixed; z-index:180; left:50%; top:50%;
+    width:min(680px, 92vw); max-height:min(88dvh, 760px);
+    display:flex; flex-direction:column; overflow:hidden;
+    background:var(--surface-1); color:var(--ink);
+    border:1px solid var(--outline-strong); border-radius:18px;
+    box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
+    transform:translate(-50%, -46%) scale(.97); opacity:0; visibility:hidden;
+    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease, visibility 0s linear .22s;
+  }
+  .sheet.show{
+    transform:translate(-50%, -50%) scale(1); opacity:1; visibility:visible;
+    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .sheet-scrim, .sheet{ transition-duration:0s; }
+    .sheet{ transform:translate(-50%,-50%) scale(1); }
+  }
+  body.sheet-open{ overflow:hidden; }
+  /* leave room for the docked player bar so the card never sits on top of it */
+  body.has-player .sheet{ max-height:min(76dvh, 700px); }
+
+  .sheet-close{
+    position:absolute; top:.85rem; right:.85rem; z-index:2;
+    width:36px; height:36px; border-radius:50%;
+    border:1px solid var(--outline-strong); background:var(--surface-2); color:var(--ink-dim);
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .sheet-close:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .sheet-close svg{ width:15px; height:15px; }
+
+  .sheet-body{
+    flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    padding:1.6rem 1.6rem 1.4rem;
+    display:flex; flex-direction:column; gap:1.3rem;
+  }
+  /* Controls live outside the scroll area: however long the description runs,
+     Play, the links and the scrubber stay put at the bottom of the card. */
+  .sheet-foot{
+    flex:none; display:flex; flex-direction:column; gap:.85rem;
+    padding:1.1rem 1.6rem 1.3rem; border-top:1px solid var(--outline);
+    background:var(--surface-1); border-radius:0 0 17px 17px;
+  }
+  .sheet-foot:empty{ display:none; }
+
+  /* header: large artwork beside the title block */
+  /* centred so a title with no host or description doesn't float against the
+     top of the much taller artwork */
+  .sheet-head{ display:flex; gap:1.3rem; align-items:center; padding-right:2.6rem; }
+  .sheet-art{
+    position:relative; flex:none; width:168px; height:168px; border-radius:14px; overflow:hidden;
+    background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
+    box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c, var(--accent)) 45%, transparent), var(--elev-1);
+  }
+  .sheet-art img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .sheet-art img.failed{ display:none; }
+  .sheet-titles{ display:flex; flex-direction:column; gap:.5rem; min-width:0; padding-top:.15rem; }
+  .sheet-eyebrow{
+    display:inline-flex; align-items:center; gap:.4rem; align-self:flex-start;
+    font-family:var(--font-display); text-transform:uppercase; letter-spacing:.08em;
+    font-size:.66rem; font-weight:700; color:var(--ink-dim);
+  }
+  .sheet-eyebrow .swatch{ width:8px; height:8px; border-radius:50%; background:var(--c, var(--accent)); flex:none; }
+  #sheetTitle{
+    font-family:var(--font-display); font-weight:700; letter-spacing:.01em;
+    font-size:clamp(1.3rem, 1.05rem + 1.1vw, 1.7rem); line-height:1.15;
+    margin:0; text-wrap:balance;
+  }
+  .sheet-host{ font-size:.9rem; color:var(--accent-2); }
+
+  .sheet-desc-wrap{ display:flex; flex-direction:column; align-items:flex-start; gap:.4rem; }
+  .sheet-desc{
+    margin:0; color:var(--ink-dim); font-size:.94rem; line-height:1.6;
+    /* clamped until the reader asks for the rest */
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:7; overflow:hidden;
+  }
+  .sheet-desc-wrap.expanded .sheet-desc{ -webkit-line-clamp:none; overflow:visible; }
+  .desc-toggle{
+    padding:0; border:0; background:none; font-family:inherit;
+    font-size:.78rem; font-weight:700; color:var(--accent-2); cursor:pointer;
+  }
+  .desc-toggle:hover{ text-decoration:underline; }
+
+  /* meta list — only the rows with content are rendered at all */
+  .sheet-meta{
+    display:grid; grid-template-columns:auto 1fr; gap:.55rem 1.1rem;
+    margin:0; padding:1.1rem 0 0; border-top:1px solid var(--outline);
+    font-size:.88rem;
+  }
+  .sheet-meta dt{
+    font-family:var(--font-display); text-transform:uppercase; letter-spacing:.07em;
+    font-size:.66rem; font-weight:700; color:var(--ink-faint); padding-top:.18rem;
+  }
+  .sheet-meta dd{ margin:0; color:var(--ink); }
+  .sheet-meta dd .mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+
+  .sheet-actions{ display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+  /* same scrubber markup as the docked player, sitting under the actions */
+  .sheet-scrub[hidden]{ display:none; }
+  /* also carries .play-btn so updatePlayButtons() keeps its glyph and label in
+     step — width/height undo the round 36px icon button that class implies */
+  .sheet-play{
+    display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;
+    width:auto; height:auto;
+    border:1px solid transparent; border-radius:999px; padding:.6rem 1.2rem;
+    background:var(--accent); color:var(--accent-ink); font-family:inherit;
+    font-size:.88rem; font-weight:700; box-shadow:var(--shadow);
+    transition:background .15s ease, transform .12s ease;
+  }
+  .sheet-play:hover{ background:color-mix(in srgb, var(--accent) 88%, black); }
+  .sheet-play:active{ transform:scale(.97); }
+  .sheet-play svg{ width:15px; height:15px; }
+  .sheet-link{
+    display:inline-flex; align-items:center; gap:.4rem;
+    border:1px solid var(--outline-strong); border-radius:999px; padding:.55rem 1rem;
+    color:var(--ink-dim); text-decoration:none; font-size:.84rem; font-weight:600;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .sheet-link:hover{ background:var(--surface-hover); color:var(--accent-2); border-color:var(--accent-2); }
+  .sheet-link svg{ width:14px; height:14px; }
+
+  /* Phones: dock it to the bottom as a sheet that slides up. */
+  @media (max-width:560px){
+    .sheet{
+      left:0; top:auto; bottom:0; width:100%; max-height:90dvh;
+      border-radius:20px 20px 0 0; border-bottom:none;
+      transform:translate(0, 100%) scale(1);
+    }
+    .sheet.show{ transform:translate(0, 0) scale(1); }
+    .sheet-body{ padding:1.3rem 1.1rem 1.1rem; }
+    .sheet-foot{ padding:.9rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom,0px)); border-radius:0; }
+    .sheet-head{ flex-direction:column; align-items:center; text-align:center; padding-right:0; gap:1rem; }
+    .sheet-art{ width:min(220px, 60vw); height:min(220px, 60vw); }
+    .sheet-titles{ align-items:center; }
+    .sheet-actions{ justify-content:center; }
+  }
+
   /* ================= Responsive ================= */
   @media (max-width: 900px){
     .row{grid-template-columns: 1fr auto;}
@@ -472,7 +720,8 @@
     .retention{grid-area:retention; justify-self:start;}
     .appbar-actions .btn-label{display:none;}
     .btn-icon-label{display:none;}
-    .donate-label{display:none;}
+    .appbar-actions .btn-donate{padding:.42rem .85rem;}
+    .btn-donate .donate-label{font-size:.68rem; letter-spacing:.07em;}
     .listing{padding-bottom:6rem;}
   }
   @media (min-width: 901px){
@@ -481,8 +730,31 @@
   @media (max-width:560px){
     .brand-logo{height:20px;}
     .appbar .brand-name{display:none;}
-    .hero h1{font-size:1.4rem;}
     .row.body{padding:.75rem .85rem;}
+  }
+
+  /* Phones: the appbar wraps to two rows — brand + actions on top, the live
+     player on its own full-width row underneath so it isn't squashed. */
+  @media (max-width:760px){
+    .appbar-inner{flex-wrap:wrap; row-gap:.6rem; padding:.6rem .8rem;}
+    .brand{order:1;}
+    .appbar-actions{order:2; margin-left:auto;}
+    /* The player is a primary control, not a strip — give it real height. */
+    .live-strip{
+      order:3; flex:1 1 100%; width:100%; margin-left:0;
+      gap:.85rem; border-radius:16px;
+      padding:.7rem 1.1rem .7rem .7rem;
+    }
+    .live-strip .live-play{width:56px; height:56px;}
+    .live-strip .live-play svg{width:22px; height:22px; margin-left:3px;}
+    .live-strip .live-play.playing svg{margin-left:0;}
+    .live-strip .live-play.loading .spinner{width:24px; height:24px; border-width:3px;}
+    /* room is back on a full-width row, so bring the artwork and next-up line back */
+    .live-strip .live-art{display:block; width:56px; height:56px; border-radius:10px;}
+    .live-strip .live-copy{gap:.1rem; line-height:1.35;}
+    .live-strip .live-label{font-size:.66rem;}
+    .live-strip .live-now{font-size:1rem;}
+    .live-strip .live-next{display:block; font-size:.8rem;}
   }
 
   /* ---------------- Player bar ---------------- */
@@ -569,6 +841,13 @@
   @media (max-width:700px){
     .player-status{display:none;}
   }
+  /* Tablet and up: the bar chrome still spans the viewport, but its controls sit in
+     the same centered 1180px column as the listing instead of sprawling edge to edge. */
+  @media (min-width:700px){
+    .player-bar{
+      padding-inline:max(1rem, calc((100% - 1180px) / 2 + 1rem));
+    }
+  }
 
   .play-btn.playing{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
   .row-link{color:inherit; text-decoration:none;}
@@ -576,4 +855,122 @@
   .row-actions{display:flex; align-items:center; justify-content:flex-end; gap:.25rem;}
   @media (max-width:900px){
     .row-actions{grid-area:play;}
+  }
+
+  /* ================= Gallery (grid) view ================= */
+  /* In grid mode the sticky column-header row is meaningless, and #rows becomes a
+     responsive card grid instead of a stack of table rows. */
+  body.view-grid .row.head{display:none;}
+  body.view-grid #rows{
+    display:grid;
+    grid-template-columns:repeat(5, 1fr);
+    gap:1.4rem 1.1rem;
+    padding:1.4rem;
+  }
+  @media (max-width:1040px){ body.view-grid #rows{grid-template-columns:repeat(4, 1fr);} }
+  @media (max-width:820px){ body.view-grid #rows{grid-template-columns:repeat(3, 1fr);} }
+  @media (max-width:560px){ body.view-grid #rows{grid-template-columns:repeat(2, 1fr); gap:1.1rem .9rem; padding:1rem;} }
+
+  /* The card button can't contain another button, so the More link is a sibling
+     inside this wrapper, sitting in the overlay just under the card title. */
+  .card-wrap{position:relative; display:block;}
+  .card-more{
+    position:absolute; left:.7rem; bottom:.6rem; z-index:5; margin-top:0;
+    color:color-mix(in srgb, var(--accent-2) 45%, white);
+    text-shadow:0 1px 3px rgba(0,0,0,.7);
+  }
+
+  /* The whole square is the play button; the image sits on top of the category
+     placeholder, with the title, a play glyph, and a retention badge layered over
+     it. No text sits below the image — the card is just the artwork. */
+  .card.card-art.play-btn{
+    position:relative; display:block; width:100%; height:auto; aspect-ratio:1/1;
+    padding:0; border-radius:14px; overflow:hidden; cursor:pointer; text-align:left;
+    border:1px solid var(--outline);
+    background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
+    box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 45%, transparent);
+    transition:transform .18s ease, box-shadow .18s ease;
+  }
+  /* hover is tracked on the wrapper, so the card still lifts when the pointer is
+     over the title block sitting on top of it */
+  .card.card-art.play-btn:hover,
+  .card-wrap:hover .card.card-art.play-btn{
+    background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
+    border-color:var(--outline); color:var(--ink);
+    transform:translateY(-2px);
+    box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 60%, transparent), 0 8px 22px rgba(0,0,0,.35);
+  }
+  .card-art img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+  .card-art img.failed{display:none;}
+
+  /* Permanent gradient so the overlaid title stays legible over any artwork; it
+     darkens further on hover to make the centered play glyph pop. */
+  .card-fade{
+    position:absolute; left:0; right:0; bottom:0; top:0; pointer-events:none;
+    background:linear-gradient(to top, rgba(0,0,0,.86) 0%, rgba(0,0,0,.36) 38%, rgba(0,0,0,0) 62%);
+    transition:background .18s ease;
+  }
+  .card-wrap:hover .card-fade,
+  .card-art.play-btn:focus-visible .card-fade,
+  .card-art.play-btn.playing .card-fade,
+  .card-art.play-btn.loading .card-fade{
+    background:linear-gradient(to top, rgba(0,0,0,.86) 0%, rgba(0,0,0,.5) 45%, rgba(0,0,0,.32) 100%);
+  }
+
+  /* a sibling of the card button, laid over its lower half: clicking the words
+     opens the info sheet while the artwork behind them still plays */
+  .card-overlay{
+    position:absolute; left:0; right:0; bottom:0; z-index:4;
+    display:flex; flex-direction:column; align-items:flex-start; gap:.15rem;
+    border:0; background:none; font:inherit; text-align:left; cursor:pointer;
+    /* bottom padding leaves the row for the More link below the title */
+    padding:.6rem .7rem 2rem;
+  }
+  .card-overlay:hover .card-title{ text-decoration:underline; }
+  .card-eyebrow{
+    font-family:var(--font-display); text-transform:uppercase; letter-spacing:.07em;
+    font-size:.62rem; font-weight:700; line-height:1;
+    /* var fallback keeps the eyebrow legible even if the inline --c is absent */
+    color:color-mix(in srgb, var(--c, #cdd6d3) 55%, white);
+    text-shadow:0 1px 2px rgba(0,0,0,.6);
+  }
+  .card-title{
+    color:#fff; font-weight:700; font-size:.9rem; line-height:1.24;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+    text-shadow:0 1px 3px rgba(0,0,0,.6);
+  }
+
+  .card-play{
+    position:absolute; top:50%; left:50%; z-index:3;
+    width:52px; height:52px; border-radius:50%;
+    background:var(--accent); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 4px 16px rgba(0,0,0,.5);
+    opacity:0; transform:translate(-50%,-50%) scale(.82);
+    transition:opacity .18s ease, transform .18s ease, background .15s ease;
+  }
+  .card-play svg{width:19px; height:19px;}
+  .card-wrap:hover .card-play,
+  .card-art.play-btn:focus-visible .card-play,
+  .card-art.play-btn.playing .card-play,
+  .card-art.play-btn.loading .card-play{opacity:1; transform:translate(-50%,-50%) scale(1);}
+  .card-art.play-btn.loading .card-play{background:var(--surface-3);}
+  .card-art.play-btn .btn-spin{border-top-color:#fff;}
+  /* On touch devices there's no hover, so keep the play affordance visible. */
+  @media (hover:none){
+    .card-play{opacity:1; transform:translate(-50%,-50%) scale(1);}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .card-art.play-btn, .card-play, .card-fade{transition:opacity .18s ease;}
+    .card-art.play-btn:hover{transform:none;}
+  }
+
+  .card-date{
+    position:absolute; top:.5rem; left:.5rem; z-index:2;
+    display:inline-flex; align-items:center; white-space:nowrap;
+    background:rgba(0,0,0,.55); -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+    padding:.22rem .5rem; border-radius:999px;
+    font-family:var(--font-mono); font-variant-numeric:tabular-nums;
+    font-size:.7rem; font-weight:600; color:#fff;
+    box-shadow:0 1px 4px rgba(0,0,0,.4);
   }
