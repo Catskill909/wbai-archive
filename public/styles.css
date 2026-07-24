@@ -350,7 +350,17 @@
   }
   .row{
     display:grid;
-    grid-template-columns: minmax(0,2.6fr) 1fr .85fr .95fr 44px;
+    /* The title is the only column whose content is open-ended, so it takes all
+       the slack: the other three are sized to what they actually hold (measured
+       widest — date 176px, duration 58px, retention pill 108px) with `auto` to
+       grow if a longer date or a new retention label ever needs it. As fr units
+       they were handing Duration 158px for 58px of text. */
+    grid-template-columns:
+      minmax(0, 1fr)          /* show    — absorbs everything left over */
+      minmax(11rem, auto)     /* aired   */
+      minmax(4.5rem, auto)    /* duration — floor set by the column header */
+      minmax(7rem, auto)      /* retention */
+      44px;                   /* play    */
     align-items:center;
     gap: .75rem 1rem;
     padding:.85rem 1.1rem;
