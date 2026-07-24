@@ -363,7 +363,11 @@
       44px;                   /* play    */
     align-items:center;
     gap: .75rem 1rem;
-    padding:.85rem 1.1rem;
+    /* Vertical padding is deliberately tighter than the horizontal: the 60px
+       artwork already sets the row height, so this is the only part of it that
+       buys back space. Don't go below ~.5rem — the hover band stops reading as
+       a row and starts reading as a stripe between them. */
+    padding:.6rem 1.1rem;
     border-bottom:1px solid var(--outline);
   }
   .row:last-child{border-bottom:none;}
