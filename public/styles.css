@@ -370,7 +370,7 @@
   .sortbtn svg{width:11px;height:11px; opacity:.55;}
   .sortbtn[data-active="true"] svg{opacity:1; color:var(--accent-2);}
 
-  .show-cell{display:flex; align-items:center; gap:.7rem; min-width:0;}
+  .show-cell{display:flex; align-items:center; gap:.85rem; min-width:0; padding-right:.5rem;}
   /* The title + category block is itself the control that opens the info sheet,
      so the whole text column is a target, not just the little More link. */
   .show-text{ min-width:0; display:flex; flex-direction:column; align-items:flex-start; }
@@ -379,11 +379,18 @@
     border:0; padding:0; margin:0; background:none; color:inherit; font:inherit;
     cursor:pointer;
   }
-  .show-open:hover .show-title,
+  /* Artwork and text both open the sheet, so the cell lights up as one block
+     rather than per-element — colour, never an underline. Keyed on .show-cell,
+     which excludes the play button in .row-actions. */
+  .show-cell:hover .show-title,
   .show-open:focus-visible .show-title{ color:var(--accent-2); }
-  /* the whole block lights up together — colour, never an underline */
-  .show-open:hover ~ .more-link,
+  .show-cell:hover .more-link,
   .more-link:hover{ color:color-mix(in srgb, var(--accent-2) 70%, var(--ink)); }
+  .show-thumb{ transition:box-shadow .15s ease; }
+  .show-cell:hover .show-thumb{
+    box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 80%, transparent), var(--elev-1);
+  }
+  .show-thumb:focus-visible{ outline:2px solid var(--accent-2); outline-offset:2px; }
 
   /* plain text link under the title, the visible cue for what the block does */
   .more-link{
@@ -393,15 +400,27 @@
     transition:color .15s ease;
   }
   .show-thumb{
-    position:relative; width:44px;height:44px;border-radius:9px; flex:none; overflow:hidden;
+    position:relative; width:60px; height:60px; border-radius:11px; flex:none; overflow:hidden;
+    border:0; padding:0; cursor:pointer;
     /* station icon shows when a show has no photo (or its photo fails to load) */
     background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
     box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 45%, transparent);
   }
   .show-thumb img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
   .show-thumb img.failed{display:none;}
-  .show-title{font-weight:600; font-size:.92rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .show-cat{display:block; font-size:.74rem; color:var(--ink-faint); margin-top:.1rem;}
+  /* display:block is load-bearing, not cosmetic: overflow/text-overflow are
+     ignored on an inline box, so as a bare <span> this clipped nothing and a
+     long title painted straight over the Aired column. */
+  .show-title{
+    display:block; max-width:100%; font-weight:600; font-size:.92rem;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  /* Ellipsised like .show-title. Without this a long "Category · with Host"
+     line has nothing to clip it and paints straight into the Aired column. */
+  .show-cat{
+    display:block; max-width:100%; font-size:.74rem; color:var(--ink-faint); margin-top:.1rem;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
   /* Dormant, not dead: nothing renders .rss-badge while SHOW_RSS is false in
      app.js. Kept so re-enabling the flag is the only change needed. */
   .rss-badge{

@@ -241,9 +241,13 @@
       return (
       '<div class="row body" role="row">'+
         '<div class="show-cell">'+
-          '<span class="show-thumb" style="--c:'+c.color+'" aria-hidden="true">'+
+          // The artwork opens the sheet too. Like the player bar's art it is
+          // aria-hidden with tabindex=-1: a second tab stop to the same place,
+          // labelled only by an image, is noise for keyboard and screen readers.
+          // The titled button beside it is the accessible stop.
+          '<button class="show-thumb show-open" type="button" data-id="'+esc(r.id)+'" style="--c:'+c.color+'" tabindex="-1" aria-hidden="true">'+
             (photo ? '<img loading="lazy" alt="" src="'+photo+'">' : '')+
-          '</span>'+
+          '</button>'+
           '<span class="show-text">'+
             // title + category open the info sheet; the play button on the right plays
             '<button class="show-open" type="button" data-id="'+esc(r.id)+'" aria-label="More about '+esc(r.title)+'">'+
