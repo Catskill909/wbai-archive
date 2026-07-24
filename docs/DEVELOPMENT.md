@@ -117,6 +117,51 @@ play button to ~128px the moment anyone pressed play.
 `.live-play.loading`, `.play-btn.loading`. Standalone components get their own
 noun-y class (`.loading-panel`), never a bare state word.
 
+## Feature flags — what is switched off
+
+One flag, at the top of `app.js`. It exists so a broken upstream can be hidden
+without deleting working code, and turned back on in one line when it recovers.
+
+### `SHOW_RSS` — currently **off**
+
+**Why.** WBAI's `getrss.php` answers **HTTP 200 with a zero-byte body** for every
+show — checked across five different `sho` ids on 2026-07-24, all empty. The
+per-row RSS badge and the info sheet's *RSS feed* pill both led to a blank page,
+which is worse than not offering them.
+
+**What is still in place.** Everything except the flag:
+
+| Piece | Where | State |
+| --- | --- | --- |
+| `hasRSS` / `rss` fields | `server.js` → `parseArchive()` | still parsed and served |
+| `svgRss()` icon | `app.js` | still defined |
+| `.rss-badge` styles | `styles.css` | still present, marked dormant |
+| Row badge + sheet pill | `app.js`, both behind `showRss()` | rendered only when the flag is true |
+
+**How to turn it back on.**
+
+1. Re-check the upstream first — the flag is a symptom, not the fix:
+
+   ```bash
+   npm start
+   curl -s http://localhost:8080/api/archive \
+     | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+         const ids=[...new Set(JSON.parse(s).shows.filter(x=>x.hasRSS).map(x=>x.sho))].slice(0,5);
+         console.log(ids.join(' '));
+       })"
+   # then, for each id:
+   curl -s "https://archive2.wbai.org/getrss.php?id=<sho>" | wc -c
+   ```
+
+   A working feed returns several KB of XML. Zero bytes means it is still broken;
+   leave the flag alone.
+
+2. Set `var SHOW_RSS = true;` in `app.js`. That is the whole change — both
+   surfaces come back together, because both go through `showRss()`.
+
+3. Hard-reload (see the caching gotcha above) and confirm a badge appears on a
+   row, a pill in the sheet, and that clicking one actually loads a feed.
+
 ## How each feature works
 
 ### Show info sheet

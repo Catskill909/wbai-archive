@@ -7,8 +7,8 @@ and audio.
 
 WBAI is Free Speech Radio — Pacifica Radio in New York City. The station's
 archive at `archive2.wbai.org` is the source of truth this project reads from:
-it publishes every broadcast, with retention windows, RSS feeds, and artwork,
-and it has kept doing so reliably for years. What it doesn't carry is a browsing
+it publishes every broadcast, with retention windows and artwork, and it has
+kept doing so reliably for years. What it doesn't carry is a browsing
 layer — search, category filters, and a player that persists while you navigate.
 That's the part this project adds, keeping exactly the same job: find and play
 an archived broadcast.
@@ -36,7 +36,7 @@ an archived broadcast.
   cached copy would mostly serve shows that are already gone.
 - **Show info modal** — clicking a show's title (or its **More** link) opens a
   clean dark sheet with large artwork, host, full description, air date, length,
-  retention, and the show's own RSS / website / social links. Playback controls
+  retention, and the show's own website and social links. Playback controls
   and a scrubber stay pinned at the bottom of the sheet, and any field WBAI
   doesn't publish for a show is simply left out rather than shown empty.
 - **Real show artwork** — thumbnails for each show, proxied from WBAI's schedule

@@ -402,6 +402,8 @@
   .show-thumb img.failed{display:none;}
   .show-title{font-weight:600; font-size:.92rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .show-cat{display:block; font-size:.74rem; color:var(--ink-faint); margin-top:.1rem;}
+  /* Dormant, not dead: nothing renders .rss-badge while SHOW_RSS is false in
+     app.js. Kept so re-enabling the flag is the only change needed. */
   .rss-badge{
     flex:none; width:20px;height:20px;border-radius:6px;
     background:color-mix(in srgb, var(--warn) 20%, transparent); color:var(--warn);

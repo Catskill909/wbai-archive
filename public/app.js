@@ -14,6 +14,19 @@
   var RSS_BASE = 'https://archive2.wbai.org/getrss.php?id=';
   var LIVE_URL = 'https://streaming.wbai.org/wbai_verizon';
 
+  // ---------------- Feature flags ----------------
+  // SHOW_RSS — off. Upstream's getrss.php answers HTTP 200 with a zero-byte
+  // body for every show, so the badge and the sheet's "RSS feed" pill led to a
+  // blank page. Nothing was deleted: the server still parses `hasRSS`, the
+  // icon, the styles and both call sites are all still here. Set this to true
+  // to bring them back — but re-check the feed first, per the recipe in
+  // docs/DEVELOPMENT.md § Feature flags.
+  var SHOW_RSS = false;
+
+  // Single gate for both surfaces, so re-enabling can never turn on one and
+  // miss the other.
+  function showRss(r){ return SHOW_RSS && !!r.hasRSS; }
+
 
   var rows = [];
 
@@ -237,7 +250,7 @@
             '</button>'+
             '<button class="more-link" type="button" data-id="'+esc(r.id)+'" tabindex="-1">More</button>'+
           '</span>'+
-          (r.hasRSS ?'<a class="rss-badge" href="'+RSS_BASE+encodeURIComponent(r.sho)+'" target="_blank" rel="noopener noreferrer" title="Subscribe to the RSS feed for '+esc(r.title)+'">'+svgRss()+'</a>' : '')+
+          (showRss(r) ?'<a class="rss-badge" href="'+RSS_BASE+encodeURIComponent(r.sho)+'" target="_blank" rel="noopener noreferrer" title="Subscribe to the RSS feed for '+esc(r.title)+'">'+svgRss()+'</a>' : '')+
         '</div>'+
         '<div class="cell-date"><b>'+esc(dparts.date)+'</b><span>'+esc(dparts.time)+'</span></div>'+
         '<div class="cell-mono cell-duration">'+esc(r.length)+'</div>'+
@@ -1165,7 +1178,7 @@
       '<span class="retention '+retentionClass(r.daysLeft)+'">'+retentionLabel(r.daysLeft)+'</span>';
 
     var links = '';
-    if(r.hasRSS) links += sheetLink(RSS_BASE+encodeURIComponent(r.sho), svgRss(), 'RSS feed');
+    if(showRss(r)) links += sheetLink(RSS_BASE+encodeURIComponent(r.sho), svgRss(), 'RSS feed');
     var site = safeUrl(info.url || prog.url);
     if(site) links += sheetLink(site, svgLink(), 'Show website');
     var fb = safeUrl(info.facebook || prog.facebook);

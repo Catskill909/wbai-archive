@@ -13,7 +13,8 @@ Ordered most valuable first. Each is independent; none blocks another.
 | --- | --- | --- | --- |
 | 1 | Window Controls Overlay | M | `display_override: ["window-controls-overlay"]` lets the appbar draw into the desktop title bar. Costs a second layout keyed on `env(titlebar-area-*)`, maintained alongside the normal one. |
 | 2 | iOS launch images | M | Removes the white flash on launch, jarring for a dark app. Needs a matrix of exact per-device `apple-touch-startup-image` sizes — iOS ignores any that don't match. Worth it once the design settles. |
-| 3 | Desktop app — first real build | M | `desktop/` is scaffolded and its config validates, but nothing has been compiled. Needs a Rust toolchain locally for macOS, and a `WBAI_APP_URL` repo variable for the Windows CI job. See [TAURI.md](TAURI.md). |
+| 3 | Restore RSS feeds | S | Hidden behind `SHOW_RSS` in `app.js` because upstream's `getrss.php` returns an empty body for every show. Nothing was deleted — re-check the feed, then flip one flag. See DEVELOPMENT.md § Feature flags. |
+| 4 | Desktop app — first real build | M | `desktop/` is scaffolded and its config validates, but nothing has been compiled. Needs a Rust toolchain locally for macOS, and a `WBAI_APP_URL` repo variable for the Windows CI job. See [TAURI.md](TAURI.md). |
 
 ## Won't do
 
