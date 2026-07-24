@@ -245,7 +245,7 @@
           // aria-hidden with tabindex=-1: a second tab stop to the same place,
           // labelled only by an image, is noise for keyboard and screen readers.
           // The titled button beside it is the accessible stop.
-          '<button class="show-thumb show-open" type="button" data-id="'+esc(r.id)+'" style="--c:'+c.color+'" tabindex="-1" aria-hidden="true">'+
+          '<button class="show-thumb show-open" type="button" data-id="'+esc(r.id)+'" tabindex="-1" aria-hidden="true">'+
             (photo ? '<img loading="lazy" alt="" src="'+photo+'">' : '')+
           '</button>'+
           '<span class="show-text">'+
@@ -282,7 +282,7 @@
       var photo = r.photo || '';
       return (
       '<div class="card-wrap">'+
-        '<button class="card card-art play-btn'+(isPlaying?' playing':'')+(isLoading?' loading':'')+'" style="--c:'+c.color+'" '+playAttrs(r, subLine, photo, isLoading, isPlaying)+'>'+
+        '<button class="card card-art play-btn'+(isPlaying?' playing':'')+(isLoading?' loading':'')+'" '+playAttrs(r, subLine, photo, isLoading, isPlaying)+'>'+
           (photo ? '<img loading="lazy" alt="" src="'+photo+'">' : '')+
           '<span class="card-fade" aria-hidden="true"></span>'+
           '<span class="card-play">'+glyph(isLoading, isPlaying)+'</span>'+

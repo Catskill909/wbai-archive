@@ -401,9 +401,7 @@
   .show-cell:hover .more-link,
   .more-link:hover{ color:color-mix(in srgb, var(--accent-2) 70%, var(--ink)); }
   .show-thumb{ transition:box-shadow .15s ease; }
-  .show-cell:hover .show-thumb{
-    box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 80%, transparent), var(--elev-1);
-  }
+  .show-cell:hover .show-thumb{ box-shadow:inset 0 0 0 1px var(--outline-strong), var(--elev-1); }
   .show-thumb:focus-visible{ outline:2px solid var(--accent-2); outline-offset:2px; }
 
   /* plain text link under the title, the visible cue for what the block does */
@@ -418,7 +416,7 @@
     border:0; padding:0; cursor:pointer;
     /* station icon shows when a show has no photo (or its photo fails to load) */
     background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
-    box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 45%, transparent);
+    box-shadow:inset 0 0 0 1px var(--outline);
   }
   .show-thumb img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
   .show-thumb img.failed{display:none;}
@@ -1032,7 +1030,7 @@
     padding:0; border-radius:14px; overflow:hidden; cursor:pointer; text-align:left;
     border:1px solid var(--outline);
     background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
-    box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 45%, transparent);
+    box-shadow:inset 0 0 0 1px var(--outline);
     transition:transform .18s ease, box-shadow .18s ease;
   }
   /* hover is tracked on the wrapper, so the card still lifts when the pointer is
@@ -1042,7 +1040,7 @@
     background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
     border-color:var(--outline); color:var(--ink);
     transform:translateY(-2px);
-    box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c) 60%, transparent), 0 8px 22px rgba(0,0,0,.35);
+    box-shadow:inset 0 0 0 1px var(--outline-strong), 0 8px 22px rgba(0,0,0,.35);
   }
   .card-art img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
   .card-art img.failed{display:none;}
@@ -1076,11 +1074,13 @@
     color:color-mix(in srgb, var(--accent-2) 55%, white);
   }
   .card-title{ transition:color .15s ease; }
+  /* The category is spelled out here in words, so the artwork carries no colour
+     coding — a coloured ring with no legend beside it just raises questions. The
+     filter chips at the top of the page remain the place colours are explained. */
   .card-eyebrow{
     font-family:var(--font-display); text-transform:uppercase; letter-spacing:.07em;
     font-size:.62rem; font-weight:700; line-height:1;
-    /* var fallback keeps the eyebrow legible even if the inline --c is absent */
-    color:color-mix(in srgb, var(--c, #cdd6d3) 55%, white);
+    color:#cdd6d3;
     text-shadow:0 1px 2px rgba(0,0,0,.6);
   }
   .card-title{
