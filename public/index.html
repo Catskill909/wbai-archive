@@ -189,14 +189,16 @@
   <button class="player-toggle" id="playerToggle" type="button" aria-label="Play or pause">
     <svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
   </button>
-  <span class="player-art" aria-hidden="true">
+  <!-- art + title open the info modal for whatever is playing; tabindex=-1 keeps
+       the redundant artwork out of the tab order, the labelled title is the stop -->
+  <button class="player-art player-open" id="playerArtBtn" type="button" tabindex="-1" aria-hidden="true">
     <img id="playerPhoto" alt="">
-  </span>
+  </button>
   <div class="player-main">
-    <div class="player-info">
+    <button class="player-info player-open" id="playerInfoBtn" type="button" aria-label="Show info for the current episode">
       <span class="player-title" id="playerTitle">&mdash;</span>
       <span class="player-sub" id="playerSub"></span>
-    </div>
+    </button>
     <div class="player-scrub">
       <span class="player-time" id="playerCurrent">0:00</span>
       <input class="player-range" id="playerRange" type="range" min="0" max="0" value="0" step="1" aria-label="Seek within show" disabled>

@@ -481,6 +481,21 @@
     clearMediaSession();
   });
 
+  // The player bar's art + title open the info sheet for whatever is playing.
+  // The track is identified by its mp3 (unique per episode), so we find its row
+  // and reuse the same opener the list and cards use. openSheetById/rowByMp3 are
+  // function declarations in the sheet section below, hoisted into scope here.
+  (function(){
+    var infoBtn = document.getElementById('playerInfoBtn');
+    function openForPlaying(){
+      var r = nowPlaying.mp3 && rowByMp3(nowPlaying.mp3);
+      if(r) openSheetById(r.id, infoBtn);
+    }
+    document.querySelectorAll('.player-open').forEach(function(el){
+      el.addEventListener('click', openForPlaying);
+    });
+  })();
+
   // ---------------- Header live stream + on-air metadata ----------------
   var liveAudio = document.getElementById('liveAudio');
   var liveStrip = document.getElementById('liveStrip');
@@ -967,6 +982,12 @@
   function rowById(id){
     for(var i=0; i<rows.length; i++){
       if(String(rows[i].id) === String(id)) return rows[i];
+    }
+    return null;
+  }
+  function rowByMp3(mp3){
+    for(var i=0; i<rows.length; i++){
+      if(rows[i].mp3 && rows[i].mp3 === mp3) return rows[i];
     }
     return null;
   }

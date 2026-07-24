@@ -199,7 +199,7 @@
 
   /* push the live/on-air player (and the actions after it) to the right edge */
   .live-strip{margin-left:auto;}
-  .appbar-actions{display:flex; gap:.55rem;}
+  .appbar-actions{display:flex; gap:.8rem;}
   /* Tablet and up: the live player sits dead-centre in the appbar. Brand and actions
      each take an equal share of the leftover space, so the strip lands on the middle
      axis of the 1180px column rather than being shoved right. */
@@ -217,7 +217,7 @@
   .appbar-actions .btn-donate{
     --donate:color-mix(in srgb, var(--accent) 86%, #3d0f06);
     position:relative; overflow:hidden; isolation:isolate;
-    padding:.46rem 1.15rem; text-decoration:none;
+    padding:.4rem .95rem; text-decoration:none;
     background:linear-gradient(160deg,
       color-mix(in srgb, var(--donate) 92%, white) 0%,
       var(--donate) 55%,
@@ -473,11 +473,13 @@
     transition:background .15s ease, border-color .15s ease;
   }
   .menu-btn:hover{ background:color-mix(in srgb, var(--ink) 6%, var(--surface-3)); border-color:var(--accent-2); }
-  .menu-btn-lines{ display:flex; flex-direction:column; gap:4px; width:18px; }
-  .menu-btn-lines span{ display:block; height:2px; border-radius:2px; background:currentColor; transition:transform .28s cubic-bezier(.4,0,.2,1), opacity .18s ease; }
-  .menu-btn[aria-expanded="true"] .menu-btn-lines span:nth-child(1){ transform:translateY(6px) rotate(45deg); }
+  /* wider, slightly heavier bars — the gap stays at 4px. Line pitch is
+     height + gap (2.5 + 4), and the close-X translate below must equal it. */
+  .menu-btn-lines{ display:flex; flex-direction:column; gap:4px; width:24px; }
+  .menu-btn-lines span{ display:block; height:2.5px; border-radius:2px; background:currentColor; transition:transform .28s cubic-bezier(.4,0,.2,1), opacity .18s ease; }
+  .menu-btn[aria-expanded="true"] .menu-btn-lines span:nth-child(1){ transform:translateY(6.5px) rotate(45deg); }
   .menu-btn[aria-expanded="true"] .menu-btn-lines span:nth-child(2){ opacity:0; }
-  .menu-btn[aria-expanded="true"] .menu-btn-lines span:nth-child(3){ transform:translateY(-6px) rotate(-45deg); }
+  .menu-btn[aria-expanded="true"] .menu-btn-lines span:nth-child(3){ transform:translateY(-6.5px) rotate(-45deg); }
   @media (prefers-reduced-motion:reduce){ .menu-btn-lines span{transition:none;} }
 
   /* ---------------- Slide-out menu drawer ---------------- */
@@ -723,7 +725,7 @@
     .retention{grid-area:retention; justify-self:start;}
     .appbar-actions .btn-label{display:none;}
     .btn-icon-label{display:none;}
-    .appbar-actions .btn-donate{padding:.42rem .85rem;}
+    .appbar-actions .btn-donate{padding:.38rem .75rem;}
     .btn-donate .donate-label{font-size:.68rem; letter-spacing:.07em;}
     .listing{padding-bottom:6rem;}
   }
@@ -788,7 +790,15 @@
   .player-art img.failed,
   .player-art img:not([src]){display:none;}
   .player-main{display:flex; flex-direction:column; justify-content:center; gap:.35rem; min-width:0; flex:1 1 auto;}
+  /* art + title double as the trigger for the info modal */
+  .player-open{border:0; background:none; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer;}
+  .player-art.player-open{ background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-3); transition:box-shadow .15s ease; }
+  .player-art.player-open:hover{ box-shadow:inset 0 0 0 1px var(--accent-2); }
   .player-info{display:flex; flex-direction:column; min-width:0; line-height:1.3;}
+  .player-info.player-open:hover .player-title,
+  .player-info.player-open:focus-visible .player-title,
+  .player-art.player-open:hover ~ .player-main .player-title{ color:var(--accent-2); }
+  .player-title{ transition:color .15s ease; }
   .player-title{font-weight:700; font-size:.88rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .player-sub{font-size:.74rem; color:var(--ink-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 
