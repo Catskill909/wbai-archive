@@ -119,15 +119,20 @@ noun-y class (`.loading-panel`), never a bare state word.
 
 ## Feature flags — what is switched off
 
-One flag, at the top of `app.js`. It exists so a broken upstream can be hidden
-without deleting working code, and turned back on in one line when it recovers.
+One flag, at the top of `app.js`. It exists so a deliberate product decision can
+be reversed in a single line if that decision changes.
 
-### `SHOW_RSS` — currently **off**
+### `SHOW_RSS` — off, by policy
 
-**Why.** WBAI's `getrss.php` answers **HTTP 200 with a zero-byte body** for every
-show — checked across five different `sho` ids on 2026-07-24, all empty. The
-per-row RSS badge and the info sheet's *RSS feed* pill both led to a blank page,
-which is worse than not offering them.
+**Why.** Access to episodes stays inside the web app and the native apps. No
+feeds, no file handoffs — that is what Pacifica's tiered-content plan needs, and
+it is a product decision rather than a technical one.
+
+There is a second, smaller reason: WBAI's `getrss.php` answers **HTTP 200 with a
+zero-byte body** for every show (checked across five `sho` ids on 2026-07-24), so
+the badge and the sheet's *RSS feed* pill both led to a blank page. Nothing that
+worked was taken away. But the policy is the operative reason and would hold even
+if that endpoint were fixed tomorrow.
 
 **What is still in place.** Everything except the flag:
 
@@ -138,29 +143,40 @@ which is worse than not offering them.
 | `.rss-badge` styles | `styles.css` | still present, marked dormant |
 | Row badge + sheet pill | `app.js`, both behind `showRss()` | rendered only when the flag is true |
 
-**How to turn it back on.**
+Both surfaces go through the single `showRss()` gate on purpose: with two
+independent `r.hasRSS` checks it would be easy to restore one and miss the other.
+Verified in both directions — `false` renders 0 badges and 0 `getrss.php` links,
+`true` renders 33 of each.
 
-1. Re-check the upstream first — the flag is a symptom, not the fix:
+**If the policy changes**, set `var SHOW_RSS = true;` in `app.js`. That is the
+whole change. Two things to settle first:
+
+1. **Re-check the upstream**, because the flag was never the fix for it:
 
    ```bash
-   npm start
-   curl -s http://localhost:8080/api/archive \
-     | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
-         const ids=[...new Set(JSON.parse(s).shows.filter(x=>x.hasRSS).map(x=>x.sho))].slice(0,5);
-         console.log(ids.join(' '));
-       })"
-   # then, for each id:
    curl -s "https://archive2.wbai.org/getrss.php?id=<sho>" | wc -c
    ```
 
-   A working feed returns several KB of XML. Zero bytes means it is still broken;
-   leave the flag alone.
+   A working feed is several KB of XML. Zero bytes means it is still broken, and
+   pointing users at it would be worse than offering nothing.
 
-2. Set `var SHOW_RSS = true;` in `app.js`. That is the whole change — both
-   surfaces come back together, because both go through `showRss()`.
+2. **Decide whether to serve our own feeds instead.** The archive data already
+   carries everything a valid RSS 2.0 + iTunes feed needs, so a `/rss/<sho>.xml`
+   route is roughly 120 lines and no dependencies. See ROADMAP.md § Won't do for
+   why that was declined, and what it would take.
 
-3. Hard-reload (see the caching gotcha above) and confirm a badge appears on a
-   row, a pill in the sheet, and that clicking one actually loads a feed.
+### A closed system is a product signal, not an access control
+
+Worth being clear about the limit, so nobody mistakes this for enforcement. The
+archive MP3s are served **directly by `archive2.wbai.org`**, never through this
+app, and their URLs are necessarily in the page — on every play button's
+`data-mp3`, and in the `<audio>` element's `src`. Anyone with devtools open can
+read one. Hiding RSS removes the *convenient, subscribable* path to bulk
+episodes; it does not and cannot prevent a determined download.
+
+Real access control would mean the audio no longer coming straight from WBAI's
+servers — signed or expiring URLs, or a token-checked proxy — which is a change
+to their infrastructure, not to this front end.
 
 ## How each feature works
 

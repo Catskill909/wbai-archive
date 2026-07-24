@@ -13,14 +13,16 @@
   var MP3_BASE = 'https://archive2.wbai.org/mp3/';
   var RSS_BASE = 'https://archive2.wbai.org/getrss.php?id=';
   var LIVE_URL = 'https://streaming.wbai.org/wbai_verizon';
+  var ARCHIVE_PAGE = 'https://wbai.org/archive/';
 
   // ---------------- Feature flags ----------------
-  // SHOW_RSS — off. Upstream's getrss.php answers HTTP 200 with a zero-byte
-  // body for every show, so the badge and the sheet's "RSS feed" pill led to a
-  // blank page. Nothing was deleted: the server still parses `hasRSS`, the
-  // icon, the styles and both call sites are all still here. Set this to true
-  // to bring them back — but re-check the feed first, per the recipe in
-  // docs/DEVELOPMENT.md § Feature flags.
+  // SHOW_RSS — off by policy, not by accident. Access to episodes stays inside
+  // the web app and the native apps: no feeds, no file handoffs. (Upstream's
+  // getrss.php also returns a zero-byte body for every show, so nothing that
+  // worked was removed — but the policy is the operative reason and holds
+  // regardless.) Nothing was deleted: the server still parses `hasRSS`, and the
+  // icon, the styles and both call sites are all still here, so flipping this
+  // to true restores them. Read docs/DEVELOPMENT.md § Feature flags first.
   var SHOW_RSS = false;
 
   // Single gate for both surfaces, so re-enabling can never turn on one and
@@ -607,7 +609,10 @@
   audio.addEventListener('waiting', function(){ setStatus('Buffering…'); });
   audio.addEventListener('error', function(){
     loadingMp3 = null;
-    setStatus('Playback blocked here — <a href="'+nowPlaying.mp3+'" target="_blank" rel="noopener noreferrer">open on wbai.org →</a>');
+    // Points at WBAI's archive page, not the mp3 itself. The old link handed out
+    // the file URL directly — a download by another name, and mislabelled, since
+    // it opened archive2.wbai.org's raw audio rather than a wbai.org page.
+    setStatus('Playback blocked here — <a href="'+ARCHIVE_PAGE+'" target="_blank" rel="noopener noreferrer">open on wbai.org →</a>');
     updatePlayButtons();
   });
 
