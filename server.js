@@ -68,9 +68,15 @@ function unescapeHtml(s) {
     .trim();
 }
 
-async function fetchText(url) {
+async function fetchText(url, opts) {
+  opts = opts || {};
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'wbai-archive/1.0 (+https://github.com/Catskill909/wbai-archive)' },
+    method: opts.method || 'GET',
+    headers: Object.assign(
+      { 'User-Agent': 'wbai-archive/1.0 (+https://github.com/Catskill909/wbai-archive)' },
+      opts.headers
+    ),
+    body: opts.body,
     signal: AbortSignal.timeout(12000),
   });
   if (!res.ok) throw new Error(`upstream ${res.status} for ${url}`);
@@ -423,7 +429,13 @@ const nowCache = makeCache(15 * 1000); // 15 seconds
 async function getNowPlaying() {
   const cached = nowCache.get();
   if (cached) return cached;
-  const text = await fetchText(UPSTREAM.nowplaying);
+  // Match the official pl_current1.php exactly: it POSTs an empty body to this
+  // endpoint (HTTP.blocking_post with post_data=[]) rather than GETting it.
+  const text = await fetchText(UPSTREAM.nowplaying, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: '',
+  });
   const data = JSON.parse(text);
   // data[0] is a station configuration block rather than schedule data, and is
   // treated as sensitive: never read, never forwarded, never logged.
@@ -438,14 +450,21 @@ async function getNowPlaying() {
   const payload = {
     updated: Date.now(),
     current: {
-      name: (cur.sh_name || '').trim(),
-      dj: (cur.sh_djname || '').trim(),
+      // all free-text fields come HTML-encoded from the feed (e.g. What&#039;s);
+      // unescapeHtml also trims, so the client can render them with textContent
+      name: unescapeHtml(cur.sh_name),
+      dj: unescapeHtml(cur.sh_djname),
+      // The playlist feed carries whatever track is on air — for any show, music
+      // or talk (an intro song, a bed, a clip). Forwarded so the live player can
+      // show a now-playing line, and cleared the moment the feed clears it.
+      song: unescapeHtml(cur.pl_song),
+      artist: unescapeHtml(cur.pl_artist),
       start: cur.cur_start || '',
       end: cur.cur_end || '',
       photo,
     },
     next: {
-      name: (nxt.sh_name || '').trim(),
+      name: unescapeHtml(nxt.sh_name),
       start: nxt.nxt_start || '',
       end: nxt.nxt_end || '',
     },

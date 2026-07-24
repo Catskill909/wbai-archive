@@ -325,6 +325,9 @@
   var nowPlaying = { mp3:null, title:'', sub:'', photo:'' };
   var loadingMp3 = null;
   var seeking = false;   // true while the user drags the scrubber
+  // Which source owns the docked bar: 'archive' (a seekable mp3, full scrubber) or
+  // 'live' (the stream — scrubber and ±15s hidden, play/pause + close only).
+  var barMode = null;
 
   function formatTime(sec){
     if(!isFinite(sec) || sec < 0) return '0:00';
@@ -507,7 +510,9 @@
   function setStatus(html){ playerStatus.innerHTML = html; }
 
   function refreshToggleIcon(){
-    var playing = !audio.paused && !audio.ended;
+    var playing = (barMode === 'live')
+      ? (liveLoaded && !liveAudio.paused)
+      : (!audio.paused && !audio.ended);
     playerIcon.outerHTML = playing
       ? '<svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
       : '<svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
@@ -551,6 +556,8 @@
     setPlayerPhoto(photo);
     setStatus('Loading…');
     resetScrubber();
+    barMode = 'archive';
+    playerBar.classList.remove('live');
     showPlayerBar();
     liveAudio.pause();
     audio.src = mp3;
@@ -657,6 +664,9 @@
   // Whichever player currently owns the bar. Shared by the toggle button and the
   // Space shortcut so they can never disagree.
   function togglePlayback(){
+    // barMode is the source of truth for what the bar controls: a live takeover
+    // can leave a paused archive track in nowPlaying, so check the mode first.
+    if(barMode === 'live'){ toggleLive(); return; }
     if(nowPlaying.mp3){
       if(audio.paused) audio.play().catch(function(){}); else audio.pause();
       return;
@@ -664,6 +674,16 @@
     if(liveLoaded) toggleLive();
   }
   playerClose.addEventListener('click', function(){
+    // Live mode: stop the stream and drop the bar, nothing archive-specific.
+    if(barMode === 'live'){
+      liveAudio.pause();
+      barMode = null;
+      playerBar.classList.remove('live');
+      setStatus('');
+      hidePlayerBar();
+      if(mediaMode === 'live') clearMediaSession();
+      return;
+    }
     // before anything else: the `pause` event is async, and by the time it fires
     // nowPlaying is cleared and load() has reset currentTime to 0
     resumeRemember();
@@ -674,6 +694,7 @@
     nowPlaying.mp3 = null;
     nowPlaying.title = nowPlaying.sub = nowPlaying.photo = '';
     pendingResume = 0;
+    barMode = null;
     resetScrubber();
     hidePlayerBar();
     updatePlayButtons();
@@ -687,6 +708,7 @@
   (function(){
     var infoBtn = document.getElementById('playerInfoBtn');
     function openForPlaying(){
+      if(barMode === 'live'){ openLivePlayer(); return; }
       var r = nowPlaying.mp3 && rowByMp3(nowPlaying.mp3);
       if(r) openSheetById(r.id, infoBtn);
     }
@@ -695,40 +717,79 @@
     });
   })();
 
-  // ---------------- Header live stream + on-air metadata ----------------
+  // ---------------- Live stream + on-air metadata (modal player) ----------------
+  // The On Air button in the appbar opens #livePlayer; the modal is the whole
+  // live experience now. Audio flows through the same #liveAudio element and the
+  // same media-session plumbing the header strip used before.
   var liveAudio = document.getElementById('liveAudio');
-  var liveStrip = document.getElementById('liveStrip');
-  var liveIcon = document.getElementById('liveIcon');
-  var livePlay = document.getElementById('livePlay');
-  var liveNowEl = document.getElementById('liveNow');
-  var liveNextEl = document.getElementById('liveNext');
-  var livePhoto = document.getElementById('livePhoto');
+  var onAirBtn = document.getElementById('onAirBtn');
+  var livePlayer = document.getElementById('livePlayer');
+  var livePlayerScrim = document.getElementById('livePlayerScrim');
+  var lpClose = document.getElementById('lpClose');
+  var lpArt = document.getElementById('lpArt');
+  var lpTitle = document.getElementById('lpTitle');
+  var lpHost = document.getElementById('lpHost');
+  var lpTimes = document.getElementById('lpTimes');
+  var lpToggle = document.getElementById('lpToggle');
+  var lpIcon = document.getElementById('lpIcon');
+  var lpVolumeWrap = document.getElementById('lpVolumeWrap');
+  var lpVolume = document.getElementById('lpVolume');
+  var lpNote = document.getElementById('lpNote');
+  var lpUpNext = document.getElementById('lpUpNext');
+  var lpUpNextText = document.getElementById('lpUpNextText');
+  var lpSong = document.getElementById('lpSong');
+  var lpSongText = document.getElementById('lpSongText');
   var liveLoaded = false;
   var liveErrored = false;
 
+  // Latest on-air snapshot, so the modal can paint whenever it opens and re-paint
+  // as the schedule rolls over. Set by renderNowPlaying().
+  var liveCurrent = null, liveNext = null, liveIsLive = false;
+
+  function setLiveNote(text){ lpNote.textContent = text; }
+
   function setLiveIcon(playing){
-    liveIcon.outerHTML = playing
-      ? '<svg id="liveIcon" width="17" height="17" viewBox="0 0 24 24" fill="#ffffff"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
-      : '<svg id="liveIcon" width="17" height="17" viewBox="0 0 24 24" fill="#ffffff"><path d="M8 5v14l11-7z"/></svg>';
-    liveIcon = document.getElementById('liveIcon');
-    livePlay.classList.toggle('playing', playing);
+    lpIcon.outerHTML = playing
+      ? '<svg id="lpIcon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
+      : '<svg id="lpIcon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+    lpIcon = document.getElementById('lpIcon');
+    lpToggle.classList.toggle('playing', playing);
+    lpToggle.setAttribute('aria-pressed', playing ? 'true' : 'false');
+    lpToggle.setAttribute('aria-label', playing ? 'Pause live stream' : 'Play live stream');
+    // the appbar button doubles as a "you are listening" indicator; it always
+    // just opens the modal — pause/stop lives in the docked player bar
+    onAirBtn.classList.toggle('playing', playing);
+    onAirBtn.setAttribute('aria-label', playing
+      ? 'Live stream playing — open the player'
+      : 'Open the live player — WBAI is on air now');
   }
 
-  livePhoto.addEventListener('load', function(){ livePhoto.classList.add('loaded'); });
-  livePhoto.addEventListener('error', function(){ livePhoto.classList.remove('loaded'); livePhoto.removeAttribute('src'); });
+  function setLiveLoading(on){ lpToggle.classList.toggle('loading', on); }
+
+  lpArt.addEventListener('load', function(){ lpArt.classList.add('loaded'); });
+  lpArt.addEventListener('error', function(){ lpArt.classList.remove('loaded'); lpArt.removeAttribute('src'); });
   function setLivePhoto(url){
-    if(url && url !== livePhoto.getAttribute('data-current')){
-      livePhoto.setAttribute('data-current', url);
-      livePhoto.classList.remove('loaded');
-      livePhoto.src = url;
+    if(url && url !== lpArt.getAttribute('data-current')){
+      lpArt.setAttribute('data-current', url);
+      lpArt.classList.remove('loaded');
+      lpArt.src = url;
     } else if(!url){
-      livePhoto.removeAttribute('data-current');
-      livePhoto.removeAttribute('src');
-      livePhoto.classList.remove('loaded');
+      lpArt.removeAttribute('data-current');
+      lpArt.removeAttribute('src');
+      lpArt.classList.remove('loaded');
     }
   }
 
-  function setLiveLoading(on){ livePlay.classList.toggle('loading', on); }
+  // Always (re)connect to the live edge before playing. A live stream is not a
+  // file: once the <audio> element has buffered, pausing or backgrounding the tab
+  // and hitting play again resumes from that stale buffer, minutes behind air.
+  // Reassigning src discards the buffer, load() forces a fresh request, and the
+  // cache-buster defeats any HTTP/proxy caching — so play is always current.
+  function connectLive(){
+    liveAudio.src = LIVE_URL + (LIVE_URL.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now();
+    liveAudio.load();
+    liveLoaded = true;
+  }
 
   function toggleLive(){
     if(liveErrored){
@@ -740,33 +801,156 @@
       return;
     }
     if(!audio.paused) audio.pause();
-    if(!liveLoaded){ liveAudio.src = LIVE_URL; liveLoaded = true; }
+    connectLive();                 // never resume the buffer — always fetch live
     setLiveLoading(true);
-    liveStrip.setAttribute('aria-label','Connecting to WBAI live stream');
+    setLiveNote('Connecting…');
     liveAudio.play().catch(function(){});
+  }
+
+  // ---- The docked player bar, in live mode. Playing the stream surfaces the same
+  // bar the archive uses (so pause/navigation are persistent and familiar), with a
+  // LIVE badge in place of the scrubber and ±15s.
+  function paintLiveBar(){
+    if(!liveCurrent) return;
+    playerTitle.textContent = liveCurrent.name || 'WBAI 99.5 FM';
+    // when a track is on air, showcase it in the sub-line (the LIVE badge already
+    // carries the live state); otherwise fall back to the host + station
+    var song = (liveCurrent.song || '').trim();
+    var artist = (liveCurrent.artist || '').trim();
+    if(song || artist){
+      playerSub.textContent = '♪ ' + (song && artist ? (song + ' · ' + artist) : (song || artist));
+    } else {
+      playerSub.textContent = (liveCurrent.dj ? 'with ' + liveCurrent.dj + ' · ' : '') + 'WBAI 99.5 FM · Live';
+    }
+    setPlayerPhoto(liveCurrent.photo || '');
+  }
+  function showLiveBar(){
+    barMode = 'live';
+    playerBar.classList.add('live');
+    paintLiveBar();
+    setStatus('<span class="player-live"><span class="player-live-dot"></span>Live</span>');
+    showPlayerBar();
+    refreshToggleIcon();
   }
 
   liveAudio.addEventListener('waiting', function(){ if(liveAudio.paused===false) setLiveLoading(true); });
   liveAudio.addEventListener('playing', function(){
-    setLiveLoading(false); setLiveIcon(true);
-    liveStrip.setAttribute('aria-label','Pause WBAI live stream');
+    setLiveLoading(false); setLiveIcon(true); setLiveNote('');
     activateLiveSession();
+    showLiveBar();
   });
   liveAudio.addEventListener('pause', function(){
     setLiveLoading(false); setLiveIcon(false);
-    liveStrip.setAttribute('aria-label','Play WBAI live stream');
+    if(!liveErrored) setLiveNote('Paused');
     if(mediaMode === 'live') setPlaybackState('paused');
+    // the stream is paused but the bar stays put; just reflect the state
+    if(barMode === 'live'){ refreshToggleIcon(); setStatus('Paused'); }
   });
   liveAudio.addEventListener('error', function(){
     liveErrored = true;
     setLiveLoading(false);
     setLiveIcon(false);
-    liveNowEl.textContent = 'Playback blocked — tap to open on wbai.org';
-    liveStrip.setAttribute('aria-label','Open WBAI live stream on wbai.org');
+    livePlayer.classList.add('errored');
+    setLiveNote('Playback blocked — tap play to open on wbai.org');
   });
-  liveStrip.addEventListener('click', toggleLive);
 
   audio.addEventListener('play', function(){ if(liveLoaded && !liveAudio.paused) liveAudio.pause(); });
+
+  // ---- Volume. New to the modal; the strip had none. Setting .volume is a no-op
+  // on iOS (the OS owns it), so the slider is dropped there rather than shown dead.
+  var LIVE_VOL_KEY = 'wbai:livevol';
+  var canVolume = !(/iP(hone|od|ad)/.test(navigator.platform) ||
+                    (/Mac/.test(navigator.platform) && navigator.maxTouchPoints > 1));
+  function paintVol(){ lpVolume.style.setProperty('--pct', (parseFloat(lpVolume.value) || 0) * 100); }
+  if(canVolume){
+    var storedVol = parseFloat(localStorage.getItem(LIVE_VOL_KEY));
+    if(isFinite(storedVol)){ liveAudio.volume = storedVol; lpVolume.value = String(storedVol); }
+    paintVol();
+    lpVolume.addEventListener('input', function(){
+      var v = parseFloat(lpVolume.value);
+      liveAudio.volume = v;
+      paintVol();
+      try{ localStorage.setItem(LIVE_VOL_KEY, String(v)); }catch(e){}
+    });
+  } else {
+    lpVolumeWrap.hidden = true;
+  }
+
+  // ---- Paint the modal from the latest snapshot. Safe to call any time.
+  function paintLivePlayer(){
+    if(!liveCurrent) return;
+    setLivePhoto(liveCurrent.photo || null);
+    lpTitle.textContent = liveCurrent.name || 'WBAI 99.5 FM';
+    if(liveCurrent.dj){ lpHost.textContent = 'with ' + liveCurrent.dj; lpHost.hidden = false; }
+    else { lpHost.hidden = true; }
+    if(liveCurrent.start && liveCurrent.end){
+      var times = liveCurrent.start + ' – ' + liveCurrent.end;
+      if(!liveIsLive) times += ' · schedule may be delayed';
+      lpTimes.textContent = times; lpTimes.hidden = false;
+    } else { lpTimes.hidden = true; }
+    if(liveNext && liveNext.name){
+      lpUpNextText.textContent = liveNext.name + (liveNext.start ? ' · ' + liveNext.start : '');
+      lpUpNext.hidden = false;
+    } else { lpUpNext.hidden = true; }
+    // Now-playing track — shown for any show (talk shows play intro songs too),
+    // whenever the feed carries one; disappears the moment it clears it (the 15s
+    // poll drives this repaint).
+    var song = (liveCurrent.song || '').trim();
+    var artist = (liveCurrent.artist || '').trim();
+    if(song || artist){
+      lpSongText.textContent = song && artist ? (song + ' · ' + artist) : (song || artist);
+      lpSong.hidden = false;
+    } else { lpSong.hidden = true; }
+  }
+
+  // ---- Modal open / close, mirroring the info sheet's lifecycle.
+  var livePlayerReturnFocus = null;
+  function openLivePlayer(){
+    if(livePlayer.classList.contains('show')) return;
+    if(typeof closeSheet === 'function' && sheet && sheet.classList.contains('show')) closeSheet();
+    paintLivePlayer();
+    // reflect whatever the stream is currently doing
+    if(liveErrored) setLiveNote('Playback blocked — tap play to open on wbai.org');
+    else if(liveLoaded && !liveAudio.paused) setLiveNote('');
+    else if(liveLoaded) setLiveNote('Paused');
+    else setLiveNote('Tap play to tune in');
+    livePlayerReturnFocus = document.activeElement;
+    livePlayer.classList.add('show');
+    livePlayerScrim.classList.add('show');
+    livePlayer.setAttribute('aria-hidden', 'false');
+    onAirBtn.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('sheet-open');
+    lpToggle.focus();
+    document.addEventListener('keydown', onLivePlayerKey);
+  }
+  function closeLivePlayer(){
+    if(!livePlayer.classList.contains('show')) return;
+    livePlayer.classList.remove('show');
+    livePlayerScrim.classList.remove('show');
+    livePlayer.setAttribute('aria-hidden', 'true');
+    onAirBtn.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('sheet-open');
+    document.removeEventListener('keydown', onLivePlayerKey);
+    if(livePlayerReturnFocus && livePlayerReturnFocus.focus) livePlayerReturnFocus.focus();
+    livePlayerReturnFocus = null;
+  }
+  function onLivePlayerKey(e){
+    if(e.key === 'Escape'){ closeLivePlayer(); return; }
+    if(e.key !== 'Tab') return;
+    var f = [].filter.call(
+      livePlayer.querySelectorAll('a[href], button:not([disabled]), input:not([disabled])'),
+      function(el){ return el.offsetParent !== null; }
+    );
+    if(!f.length) return;
+    var first = f[0], last = f[f.length-1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  }
+
+  onAirBtn.addEventListener('click', openLivePlayer);
+  lpClose.addEventListener('click', closeLivePlayer);
+  livePlayerScrim.addEventListener('click', closeLivePlayer);
+  lpToggle.addEventListener('click', toggleLive);
 
   // ---------------- Keyboard shortcuts ----------------
   // Space = play/pause, ←/→ = ±SKIP_SECONDS, matching the lock screen and the
@@ -954,11 +1138,14 @@
     next:{name:'Frontline Voices', start:'12:00 PM', end:'1:00 PM'}
   };
   function renderNowPlaying(cur, nxt, isLive){
-    var fullTxt = cur.name + (cur.dj ? ' · ' + cur.dj : '');
-    liveNowEl.textContent = cur.name;
-    liveNowEl.title = fullTxt + ' (' + cur.start + '–' + cur.end + ')' + (isLive ? '' : ' — snapshot, live sync unavailable here');
-    liveNextEl.textContent = nxt.name ? ('Next: ' + nxt.name + ' · ' + nxt.start) : '';
-    setLivePhoto(cur.photo || null);
+    liveCurrent = cur;
+    liveNext = nxt;
+    liveIsLive = isLive;
+
+    // repaint the modal in place (whether open or not) so it is current on open
+    // and re-titles itself if the schedule rolls over while it is up
+    paintLivePlayer();
+    if(barMode === 'live') paintLiveBar();
 
     // keep the OS lock screen in step with the schedule
     liveMeta.title = cur.name;

@@ -140,75 +140,210 @@
   }
   .hero-sub{font-family:var(--font-mono); font-variant-numeric:tabular-nums; text-transform:uppercase; letter-spacing:.08em; font-size:.72rem; color:var(--accent-2);}
 
-  .live-strip{
-    display:flex; align-items:center; gap:.65rem; min-width:0; flex:0 1 420px;
-    /* lifted off the appbar: gentle top-lit gradient + material elevation */
-    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 5%, var(--surface-3)), var(--surface-3));
-    border:1px solid var(--outline-strong);
-    border-radius:12px; padding:.4rem .9rem .4rem .4rem; cursor:pointer;
-    text-align:left; font-family:inherit; color:var(--ink);
-    box-shadow:var(--elev-1);
-    transition:background .15s ease, box-shadow .18s ease, transform .18s ease;
-  }
-  .live-strip:hover{
-    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 10%, var(--surface-3)), color-mix(in srgb, var(--ink) 4%, var(--surface-3)));
-    box-shadow:var(--elev-2);
-    transform:translateY(-1px);
-  }
-  .live-strip:active{ transform:translateY(0); box-shadow:var(--elev-1); }
-  @media (prefers-reduced-motion:reduce){ .live-strip, .live-strip:hover{ transform:none; } }
-  .live-play{
-    width:40px;height:40px;border-radius:50%;flex:none;
-    background:var(--accent); display:flex; align-items:center; justify-content:center;
-    box-shadow:0 2px 6px color-mix(in srgb, var(--accent) 45%, transparent);
-    transition:transform .12s ease, background .15s ease;
-  }
-  .live-strip:hover .live-play{ transform:scale(1.06); }
-  .live-strip:hover .live-play{ background:color-mix(in srgb, var(--accent) 90%, white); }
-  .live-play svg{width:17px;height:17px; fill:#ffffff; margin-left:2px;}
-  .live-play.playing svg{margin-left:0;}
-  .live-play.loading svg{display:none;}
-  .live-play .spinner{display:none;}
-  .live-play.loading .spinner{
-    display:block; width:18px;height:18px; border-radius:50%;
-    border:2px solid rgba(255,255,255,.35); border-top-color:#fff;
-    animation:spin .7s linear infinite;
-  }
   @keyframes spin{ to{ transform:rotate(360deg); } }
-  @media (prefers-reduced-motion:reduce){ .live-play.loading .spinner{animation-duration:1.4s;} }
-  .live-art{
-    width:40px;height:40px;border-radius:8px;flex:none; overflow:hidden;
-    /* falls back to the station mark until the show photo loads */
-    background:url("/assets/icon-256.png") center/cover no-repeat;
-  }
-  .live-art img{width:100%;height:100%;object-fit:cover; display:none;}
-  .live-art img.loaded{display:block;}
-  .live-copy{display:flex; flex-direction:column; min-width:0; line-height:1.28;}
-  .live-label{display:flex; align-items:center; gap:.35rem; font-family:var(--font-display); text-transform:uppercase; letter-spacing:.08em; font-size:.6rem; font-weight:700; color:var(--accent);}
-  .live-label .dot{width:6px;height:6px;border-radius:50%;background:var(--accent); box-shadow:0 0 0 0 rgba(225,74,46,.6); animation:pulse 1.8s infinite; flex:none;}
-  @media (prefers-reduced-motion:reduce){ .live-label .dot{animation:none;} }
+  /* on-air pulse: reused by the appbar button dot and the modal badge dot */
   @keyframes pulse{
     0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);}
     70%{box-shadow:0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent);}
     100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);}
   }
-  .live-now{font-size:.84rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .live-next{font-size:.72rem; color:var(--ink-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  @media (max-width:760px){ .live-next{display:none;} }
-  @media (max-width:480px){ .live-strip{padding:.35rem .7rem .35rem .35rem; gap:.5rem; flex-basis:auto;} .live-play{width:36px;height:36px;} .live-art{display:none;} }
 
-  /* push the live/on-air player (and the actions after it) to the right edge */
-  .live-strip{margin-left:auto;}
-  .appbar-actions{display:flex; gap:.8rem;}
-  /* Tablet and up: the live player sits dead-centre in the appbar. Brand and actions
-     each take an equal share of the leftover space, so the strip lands on the middle
-     axis of the 1180px column rather than being shoved right. */
-  @media (min-width:761px){
-    /* no min-width:0 — auto min-size keeps the wordmark and donate pill from clipping
-       if the viewport gets tight; centring simply gives way instead of breaking them */
-    .appbar-inner .brand{flex:1 1 0;}
-    .appbar-inner .appbar-actions{flex:1 1 0; justify-content:flex-end;}
-    .appbar-inner .live-strip{margin-left:0; flex:0 1 440px;}
+  /* brand left, actions right — no more centred strip */
+  .appbar-actions{display:flex; align-items:center; gap:.8rem; margin-left:auto;}
+
+  /* ---- On Air button: a compact live badge that opens the modal player.
+     Built to sit as a peer of the Donate pill (same geometry + sheen), but in a
+     dark on-air-family surface so Donate stays the one loud filled button. ---- */
+  .on-air-btn{
+    position:relative; overflow:hidden; isolation:isolate;
+    display:inline-flex; align-items:center; gap:.5rem;
+    padding:.4rem .85rem; cursor:pointer;
+    font-family:inherit; color:var(--ink);
+    border:1px solid var(--outline-strong); border-radius:999px;
+    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 6%, var(--surface-3)), var(--surface-3));
+    box-shadow:var(--elev-1), inset 0 1px 0 rgba(255,255,255,.06);
+    transition:background .15s ease, box-shadow .18s ease, transform .18s ease, border-color .15s ease;
+  }
+  .on-air-btn::after{
+    content:""; position:absolute; inset:0; z-index:-1;
+    background:linear-gradient(105deg, transparent 35%, rgba(255,255,255,.16) 50%, transparent 65%);
+    transform:translateX(-130%); transition:transform .55s ease;
+  }
+  .on-air-btn:hover{
+    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 11%, var(--surface-3)), color-mix(in srgb, var(--ink) 4%, var(--surface-3)));
+    border-color:color-mix(in srgb, var(--accent) 40%, var(--outline-strong));
+    box-shadow:var(--elev-2), inset 0 1px 0 rgba(255,255,255,.08);
+    transform:translateY(-1px);
+  }
+  .on-air-btn:hover::after{transform:translateX(130%);}
+  .on-air-btn:active{transform:translateY(0) scale(.98);}
+  .on-air-dot{
+    width:8px;height:8px;border-radius:50%;flex:none;background:var(--accent);
+    box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+    animation:pulse 1.8s infinite;
+  }
+  .on-air-label{
+    font-family:var(--font-display); font-weight:800; font-size:.72rem;
+    text-transform:uppercase; letter-spacing:.09em; line-height:1;
+  }
+  /* three-bar equaliser: shows only while the stream is playing */
+  .on-air-eq{display:none; align-items:flex-end; gap:2px; height:12px; margin-left:.1rem;}
+  .on-air-eq i{width:2.5px; background:var(--accent); border-radius:1px; height:40%; animation:eqbar .9s ease-in-out infinite;}
+  .on-air-eq i:nth-child(2){animation-delay:.25s;}
+  .on-air-eq i:nth-child(3){animation-delay:.5s;}
+  .on-air-btn.playing .on-air-eq{display:inline-flex;}
+  @keyframes eqbar{ 0%,100%{height:35%;} 50%{height:100%;} }
+  @media (prefers-reduced-motion:reduce){
+    .on-air-btn, .on-air-btn:hover{transform:none;}
+    .on-air-btn::after{display:none;}
+    .on-air-dot{animation:none;}
+    .on-air-eq i{animation:none; height:70%;}
+  }
+  @media (max-width:480px){
+    .on-air-btn{padding:.38rem .7rem;}
+    .on-air-label{font-size:.68rem; letter-spacing:.07em;}
+  }
+
+  /* ================= Live player modal ================= */
+  .live-scrim{
+    position:fixed; inset:0; z-index:170;
+    background:color-mix(in srgb, #000 66%, transparent);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition:opacity .22s ease, visibility 0s linear .22s;
+  }
+  .live-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .22s ease; }
+
+  .live-player{
+    position:fixed; z-index:180; left:50%; top:50%;
+    width:min(460px, 92vw); max-height:min(88dvh, 720px);
+    display:flex; flex-direction:column; align-items:center; gap:1rem; overflow-y:auto;
+    padding:2.2rem 1.8rem 1.6rem;
+    background:
+      radial-gradient(120% 60% at 50% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
+      var(--surface-1);
+    color:var(--ink);
+    border:1px solid var(--outline-strong); border-radius:20px;
+    box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
+    transform:translate(-50%, -46%) scale(.97); opacity:0; visibility:hidden;
+    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease, visibility 0s linear .22s;
+  }
+  .live-player.show{
+    transform:translate(-50%, -50%) scale(1); opacity:1; visibility:visible;
+    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .live-scrim, .live-player{ transition-duration:0s; }
+    .live-player{ transform:translate(-50%,-50%) scale(1); }
+  }
+
+  .lp-badge{
+    display:flex; align-items:center; gap:.45rem;
+    font-family:var(--font-display); text-transform:uppercase; letter-spacing:.1em;
+    font-size:.68rem; font-weight:800; color:var(--accent);
+  }
+  .lp-art{
+    width:min(300px, 64vw); aspect-ratio:1; border-radius:14px; overflow:hidden; flex:none;
+    background:url("/assets/icon-256.png") center/cover no-repeat;
+    box-shadow:0 18px 44px -16px color-mix(in srgb, var(--accent) 40%, rgba(0,0,0,.7));
+  }
+  .lp-art img{width:100%;height:100%;object-fit:cover; display:none;}
+  .lp-art img.loaded{display:block;}
+  .lp-meta{text-align:center; min-width:0; width:100%;}
+  .lp-title{font-family:var(--font-display); font-weight:800; font-size:1.5rem; line-height:1.15; margin:0;}
+  .lp-host{margin:.3rem 0 0; font-size:.9rem; color:var(--ink-dim);}
+  .lp-times{margin:.25rem 0 0; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:.78rem; color:var(--ink-faint); letter-spacing:.02em;}
+  .lp-host[hidden], .lp-times[hidden], .lp-upnext[hidden]{display:none;}
+
+  .lp-transport{display:flex; align-items:center; gap:1.1rem; width:100%; max-width:320px; justify-content:center;}
+  .lp-toggle{
+    position:relative; width:64px; height:64px; border-radius:50%; flex:none; cursor:pointer;
+    border:none; background:var(--accent); color:var(--accent-ink);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent);
+    transition:transform .12s ease, background .15s ease, box-shadow .18s ease;
+  }
+  .lp-toggle:hover{ background:color-mix(in srgb, var(--accent) 90%, white); transform:scale(1.05); }
+  .lp-toggle:active{ transform:scale(.98); }
+  .lp-toggle svg{fill:currentColor; margin-left:2px;}
+  .lp-toggle.playing svg{margin-left:0;}
+  .lp-toggle.loading svg{display:none;}
+  .lp-toggle .spinner{display:none;}
+  .lp-toggle.loading .spinner{
+    display:block; width:26px;height:26px; border-radius:50%;
+    border:3px solid rgba(255,255,255,.35); border-top-color:#fff;
+    animation:spin .7s linear infinite;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .lp-toggle, .lp-toggle:hover{transform:none;}
+    .lp-toggle.loading .spinner{animation-duration:1.4s;}
+  }
+  /* muted, slim volume — neutral track + light thumb, no loud accent fill */
+  .lp-volume{display:flex; align-items:center; gap:.55rem; color:var(--ink-faint); flex:1 1 auto; max-width:140px;}
+  .lp-volume svg{width:15px; height:15px; flex:none;}
+  .lp-volume-range{
+    -webkit-appearance:none; appearance:none;
+    flex:1 1 auto; min-width:0; height:14px; margin:0; background:transparent; cursor:pointer;
+  }
+  .lp-volume-range::-webkit-slider-runnable-track{
+    height:3px; border-radius:99px;
+    background:linear-gradient(to right,
+      var(--ink-dim) 0 calc(var(--pct,100) * 1%),
+      var(--outline-strong) calc(var(--pct,100) * 1%) 100%);
+  }
+  .lp-volume-range::-moz-range-track{height:3px; border-radius:99px; background:var(--outline-strong);}
+  .lp-volume-range::-moz-range-progress{height:3px; border-radius:99px; background:var(--ink-dim);}
+  .lp-volume-range::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none;
+    width:11px; height:11px; margin-top:-4px; border-radius:50%;
+    background:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.4);
+    transition:transform .12s ease;
+  }
+  .lp-volume-range::-moz-range-thumb{width:11px; height:11px; border:none; border-radius:50%; background:var(--ink);}
+  .lp-volume-range:hover::-webkit-slider-thumb{transform:scale(1.15);}
+  .lp-volume-range:focus-visible{outline:none;}
+  .lp-volume-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px color-mix(in srgb, var(--ink) 22%, transparent);}
+  .lp-volume[hidden]{display:none;}
+
+  .lp-upnext{
+    margin:0; font-size:.8rem; color:var(--ink-dim); text-align:center;
+    padding:.4rem .8rem; border-radius:999px; background:var(--surface-2); border:1px solid var(--outline);
+  }
+  .lp-upnext-label{font-family:var(--font-display); text-transform:uppercase; letter-spacing:.08em; font-size:.66rem; font-weight:800; color:var(--accent-2);}
+
+  /* now-playing track: a plain line under Up next, present only while the feed
+     carries a song/artist */
+  .lp-song{margin:0; font-size:.86rem; color:var(--ink); text-align:center; line-height:1.3;}
+  .lp-song[hidden]{display:none;}
+  .lp-song-label{
+    font-family:var(--font-display); text-transform:uppercase; letter-spacing:.08em;
+    font-size:.64rem; font-weight:800; color:var(--accent); margin-right:.4rem;
+  }
+
+  .lp-note{margin:0; font-size:.8rem; color:var(--ink-faint); text-align:center; min-height:1.1em;}
+  .live-player.errored .lp-volume{display:none;}
+  .live-player.errored .lp-note{color:var(--danger);}
+
+  /* Phones: dock to the bottom as a slide-up sheet, matching the info sheet. */
+  @media (max-width:560px){
+    .live-player{
+      left:0; top:auto; bottom:0; width:100%; max-height:92dvh;
+      border-radius:20px 20px 0 0; border-bottom:none;
+      padding-bottom:calc(1.4rem + env(safe-area-inset-bottom,0px));
+      transform:translate(0, 100%) scale(1);
+    }
+    .live-player.show{ transform:translate(0, 0) scale(1); }
+  }
+  /* Short / landscape: art beside the metadata so the controls stay above the fold. */
+  @media (max-height:560px) and (min-width:561px){
+    .live-player{
+      display:grid; grid-template-columns:auto 1fr; align-items:center;
+      gap:.5rem 1.4rem; width:min(640px, 94vw); padding:1.6rem;
+    }
+    .lp-badge{grid-column:1 / -1;}
+    .lp-art{width:min(180px, 30vh); grid-row:2 / span 4;}
+    .lp-meta{text-align:left;}
+    .lp-transport{max-width:none; justify-content:flex-start; margin-left:0;}
   }
   /* compact donate button in the appbar */
   .appbar-actions .btn{padding:.36rem .8rem; font-size:.76rem;}
@@ -807,28 +942,11 @@
     .row.body{padding:.75rem .85rem;}
   }
 
-  /* Phones: the appbar wraps to two rows — brand + actions on top, the live
-     player on its own full-width row underneath so it isn't squashed. */
+  /* Phones: brand left, On Air + Donate + menu right, all on one row. */
   @media (max-width:760px){
-    .appbar-inner{flex-wrap:wrap; row-gap:.6rem; padding:.6rem .8rem;}
+    .appbar-inner{padding:.6rem .8rem;}
     .brand{order:1;}
-    .appbar-actions{order:2; margin-left:auto;}
-    /* The player is a primary control, not a strip — give it real height. */
-    .live-strip{
-      order:3; flex:1 1 100%; width:100%; margin-left:0;
-      gap:.85rem; border-radius:16px;
-      padding:.7rem 1.1rem .7rem .7rem;
-    }
-    .live-strip .live-play{width:56px; height:56px;}
-    .live-strip .live-play svg{width:22px; height:22px; margin-left:3px;}
-    .live-strip .live-play.playing svg{margin-left:0;}
-    .live-strip .live-play.loading .spinner{width:24px; height:24px; border-width:3px;}
-    /* room is back on a full-width row, so bring the artwork and next-up line back */
-    .live-strip .live-art{display:block; width:56px; height:56px; border-radius:10px;}
-    .live-strip .live-copy{gap:.1rem; line-height:1.35;}
-    .live-strip .live-label{font-size:.66rem;}
-    .live-strip .live-now{font-size:1rem;}
-    .live-strip .live-next{display:block; font-size:.8rem;}
+    .appbar-actions{order:2; margin-left:auto; gap:.55rem;}
   }
 
   /* ---------------- Player bar ---------------- */
@@ -967,17 +1085,39 @@
 
   .player-status{font-size:.74rem; color:var(--ink-faint); flex:0 1 auto; text-align:right; max-width:34ch;}
   .player-status a{color:var(--accent-2);}
-  .player-close{
-    width:38px; height:38px; border-radius:50%; border:none; flex:none;
-    background:var(--surface-3); color:var(--ink-dim);
-    display:flex; align-items:center; justify-content:center; cursor:pointer;
-    box-shadow:inset 0 0 0 1px var(--outline);
-    transition:background .15s ease, color .15s ease, box-shadow .15s ease, transform .12s ease;
+
+  /* ---- live mode: no timeline to scrub, no ±15s to skip ---- */
+  .player-bar.live .player-scrub{display:none;}
+  .player-bar.live .player-skip{display:none;}
+  .player-live{
+    display:inline-flex; align-items:center; gap:.4rem;
+    font-family:var(--font-display); text-transform:uppercase; letter-spacing:.08em;
+    font-size:.72rem; font-weight:800; color:var(--accent);
   }
-  .player-close:hover{background:var(--surface-hover); color:var(--ink); box-shadow:inset 0 0 0 1px var(--outline-strong);}
-  .player-close:active{transform:scale(.92);}
+  .player-live-dot{width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse 1.8s infinite;}
+  @media (prefers-reduced-motion:reduce){ .player-live-dot{animation:none;} }
+  .player-close{
+    flex:none; cursor:pointer; border:1px solid var(--outline-strong);
+    height:30px; border-radius:999px; padding:0 .7rem 0 .6rem;
+    display:inline-flex; align-items:center; gap:.35rem;
+    background:var(--surface-3); color:var(--ink-dim);
+    font-family:var(--font-display); text-transform:uppercase; letter-spacing:.06em;
+    font-size:.68rem; font-weight:700; line-height:1;
+    /* hard-right: cancel the 1180-column inset (measured in vw, since % here is the
+       bar's already-inset content box) so it sits ~8px off the true edge, and lift
+       it a little toward the top of the bar */
+    margin-left:auto; align-self:flex-start; margin-top:-3px;
+    margin-right:calc(-1 * max(0px, 50vw - 590px) - 8px);
+    transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
+  }
+  .player-close:hover{background:var(--surface-hover); color:var(--ink); border-color:var(--ink-faint);}
+  .player-close:active{transform:scale(.95);}
   .player-close:focus-visible{outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent);}
-  .player-close svg{width:17px;height:17px;}
+  .player-close svg{width:13px; height:13px; flex:none;}
+  @media (max-width:420px){
+    .player-close-label{display:none;}
+    .player-close{padding:0; width:30px; justify-content:center;}
+  }
   @media (max-width:700px){
     .player-status{display:none;}
   }

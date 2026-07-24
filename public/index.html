@@ -31,21 +31,14 @@
         <span class="brand-name">99.5 FM · Archive</span>
       </span>
     </a>
-    <button class="live-strip" id="liveStrip" type="button" aria-label="Play WBAI live stream">
-      <span class="live-play" id="livePlay" aria-hidden="true">
-        <span class="spinner"></span>
-        <svg id="liveIcon" width="17" height="17" viewBox="0 0 24 24" fill="#ffffff"><path d="M8 5v14l11-7z"/></svg>
-      </span>
-      <span class="live-art" aria-hidden="true">
-        <img id="livePhoto" alt="">
-      </span>
-      <span class="live-copy">
-        <span class="live-label"><span class="dot" aria-hidden="true"></span>On Air</span>
-        <span class="live-now" id="liveNow">Loading current show…</span>
-        <span class="live-next" id="liveNext"></span>
-      </span>
-    </button>
     <div class="appbar-actions">
+      <button class="on-air-btn" id="onAirBtn" type="button"
+              aria-haspopup="dialog" aria-controls="livePlayer" aria-expanded="false"
+              aria-label="Open the live player — WBAI is on air now">
+        <span class="on-air-dot" aria-hidden="true"></span>
+        <span class="on-air-label">On Air</span>
+        <span class="on-air-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+      </button>
       <a class="btn btn-filled btn-donate" href="https://wbai.org/donate/" target="_blank" rel="noopener noreferrer">
         <span class="donate-label">Donate</span>
       </a>
@@ -203,6 +196,45 @@
   <div class="sheet-foot" id="sheetFoot"></div>
 </div>
 
+<!-- Live stream player. A full-feature "now playing" screen for the live stream,
+     opened from the On Air button; reuses the .sheet scrim + focus-trap pattern.
+     Fields are painted by app.js from the same /api/nowplaying data the header
+     used to show inline. No auto-play: audio only starts on the Play button. -->
+<div class="live-scrim" id="livePlayerScrim"></div>
+<div class="live-player" id="livePlayer" role="dialog" aria-modal="true" aria-labelledby="lpBadge" aria-hidden="true">
+  <button class="sheet-close lp-close" id="lpClose" type="button" aria-label="Close live player">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+  <div class="lp-badge" id="lpBadge"><span class="on-air-dot" aria-hidden="true"></span>On Air · WBAI 99.5 FM</div>
+
+  <div class="lp-art" aria-hidden="true">
+    <img id="lpArt" alt="">
+  </div>
+
+  <div class="lp-meta">
+    <h2 class="lp-title" id="lpTitle">WBAI 99.5 FM</h2>
+    <p class="lp-host" id="lpHost" hidden></p>
+    <p class="lp-times" id="lpTimes" hidden></p>
+  </div>
+
+  <div class="lp-transport">
+    <button class="lp-toggle" id="lpToggle" type="button" aria-label="Play live stream" aria-pressed="false">
+      <span class="spinner" aria-hidden="true"></span>
+      <svg id="lpIcon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <label class="lp-volume" id="lpVolumeWrap">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4.03v8.05A4.5 4.5 0 0 0 16.5 12z"/></svg>
+      <input class="lp-volume-range" id="lpVolume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Live stream volume">
+    </label>
+  </div>
+
+  <p class="lp-upnext" id="lpUpNext" hidden><span class="lp-upnext-label">Up next</span> <span id="lpUpNextText"></span></p>
+
+  <p class="lp-song" id="lpSong" hidden><span class="lp-song-label">Now playing</span> <span id="lpSongText"></span></p>
+
+  <p class="lp-note" id="lpNote" role="status" aria-live="polite">Tap play to tune in</p>
+</div>
+
 <audio id="liveAudio" preload="none"></audio>
 
 <div class="player-bar" id="playerBar" hidden>
@@ -255,7 +287,8 @@
   </div>
   <span class="player-status" id="playerStatus"></span>
   <button class="player-close" id="playerClose" type="button" aria-label="Close player">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    <span class="player-close-label">Close</span>
   </button>
   <audio id="mainAudio" preload="none"></audio>
 </div>
