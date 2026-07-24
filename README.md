@@ -5,10 +5,13 @@ on-demand broadcast archive, backed by a **light, zero-dependency Node server**
 that proxies WBAI's own systems for live show listings, on-air data, artwork,
 and audio.
 
-WBAI is Free Speech Radio — Pacifica Radio in New York City. The original
-archive at `archive2.wbai.org` is a dense, unstyled HTML table with no search
-and unclear retention windows. This project keeps the same job — find and play
-an archived broadcast — but rebuilds it as an actual, usable tool.
+WBAI is Free Speech Radio — Pacifica Radio in New York City. The station's
+archive at `archive2.wbai.org` is the source of truth this project reads from:
+it publishes every broadcast, with retention windows, RSS feeds, and artwork,
+and it has kept doing so reliably for years. What it doesn't carry is a browsing
+layer — search, category filters, and a player that persists while you navigate.
+That's the part this project adds, keeping exactly the same job: find and play
+an archived broadcast.
 
 > Unofficial project. Not affiliated with or endorsed by WBAI or the Pacifica
 > Foundation. All data and media are proxied live from WBAI's public systems,
@@ -22,6 +25,15 @@ an archived broadcast — but rebuilds it as an actual, usable tool.
 - **Working audio** — a persistent bottom player for archived shows and a
   header live player for the 99.5 FM stream, each with a loading spinner that
   resolves to a pause control once connected.
+- **Remembers where you stopped** — these are 1–2 hour talk broadcasts, so the
+  player keeps your position in every episode you've started and picks it up on
+  replay, with a *Start over* control whenever you'd rather not. Positions live
+  in the browser, not on the server; nothing is uploaded and no account exists.
+- **Installable** — a web app manifest, real home-screen icon, and browser
+  chrome tinted to match the appbar, so *Add to Home Screen* (iOS) or *Install
+  app* (Android/desktop Chrome) gives a standalone player. Deliberately **no**
+  offline mode: the listing is a live view of an archive that rotates, and a
+  cached copy would mostly serve shows that are already gone.
 - **Show info modal** — clicking a show's title (or its **More** link) opens a
   clean dark sheet with large artwork, host, full description, air date, length,
   retention, and the show's own RSS / website / social links. Playback controls
@@ -36,6 +48,12 @@ an archived broadcast — but rebuilds it as an actual, usable tool.
   head units, with play/pause, ±15s skip, scrubbing, and next/previous show from
   headset buttons. The live stream publishes the current on-air show and
   re-titles itself as the schedule rolls over.
+- **Keyboard and transport controls** — ±15s buttons in the player bar, plus
+  Space for play/pause and ←/→ to skip, which stay out of the way while you're
+  typing in the search field.
+- **Linkable views** — search, category and the open show live in the URL, so a
+  view can be shared and the Back button closes the info sheet instead of
+  leaving the app.
 - **Responsive** — a multi-column table on desktop/tablet that collapses to
   stacked cards on phones. Light and dark themes both supported (follows the
   system preference).
@@ -56,7 +74,7 @@ attack surface at zero.
 
 | Route              | Description                                                        | Cache  |
 | ------------------ | ------------------------------------------------------------------ | ------ |
-| `GET /`            | The single-page app (`public/index.html`)                          | —      |
+| `GET /`            | The single-page app (`public/index.html`)                          | revalidate |
 | `GET /api/archive` | Live scrape of `archive2.wbai.org` → JSON list of shows            | 10 min |
 | `GET /api/nowplaying` | Proxy of WBAI's on-air / up-next feed → normalized JSON         | 15 s   |
 | `GET /api/programs` | wbai.org's program directory → host, description, links per show  | 10 min |
@@ -67,6 +85,12 @@ attack surface at zero.
 All upstream responses are cached in memory; if an upstream is briefly down, the
 last good response (or a shipped snapshot at `public/data/shows-fallback.json`)
 is served instead.
+
+Static source files (`.html`, `.js`, `.css`, `.json`, `.webmanifest`) are served
+`no-cache` with an ETag — the browser still caches them, it just revalidates and
+usually gets a bodiless 304. There is no build step and so no content-hashed
+filenames, which makes a plain `max-age` on `app.js` a correctness bug rather
+than an optimisation. Files under `/assets/` keep a real one-day TTL.
 
 The two show-info caches also persist to `data/` (`programs.json`, `showinfo.json`)
 so a restart doesn't start cold. That directory is a **cache, never a source of
@@ -105,9 +129,13 @@ terminate TLS in front of it.
 No build step, no dependencies, no toolchain — edit the files in `public/` and
 reload the page. `npm start` serves them directly.
 
-- **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** — code map, conventions, the
-  Media Session contract, how to test lock-screen behavior on a real device, and
-  the roadmap.
+- **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** — how the app works today.
+  Code map, conventions, each built feature, and how to test lock-screen
+  behavior on a real device. Everything in it is shipped and running.
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — what doesn't exist yet: proposals,
+  and ideas that were considered and rejected, with reasons.
+- **[docs/TAURI.md](docs/TAURI.md)** — step-by-step for the macOS and Windows
+  desktop builds. Scaffolded and wired to CI, but not yet compiled.
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how the server and its
   proxies fit together, and why they're needed.
 - **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — container build and Coolify.
@@ -128,14 +156,21 @@ can't be verified in a desktop devtools viewport.
 │   ├── index.html                # markup
 │   ├── styles.css                # all styles (design tokens, light/dark)
 │   ├── app.js                    # front-end logic (API, players, Media Session)
+│   ├── manifest.webmanifest      # PWA metadata (name, icons, colors, display)
 │   ├── assets/                   # station logo (header.png) + app icon
 │   └── data/shows-fallback.json  # offline snapshot fallback
 ├── data/                         # runtime caches (gitignored, rebuildable)
 │   ├── programs.json             # wbai.org program directory
 │   └── showinfo.json             # records harvested from the on-air feed
+├── desktop/                      # Tauri shell (optional; the only build step)
+│   ├── package.json              # Tauri CLI only
+│   └── src-tauri/                # Cargo.toml, main.rs, tauri.conf.json, icons
+├── .github/workflows/            # Windows desktop build
 └── docs/
-    ├── ARCHITECTURE.md
-    ├── DEVELOPMENT.md             # code map, conventions, roadmap
+    ├── ARCHITECTURE.md           # how the server and proxies fit together
+    ├── DEVELOPMENT.md            # code map, conventions, each built feature
+    ├── ROADMAP.md                # what doesn't exist yet
+    ├── TAURI.md                  # desktop build steps
     └── DEPLOYMENT.md
 ```
 

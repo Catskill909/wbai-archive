@@ -604,8 +604,8 @@
 
   .sheet-body{
     flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
-    padding:1.6rem 1.6rem 1.4rem;
-    display:flex; flex-direction:column; gap:1.3rem;
+    padding:1.4rem 1.6rem 1.2rem;
+    display:flex; flex-direction:column; gap:1.05rem;
   }
   /* Controls live outside the scroll area: however long the description runs,
      Play, the links and the scrubber stay put at the bottom of the card. */
@@ -621,7 +621,7 @@
      top of the much taller artwork */
   .sheet-head{ display:flex; gap:1.3rem; align-items:center; padding-right:2.6rem; }
   .sheet-art{
-    position:relative; flex:none; width:168px; height:168px; border-radius:14px; overflow:hidden;
+    position:relative; flex:none; width:148px; height:148px; border-radius:14px; overflow:hidden;
     background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
     box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--c, var(--accent)) 45%, transparent), var(--elev-1);
   }
@@ -636,7 +636,7 @@
   .sheet-eyebrow .swatch{ width:8px; height:8px; border-radius:50%; background:var(--c, var(--accent)); flex:none; }
   #sheetTitle{
     font-family:var(--font-display); font-weight:700; letter-spacing:.01em;
-    font-size:clamp(1.3rem, 1.05rem + 1.1vw, 1.7rem); line-height:1.15;
+    font-size:clamp(1.2rem, 1rem + .95vw, 1.5rem); line-height:1.18;
     margin:0; text-wrap:balance;
   }
   .sheet-host{ font-size:.9rem; color:var(--accent-2); }
@@ -645,7 +645,7 @@
   .sheet-desc{
     margin:0; color:var(--ink-dim); font-size:.94rem; line-height:1.6;
     /* clamped until the reader asks for the rest */
-    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:7; overflow:hidden;
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5; overflow:hidden;
   }
   .sheet-desc-wrap.expanded .sheet-desc{ -webkit-line-clamp:none; overflow:visible; }
   .desc-toggle{
@@ -655,20 +655,23 @@
   }
   .desc-toggle:hover{ color:color-mix(in srgb, var(--accent-2) 60%, var(--ink)); }
 
-  /* meta list — only the rows with content are rendered at all */
-  .sheet-meta{
-    display:grid; grid-template-columns:auto 1fr; gap:.55rem 1.1rem;
-    margin:0; padding:1.1rem 0 0; border-top:1px solid var(--outline);
-    font-size:.88rem;
+  /* facts — one wrapping row, so the sheet's height doesn't grow with them.
+     Only entries with content are rendered at all. */
+  .sheet-facts{
+    display:flex; align-items:center; flex-wrap:wrap; gap:.5rem 1.15rem;
+    padding-top:1rem; border-top:1px solid var(--outline);
+    font-size:.84rem; color:var(--ink);
   }
-  .sheet-meta dt{
+  .sheet-facts .fact{ display:inline-flex; align-items:baseline; gap:.45rem; }
+  .sheet-facts .fact-k{
     font-family:var(--font-display); text-transform:uppercase; letter-spacing:.07em;
-    font-size:.66rem; font-weight:700; color:var(--ink-faint); padding-top:.18rem;
+    font-size:.64rem; font-weight:700; color:var(--ink-faint);
   }
-  .sheet-meta dd{ margin:0; color:var(--ink); }
-  .sheet-meta dd .mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+  .sheet-facts .mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 
   .sheet-actions{ display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+  /* secondary row: smaller pills, above the primary transport controls */
+  .sheet-links{ display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; margin-bottom:.7rem; }
   /* same scrubber markup as the docked player, sitting under the actions */
   .sheet-scrub[hidden]{ display:none; }
   /* also carries .play-btn so updatePlayButtons() keeps its glyph and label in
@@ -685,13 +688,45 @@
   .sheet-play:active{ transform:scale(.97); }
   .sheet-play svg{ width:15px; height:15px; }
   .sheet-link{
-    display:inline-flex; align-items:center; gap:.4rem;
-    border:1px solid var(--outline-strong); border-radius:999px; padding:.55rem 1rem;
-    color:var(--ink-dim); text-decoration:none; font-size:.84rem; font-weight:600;
+    display:inline-flex; align-items:center; gap:.35rem;
+    border:1px solid var(--outline-strong); border-radius:999px; padding:.32rem .7rem;
+    color:var(--ink-dim); text-decoration:none; font-size:.75rem; font-weight:600;
     transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
   .sheet-link:hover{ background:var(--surface-hover); color:var(--accent-2); border-color:var(--accent-2); }
-  .sheet-link svg{ width:14px; height:14px; }
+  .sheet-link svg{ width:12px; height:12px; }
+  /* sits beside Play, and only while that Play button reads "Resume …" */
+  .sheet-restart{
+    border:1px solid var(--outline-strong); border-radius:999px; padding:.55rem 1rem;
+    background:transparent; color:var(--ink-dim); font-family:inherit;
+    font-size:.84rem; font-weight:600; cursor:pointer;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .sheet-restart:hover{ background:var(--surface-hover); color:var(--ink); border-color:var(--accent-2); }
+  .sheet-restart[hidden]{ display:none; }
+  /* carries .sheet-link, so it only needs the bits a <button> doesn't inherit */
+  .sheet-share{ background:transparent; font-family:inherit; cursor:pointer; }
+
+  /* ---- rotated-out deep link ---- */
+  .link-notice{
+    display:flex; align-items:flex-start; gap:.75rem;
+    max-width:1180px; margin:0 auto 1rem; padding:.85rem 1rem;
+    border:1px solid var(--outline-strong); border-left:3px solid var(--warn);
+    border-radius:12px; background:var(--warn-bg); color:var(--ink);
+    font-size:.86rem; line-height:1.45;
+  }
+  .link-notice[hidden]{ display:none; }
+  .link-notice-close{
+    flex:none; width:26px; height:26px; margin-left:auto; border:none; border-radius:50%;
+    background:transparent; color:var(--ink-dim); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .15s ease, color .15s ease;
+  }
+  .link-notice-close:hover{ background:var(--surface-hover); color:var(--ink); }
+  .link-notice-close svg{ width:13px; height:13px; }
+  @media (max-width:900px){
+    .link-notice{ margin-inline:1rem; }
+  }
 
   /* Phones: dock it to the bottom as a sheet that slides up. */
   @media (max-width:560px){
@@ -707,6 +742,7 @@
     .sheet-art{ width:min(220px, 60vw); height:min(220px, 60vw); }
     .sheet-titles{ align-items:center; }
     .sheet-actions{ justify-content:center; }
+    .sheet-links{ justify-content:center; }
   }
 
   /* ================= Responsive ================= */
@@ -774,6 +810,22 @@
     padding:.6rem 1rem calc(.6rem + env(safe-area-inset-bottom,0px));
   }
   .player-bar[hidden]{display:none;}
+  .player-transport{display:flex; align-items:center; gap:.35rem; flex:none;}
+  .player-skip{
+    width:34px; height:34px; border-radius:50%; border:none; flex:none;
+    background:transparent; color:var(--ink-dim); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .15s ease, color .15s ease, transform .12s ease;
+  }
+  .player-skip:hover{background:var(--surface-hover); color:var(--ink);}
+  .player-skip:active{transform:scale(.92);}
+  .player-skip:focus-visible{outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent);}
+  .player-skip svg{width:21px; height:21px;}
+  .player-skip svg text{font-family:var(--font-body); letter-spacing:-.02em;}
+  /* the bar gets tight before the skip controls stop being worth their width */
+  @media (max-width:420px){
+    .player-skip{display:none;}
+  }
   .player-toggle{
     width:42px;height:42px;border-radius:50%;border:none; flex:none;
     background:var(--accent); color:var(--accent-ink); display:flex; align-items:center; justify-content:center;
@@ -838,6 +890,48 @@
   .player-range:focus-visible{outline:none;}
   .player-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);}
   .player-range:focus-visible::-moz-range-thumb{box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);}
+  /* ---- resume toast ----
+     Anchored to the bar's top edge (the bar is position:fixed) so it floats
+     clear of the controls instead of adding a row to them. */
+  .resume-toast{
+    position:absolute; left:1rem; bottom:100%; margin-bottom:.55rem;
+    display:flex; align-items:center; gap:.5rem;
+    max-width:calc(100% - 2rem);
+    padding:.4rem .45rem .4rem .9rem;
+    border-radius:999px; font-size:.8rem;
+    background:var(--surface-3); color:var(--ink);
+    border:1px solid var(--outline-strong); box-shadow:var(--elev-2);
+    animation:resume-rise .22s ease both;
+  }
+  .resume-toast[hidden]{display:none;}
+  .resume-text{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .resume-toast b{font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
+  .resume-restart{
+    flex:none; border:1px solid var(--outline-strong); border-radius:999px;
+    padding:.3rem .8rem; background:transparent; color:var(--accent-2);
+    font-family:inherit; font-size:.78rem; font-weight:700; cursor:pointer;
+    transition:background .15s ease, border-color .15s ease;
+  }
+  .resume-restart:hover{background:var(--surface-hover); border-color:var(--accent-2);}
+  .resume-dismiss{
+    flex:none; width:26px; height:26px; border-radius:50%; border:none;
+    background:transparent; color:var(--ink-faint); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .15s ease, color .15s ease;
+  }
+  .resume-dismiss:hover{background:var(--surface-hover); color:var(--ink);}
+  .resume-dismiss svg{width:13px; height:13px;}
+  @keyframes resume-rise{
+    from{opacity:0; transform:translateY(6px);}
+    to{opacity:1; transform:none;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .resume-toast{animation:none;}
+  }
+  @media (max-width:560px){
+    .resume-toast{left:.75rem; max-width:calc(100% - 1.5rem);}
+  }
+
   .player-status{font-size:.74rem; color:var(--ink-faint); flex:0 1 auto; text-align:right; max-width:34ch;}
   .player-status a{color:var(--accent-2);}
   .player-close{

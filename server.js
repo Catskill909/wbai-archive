@@ -50,6 +50,9 @@ function unescapeHtml(s) {
     .replace(/&#0?39;/g, "'")
     .replace(/&apos;/g, "'")
     .replace(/&ensp;|&nbsp;/g, ' ')
+    // soft hyphen is a line-break hint with no place in plain text, and the
+    // feed sometimes truncates it to "&shy" with no semicolon
+    .replace(/&shy;?/g, '')
     // typographic entities are common in the program descriptions
     .replace(/&rsquo;|&lsquo;/g, "'")
     .replace(/&rdquo;|&ldquo;/g, '"')
@@ -212,6 +215,31 @@ function writeJsonSoon(file, getData, delayMs = 10000) {
 const showInfo = readJsonFile(SHOWINFO_PATH, {});
 let showInfoUpdated = Object.keys(showInfo).length ? Date.now() : 0;
 
+/**
+ * Records harvested before descriptions were flattened still hold raw HTML.
+ * A show's record is only rewritten when it rotates back through the on-air
+ * slot, which for a weekly show is a week away — so the cache is normalised
+ * once at boot instead. Idempotent: re-running it on clean data changes
+ * nothing and writes nothing.
+ */
+(function normaliseShowInfo() {
+  let dirty = false;
+  for (const rec of Object.values(showInfo)) {
+    if (!rec || typeof rec !== 'object') continue;
+    for (const [field, fn] of [['desc', htmlToText], ['shortdesc', htmlToText],
+                               ['name', unescapeHtml], ['dj', unescapeHtml]]) {
+      if (!rec[field]) continue;
+      const cleaned = fn(rec[field]);
+      if (cleaned !== rec[field]) { rec[field] = cleaned; dirty = true; }
+    }
+  }
+  if (dirty) {
+    showInfoUpdated = Date.now();
+    console.log('[showinfo] normalised cached records to plain text');
+    saveShowInfoSoon();
+  }
+})();
+
 function saveShowInfoSoon() {
   writeJsonSoon(SHOWINFO_PATH, () => showInfo);
 }
@@ -234,11 +262,15 @@ function pixPath(candidates) {
 function recordShowInfo(sh) {
   const altid = clean(sh && sh.sh_altid);
   if (!altid) return;
+  // These arrive as HTML, not text: descriptions carry <br> and typographic
+  // entities, and names carry entities alone. The front end renders everything
+  // with textContent/esc(), so anything not flattened here reaches the sheet as
+  // literal "&ldquo;" and "<br>". Same treatment the program directory gets.
   const next = {
-    name: clean(sh.sh_name),
-    dj: clean(sh.sh_djname),
-    desc: clean(sh.sh_desc),
-    shortdesc: clean(sh.sh_shortdesc),
+    name: unescapeHtml(sh.sh_name),
+    dj: unescapeHtml(sh.sh_djname),
+    desc: htmlToText(sh.sh_desc),
+    shortdesc: htmlToText(sh.sh_shortdesc),
     url: clean(sh.sh_url),
     facebook: clean(sh.sh_facebook),
     photo: pixPath([sh.sh_med_photo, sh.sh_photo]),
@@ -393,8 +425,8 @@ async function getNowPlaying() {
   if (cached) return cached;
   const text = await fetchText(UPSTREAM.nowplaying);
   const data = JSON.parse(text);
-  // data[0] is the station's global config block — it carries upstream
-  // credentials, so it is never read, forwarded or logged.
+  // data[0] is a station configuration block rather than schedule data, and is
+  // treated as sensitive: never read, never forwarded, never logged.
   const cur = (data[1] && data[1].current) || {};
   const nxt = (data[2] && data[2].next) || {};
   recordShowInfo(cur);
@@ -453,6 +485,8 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  // browsers reject a manifest served as octet-stream, so this entry is required
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -478,33 +512,62 @@ function securityHeaders() {
   };
 }
 
-function serveStatic(reqPath, res) {
+/**
+ * Source files must revalidate rather than sit in the browser's cache on a
+ * timer. There is no build step here, so there are no content-hashed filenames:
+ * `app.js` is always `app.js`, and a bare `max-age` on it means a deploy keeps
+ * serving the *previous* build out of disk cache until the timer runs out, with
+ * nothing to make that visible — the page looks current because `index.html`
+ * revalidated, while the behaviour is a version behind. This shipped once and
+ * cost an afternoon of debugging a feature that was never actually loaded.
+ *
+ * `no-cache` does not mean "don't cache" — it means "ask first". The answer is
+ * a 304 with no body, so the cost is one conditional request. Only assets whose
+ * contents can't change under a stable name keep a real TTL.
+ */
+const REVALIDATE = { '.html': 1, '.js': 1, '.css': 1, '.json': 1, '.webmanifest': 1 };
+
+function notFound(req, res, filePath) {
+  // SPA-ish fallback to index for unknown non-asset routes. Anything with an
+  // extension is a genuine miss — and index.html always has one, so the retry
+  // below can never recurse.
+  if (path.extname(filePath)) { res.writeHead(404); return res.end('not found'); }
+  sendFile(req, res, path.join(PUBLIC_DIR, 'index.html'), '.html');
+}
+
+function sendFile(req, res, filePath, ext) {
+  fs.stat(filePath, (err, st) => {
+    if (err || !st.isFile()) return notFound(req, res, filePath);
+    const etag = `W/"${st.size.toString(16)}-${Math.round(st.mtimeMs).toString(36)}"`;
+    const validators = {
+      'ETag': etag,
+      'Last-Modified': st.mtime.toUTCString(),
+      'Cache-Control': REVALIDATE[ext] ? 'no-cache' : 'public, max-age=86400',
+      ...securityHeaders(),
+    };
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, validators);
+      return res.end();
+    }
+    fs.readFile(filePath, (e2, buf) => {
+      if (e2) return notFound(req, res, filePath);
+      res.writeHead(200, {
+        'Content-Type': MIME[ext] || 'application/octet-stream',
+        'Content-Length': st.size,
+        ...validators,
+      });
+      res.end(buf);   // Node drops the body itself when the request was a HEAD
+    });
+  });
+}
+
+function serveStatic(req, reqPath, res) {
   let rel = decodeURIComponent(reqPath.split('?')[0]);
   if (rel === '/' || rel === '') rel = '/index.html';
   // resolve safely inside PUBLIC_DIR
   const filePath = path.join(PUBLIC_DIR, path.normalize(rel));
   if (!filePath.startsWith(PUBLIC_DIR)) { res.writeHead(403); return res.end('forbidden'); }
-  fs.readFile(filePath, (err, buf) => {
-    if (err) {
-      // SPA-ish fallback to index for unknown non-asset routes
-      if (!path.extname(filePath)) {
-        return fs.readFile(path.join(PUBLIC_DIR, 'index.html'), (e2, idx) => {
-          if (e2) { res.writeHead(404); return res.end('not found'); }
-          res.writeHead(200, { 'Content-Type': MIME['.html'], ...securityHeaders() });
-          res.end(idx);
-        });
-      }
-      res.writeHead(404); return res.end('not found');
-    }
-    const ext = path.extname(filePath);
-    const cache = ext === '.html' ? 'no-cache' : 'public, max-age=3600';
-    res.writeHead(200, {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': cache,
-      ...securityHeaders(),
-    });
-    res.end(buf);
-  });
+  sendFile(req, res, filePath, path.extname(filePath));
 }
 
 function sendJson(res, obj, status = 200, cacheSeconds = 0) {
@@ -558,7 +621,7 @@ const server = http.createServer(async (req, res) => {
     if (url.startsWith('/pix/')) {
       return proxyPix(url.slice('/pix/'.length).split('?')[0], res);
     }
-    return serveStatic(url, res);
+    return serveStatic(req, url, res);
   } catch (err) {
     // graceful degradation: serve last-good cached data if we have it
     if (url === '/api/archive' && archiveCache.stale()) {

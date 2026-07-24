@@ -1,0 +1,14 @@
+{
+  "name": "wbai-archive-desktop",
+  "version": "1.0.0",
+  "description": "Tauri desktop shell for the WBAI 99.5 FM Archive (macOS + Windows)",
+  "private": true,
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}

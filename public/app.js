@@ -23,6 +23,37 @@
   try { savedView = localStorage.getItem('wbai-view') === 'grid' ? 'grid' : 'list'; } catch(e){}
   var state = { query:'', cat:'all', sortKey:'date', sortDir:'desc', view:savedView };
 
+  // ---------------- URL state ----------------
+  // Search, category and the open sheet are reflected in the query string so a
+  // view can be linked, a manifest shortcut can land on a category, and the
+  // system back button closes the sheet instead of leaving the app — which in
+  // standalone (installed) mode is the only back affordance there is.
+  //
+  // The view is *not* in the URL: it's a per-device preference in localStorage,
+  // and putting it in a shared link would impose the sharer's layout.
+  function param(name){
+    var m = new RegExp('[?&]' + name + '=([^&]*)').exec(location.search);
+    try { return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : ''; }
+    catch(e){ return ''; }
+  }
+  // Only the shape of the state goes in, never a value we didn't put there:
+  // `cat` is checked against our own table rather than trusted from the URL.
+  function urlFor(sheetId){
+    var q = [];
+    if(state.cat !== 'all' && CAT_BY_KEY[state.cat]) q.push('cat=' + encodeURIComponent(state.cat));
+    if(state.query) q.push('q=' + encodeURIComponent(state.query));
+    if(sheetId) q.push('show=' + encodeURIComponent(sheetId));
+    return location.pathname + (q.length ? '?' + q.join('&') : '');
+  }
+  var canHistory = !!(window.history && history.replaceState);
+  // Filters never add a history entry — only the sheet does, so that one press
+  // of Back means "close the sheet", not "undo six keystrokes of searching".
+  function syncUrl(){
+    if(!canHistory) return;
+    var open = sheetRowId || null;
+    try { history.replaceState(open ? {sheetId:open} : null, '', urlFor(open)); } catch(e){}
+  }
+
   function retentionClass(d){
     if(d<=3) return 'danger';
     if(d<=14) return 'warn';
@@ -53,11 +84,14 @@
     state.cat = btn.dataset.cat;
     renderChips();
     render();
+    syncUrl();
   });
 
-  document.getElementById('q').addEventListener('input', function(e){
+  var searchEl = document.getElementById('q');
+  searchEl.addEventListener('input', function(e){
     state.query = e.target.value.trim().toLowerCase();
     render();
+    syncUrl();
   });
 
   document.querySelectorAll('.sortbtn').forEach(function(btn){
@@ -128,6 +162,7 @@
   function svgSpin(){ return '<span class="btn-spin"></span>'; }
   function svgLink(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>'; }
   function svgFacebook(){ return '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.5 21v-8h2.7l.4-3h-3.1V8.1c0-.9.3-1.5 1.5-1.5H16.7V4c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3V10H7.3v3H10v8h3.5z"/></svg>'; }
+  function svgShare(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>'; }
 
   function esc(s){
     return String(s).replace(/[&<>"']/g, function(c){
@@ -279,6 +314,104 @@
     var mm = h ? (m<10?'0'+m:''+m) : ''+m;
     return (h ? h+':' : '') + mm + ':' + (s<10?'0'+s:''+s);
   }
+  // ---------------- Resume position ----------------
+  // These are 1–2 hour talk broadcasts, so where you stopped listening is the
+  // single most valuable thing the player can remember. Positions are keyed by
+  // mp3 URL: the archive hands out no stable episode id, and the URL is both
+  // unique per episode and gone from the listing the moment it rotates out.
+  var RESUME_KEY = 'wbai-resume';
+  var RESUME_MIN = 30;    // the first half minute isn't yet "a place" worth keeping
+  var RESUME_TAIL = 60;   // inside the last minute counts as finished, not paused
+  var RESUME_MAX = 120;   // entries retained; least recently touched dropped first
+  var resumeMap = null;   // read from storage lazily, then held in memory
+
+  function resumeAll(){
+    if(resumeMap) return resumeMap;
+    resumeMap = {};
+    try {
+      var raw = JSON.parse(localStorage.getItem(RESUME_KEY) || '{}');
+      if(raw && typeof raw === 'object') resumeMap = raw;
+    } catch(e){ /* private mode, quota, or garbage in the key — start empty */ }
+    return resumeMap;
+  }
+  function resumeStore(){
+    try { localStorage.setItem(RESUME_KEY, JSON.stringify(resumeAll())); } catch(e){}
+  }
+  // Episodes rotate out of the archive but their entries here don't, so the map
+  // is trimmed to the most recently touched RESUME_MAX whenever it outgrows it.
+  function resumePrune(){
+    var map = resumeAll();
+    var keys = Object.keys(map);
+    if(keys.length <= RESUME_MAX) return;
+    keys.sort(function(a,b){ return (map[b].at||0) - (map[a].at||0); });
+    for(var i=RESUME_MAX; i<keys.length; i++) delete map[keys[i]];
+  }
+  function resumeFor(mp3){
+    var rec = mp3 && resumeAll()[mp3];
+    return (rec && isFinite(rec.t) && rec.t >= RESUME_MIN) ? rec.t : 0;
+  }
+  function resumeForget(mp3){
+    if(!mp3) return;
+    var map = resumeAll();
+    if(!(mp3 in map)) return;
+    delete map[mp3];
+    resumeStore();
+  }
+  // Called on pause, on track change, on unload, and every few seconds of play.
+  function resumeRemember(){
+    var mp3 = nowPlaying.mp3, t = audio.currentTime, d = audio.duration;
+    if(!mp3 || !isFinite(t)) return;
+    if(t < RESUME_MIN || (isFinite(d) && d > 0 && t > d - RESUME_TAIL)){ resumeForget(mp3); return; }
+    resumeAll()[mp3] = { t: Math.floor(t), d: isFinite(d) ? Math.floor(d) : 0, at: Date.now() };
+    resumePrune();
+    resumeStore();
+  }
+
+  // Restoring can't happen until the element knows its duration, so playTrack()
+  // parks the offset here and `loadedmetadata` spends it.
+  var pendingResume = 0;
+  var lastResumeSync = 0;   // seconds; throttles resumeRemember from timeupdate
+
+  var resumeToast = document.getElementById('resumeToast');
+  var resumeToastTime = document.getElementById('resumeToastTime');
+  function showResumeToast(sec){
+    resumeToastTime.textContent = formatTime(sec);
+    resumeToast.hidden = false;
+    clearTimeout(showResumeToast.timer);
+    showResumeToast.timer = setTimeout(hideResumeToast, 9000);
+  }
+  function hideResumeToast(){
+    clearTimeout(showResumeToast.timer);
+    resumeToast.hidden = true;
+  }
+
+  // "Start over" for the episode already loaded in the element.
+  function startOver(){
+    hideResumeToast();
+    pendingResume = 0;
+    if(!nowPlaying.mp3) return;
+    resumeForget(nowPlaying.mp3);
+    if(isFinite(audio.duration)) audio.currentTime = 0;
+    lastResumeSync = 0;
+    paintScrubTime();
+    updatePositionState();
+    updatePlayButtons();
+  }
+
+  document.getElementById('resumeRestart').addEventListener('click', startOver);
+  document.getElementById('resumeDismiss').addEventListener('click', hideResumeToast);
+  // A throttled save covers ordinary listening; this covers closing the tab
+  // between two of those saves.
+  window.addEventListener('pagehide', resumeRemember);
+
+  // The sheet's Play button is the one control with room to spell the offer out.
+  function playLabelFor(mp3, isLoading, isPlaying){
+    if(isLoading) return 'Loading…';
+    if(isPlaying) return 'Pause';
+    var t = resumeFor(mp3);
+    return t ? 'Resume ' + formatTime(t) : 'Play episode';
+  }
+
   // Every scrubber wired to the same <audio>: the docked player bar always, plus
   // the info sheet's while it is open on the episode that is playing.
   function scrubs(){
@@ -373,14 +506,22 @@
       if(g) g.innerHTML = loading ? svgSpin() : (playing ? svgPause() : svgPlay());
       // the info sheet's button is the only one that spells its state out in words
       var lbl = btn.querySelector('.play-label');
-      if(lbl) lbl.textContent = loading ? 'Loading…' : (playing ? 'Pause' : 'Play episode');
+      if(lbl) lbl.textContent = playLabelFor(mp3, loading, playing);
       btn.setAttribute('aria-label', (loading?'Loading ':(playing?'Pause ':'Play ')) + btn.dataset.title);
     });
     refreshToggleIcon();
     syncSheetScrub();
+    syncSheetRestart();
   }
 
-  function playTrack(mp3, title, sub, photo){
+  // `fromStart` is the sheet's "Start over" asking for an episode that isn't the
+  // one currently loaded; everything else picks up where the listener left off.
+  function playTrack(mp3, title, sub, photo, fromStart){
+    resumeRemember();      // the outgoing episode keeps its place
+    hideResumeToast();
+    if(fromStart) resumeForget(mp3);
+    pendingResume = fromStart ? 0 : resumeFor(mp3);
+    lastResumeSync = 0;
     nowPlaying.mp3 = mp3;
     nowPlaying.title = title || '';
     nowPlaying.sub = sub || '';
@@ -408,15 +549,31 @@
   audio.addEventListener('pause', function(){
     loadingMp3 = null; if(!audio.ended) setStatus('Paused'); updatePlayButtons();
     setPlaybackState('paused'); updatePositionState();
+    resumeRemember();
   });
   audio.addEventListener('ended', function(){
-    loadingMp3 = null; setStatus('Finished'); updatePlayButtons();
+    loadingMp3 = null; setStatus('Finished');
     setPlaybackState('paused');
+    // heard to the end: there is no place left to return to
+    resumeForget(nowPlaying.mp3);
+    hideResumeToast();
+    updatePlayButtons();
   });
 
   // ---- scrubber wiring ----
   audio.addEventListener('loadedmetadata', function(){
+    // The saved offset is spent here, once a duration exists to sanity-check it
+    // against. A position past the end would otherwise land mid-nowhere.
+    if(pendingResume > 0){
+      var at = pendingResume;
+      pendingResume = 0;
+      if(isFinite(audio.duration) && at < audio.duration - RESUME_TAIL){
+        audio.currentTime = at;
+        showResumeToast(at);
+      }
+    }
     applyDuration();
+    paintScrubTime();
     updatePositionState();
   });
   audio.addEventListener('timeupdate', function(){
@@ -426,6 +583,11 @@
     if(audio.currentTime - lastPositionSync >= 1 || audio.currentTime < lastPositionSync){
       lastPositionSync = audio.currentTime;
       updatePositionState();
+    }
+    // and localStorage needs far less than that
+    if(Math.abs(audio.currentTime - lastResumeSync) >= 5){
+      lastResumeSync = audio.currentTime;
+      resumeRemember();
     }
   });
   bindRange(playerRange);
@@ -465,16 +627,31 @@
     if(e.target && e.target.tagName === 'IMG') e.target.classList.add('failed');
   }, true);
 
-  playerToggle.addEventListener('click', function(){
-    if(!nowPlaying.mp3) return;
-    if(audio.paused) audio.play().catch(function(){}); else audio.pause();
-  });
+  playerToggle.addEventListener('click', function(){ togglePlayback(); });
+  // seekBy() is a declaration in the Media Session section below, hoisted here.
+  document.getElementById('playerBack').addEventListener('click', function(){ seekBy(-SKIP_SECONDS); });
+  document.getElementById('playerFwd').addEventListener('click', function(){ seekBy(SKIP_SECONDS); });
+
+  // Whichever player currently owns the bar. Shared by the toggle button and the
+  // Space shortcut so they can never disagree.
+  function togglePlayback(){
+    if(nowPlaying.mp3){
+      if(audio.paused) audio.play().catch(function(){}); else audio.pause();
+      return;
+    }
+    if(liveLoaded) toggleLive();
+  }
   playerClose.addEventListener('click', function(){
+    // before anything else: the `pause` event is async, and by the time it fires
+    // nowPlaying is cleared and load() has reset currentTime to 0
+    resumeRemember();
+    hideResumeToast();
     audio.pause();
     audio.removeAttribute('src');
     audio.load();
     nowPlaying.mp3 = null;
     nowPlaying.title = nowPlaying.sub = nowPlaying.photo = '';
+    pendingResume = 0;
     resetScrubber();
     hidePlayerBar();
     updatePlayButtons();
@@ -569,6 +746,49 @@
 
   audio.addEventListener('play', function(){ if(liveLoaded && !liveAudio.paused) liveAudio.pause(); });
 
+  // ---------------- Keyboard shortcuts ----------------
+  // Space = play/pause, ←/→ = ±SKIP_SECONDS, matching the lock screen and the
+  // player bar's own controls. Three things must never be swallowed: typing in
+  // the search field, a modifier combination the browser or OS owns, and Space
+  // or Enter on a focused control, which belongs to that control.
+  document.addEventListener('keydown', function(e){
+    if(e.metaKey || e.ctrlKey || e.altKey) return;
+    var t = e.target || {};
+    var tag = t.tagName;
+    if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+
+    if(e.key === ' ' || e.key === 'Spacebar'){
+      // let a focused button or link handle its own activation
+      if(tag === 'BUTTON' || tag === 'A') return;
+      if(!nowPlaying.mp3 && !liveLoaded) return;
+      e.preventDefault();               // otherwise Space scrolls the listing
+      togglePlayback();
+      return;
+    }
+    // Arrow keys only mean something for an archive track with a duration.
+    if(e.key === 'ArrowLeft' || e.key === 'ArrowRight'){
+      if(!nowPlaying.mp3 || !isFinite(audio.duration)) return;
+      e.preventDefault();
+      seekBy(e.key === 'ArrowLeft' ? -SKIP_SECONDS : SKIP_SECONDS);
+    }
+  });
+
+  // ---------------- Audio session (Safari 17+) ----------------
+  // Declares this as primary media rather than an incidental sound, which is
+  // what makes iOS keep it playing in the background and ignore the ringer
+  // switch. Feature-detected and re-asserted on each play, because a session
+  // claimed before any playback has begun does not always survive.
+  function claimAudioSession(){
+    try {
+      if(navigator.audioSession && navigator.audioSession.type !== 'playback'){
+        navigator.audioSession.type = 'playback';
+      }
+    } catch(e){ /* older Safari, or a value it won't accept */ }
+  }
+  claimAudioSession();
+  audio.addEventListener('play', claimAudioSession);
+  liveAudio.addEventListener('play', claimAudioSession);
+
   // ---------------- Media Session: lock screen, hardware keys, car displays ----
   // Both <audio> elements share one OS-level session, so `mediaMode` tracks which
   // player currently owns it and the handlers are re-bound whenever that flips.
@@ -583,7 +803,7 @@
   // is silently dropped by the OS.
   var STATION_ARTWORK = [
     {src:'/assets/icon-256.png', sizes:'256x256', type:'image/png'},
-    {src:'/assets/app_icon_1024.png', sizes:'1024x1024', type:'image/png'}
+    {src:'/assets/app_icon_1024.png', sizes:'890x890', type:'image/png'}
   ];
   function artworkFor(photo){
     return (photo ? [{src:photo, sizes:'any', type:'image/jpeg'}] : []).concat(STATION_ARTWORK);
@@ -756,6 +976,27 @@
     latestDt = rows.reduce(function(max,r){ return Math.max(max, r.dt); }, 0);
     render();
     setClock();
+    openDeepLink();
+  }
+
+  // A `?show=` link can only be honoured once the rows exist, and only if the
+  // episode is still inside its retention window — see the note in index.html.
+  var deepLinkDone = false;
+  function openDeepLink(){
+    if(deepLinkDone) return;
+    deepLinkDone = true;
+    var id = param('show');
+    if(!id) return;
+    if(!rowById(id)){
+      var notice = document.getElementById('linkNotice');
+      if(notice) notice.hidden = false;
+      syncUrl();                 // drop the dead id so a reload is clean
+      return;
+    }
+    // Rewrite the landing entry to the plain listing first, so the sheet's own
+    // entry sits on top of it and Back closes the sheet instead of leaving.
+    if(canHistory){ try { history.replaceState(null, '', urlFor(null)); } catch(e){} }
+    openSheetById(id);
   }
 
   function loadArchive(){
@@ -879,8 +1120,19 @@
     return '';
   }
 
-  function metaRow(label, value){
-    return value ? '<dt>'+label+'</dt><dd>'+value+'</dd>' : '';
+  // Upstream spells the weekday and month out in full ("Friday, July 24, 2026"),
+  // which is most of a line on its own. Unknown words are left alone.
+  var LONG_NAMES = {
+    Sunday:'Sun', Monday:'Mon', Tuesday:'Tue', Wednesday:'Wed',
+    Thursday:'Thu', Friday:'Fri', Saturday:'Sat',
+    January:'Jan', February:'Feb', March:'Mar', April:'Apr', May:'May',
+    June:'Jun', July:'Jul', August:'Aug', September:'Sep', October:'Oct',
+    November:'Nov', December:'Dec'
+  };
+  function shortDateText(s){
+    return String(s || '').replace(/[A-Z][a-z]+/g, function(w){
+      return LONG_NAMES[w] || w;
+    });
   }
   function sheetLink(href, icon, label){
     return '<a class="sheet-link" href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">'+icon+esc(label)+'</a>';
@@ -899,10 +1151,18 @@
     var isLoading = (loadingMp3===r.mp3);
     var isPlaying = (nowPlaying.mp3===r.mp3 && !audio.paused && !audio.ended && !isLoading);
 
-    var meta =
-      metaRow('Aired', dparts.date ? esc(dparts.date)+(dparts.time ? ' <span class="mono">'+esc(dparts.time)+'</span>' : '') : '')+
-      metaRow('Length', r.length ? '<span class="mono">'+esc(r.length)+'</span>' : '')+
-      metaRow('Availability', '<span class="retention '+retentionClass(r.daysLeft)+'">'+retentionLabel(r.daysLeft)+'</span>');
+    // One wrapping row rather than three stacked label/value pairs. A long title
+    // plus a clamped description used to push availability under the pinned
+    // footer, where it read as missing rather than as scrolled-away. The
+    // retention pill says "59 days left" on its own, so it needs no label —
+    // that's a whole row saved. Empty values are still dropped entirely.
+    function fact(label, value){
+      return value ? '<span class="fact"><span class="fact-k">'+label+'</span>'+value+'</span>' : '';
+    }
+    var facts =
+      fact('Aired', dparts.date ? esc(shortDateText(dparts.date))+(dparts.time ? ' <span class="mono">'+esc(dparts.time)+'</span>' : '') : '')+
+      fact('Length', r.length ? '<span class="mono">'+esc(r.length)+'</span>' : '')+
+      '<span class="retention '+retentionClass(r.daysLeft)+'">'+retentionLabel(r.daysLeft)+'</span>';
 
     var links = '';
     if(r.hasRSS) links += sheetLink(RSS_BASE+encodeURIComponent(r.sho), svgRss(), 'RSS feed');
@@ -912,11 +1172,20 @@
     if(fb) links += sheetLink(fb, svgFacebook(), 'Facebook');
     var tw = safeUrl(prog.twitter);
     if(tw) links += sheetLink(tw, svgLink(), 'Twitter');
+    // Rendered only where the OS can actually take it, in keeping with the
+    // sheet's rule that nothing is shown as an inert placeholder.
+    if(navigator.share) links += '<button class="sheet-link sheet-share" type="button">'+svgShare()+'Share</button>';
 
     var play = r.mp3
       ? '<button class="sheet-play play-btn'+(isPlaying?' playing':'')+(isLoading?' loading':'')+'" type="button" '+
         playAttrs(r, subLine, photo, isLoading, isPlaying)+'>'+glyph(isLoading, isPlaying)+
-        '<span class="play-label">'+(isLoading ? 'Loading…' : (isPlaying ? 'Pause' : 'Play episode'))+'</span></button>'
+        '<span class="play-label">'+esc(playLabelFor(r.mp3, isLoading, isPlaying))+'</span></button>'
+      : '';
+
+    // Rendered always, revealed by syncSheetRestart() only while this episode has
+    // a saved position — so pausing with the sheet open makes it appear in place.
+    var restart = r.mp3
+      ? '<button class="sheet-restart" id="sheetRestart" type="button" hidden>Start over</button>'
       : '';
 
     // Mirrors the docked player's scrubber; revealed by syncSheetScrub() once
@@ -942,9 +1211,15 @@
           '</div>'+
         '</div>'+
         (desc ? '<div class="sheet-desc-wrap"><p class="sheet-desc" id="sheetDesc">'+esc(desc)+'</p></div>' : '')+
-        (meta ? '<dl class="sheet-meta">'+meta+'</dl>' : ''),
-      // pinned: the controls must never scroll out of reach behind a long description
-      foot: (play || links ? '<div class="sheet-actions">'+play+links+'</div>' : '') + scrub
+        '<div class="sheet-facts">'+facts+'</div>',
+      // pinned: the controls must never scroll out of reach behind a long
+      // description. Secondary links sit in their own row *above* Play, so the
+      // primary control keeps a predictable position however many links a show
+      // happens to have — a well-documented show used to push Play onto line two.
+      foot:
+        (links ? '<div class="sheet-links">'+links+'</div>' : '') +
+        (play ? '<div class="sheet-actions">'+play+restart+'</div>' : '') +
+        scrub
     };
   }
 
@@ -979,6 +1254,28 @@
     if(active && !seeking){ applyDuration(); paintScrubTime(); }
   }
 
+  // "Start over" is only an offer when there is somewhere to start over *from*.
+  function syncSheetRestart(){
+    var btn = document.getElementById('sheetRestart');
+    if(!btn) return;
+    btn.hidden = !(sheetMp3 && resumeFor(sheetMp3) > 0);
+  }
+
+  // Reads the sheet's own Play button rather than the archive row: the sheet
+  // merges in a host from the on-air feed or the directory, so its data-sub is
+  // the richer line, and this keeps the two controls describing one track.
+  function restartSheetEpisode(){
+    var btn = sheetFoot.querySelector('.sheet-play');
+    if(!btn || !btn.dataset.mp3) return;
+    // already loaded: rewind in place rather than re-buffering the whole file
+    if(nowPlaying.mp3 === btn.dataset.mp3){
+      startOver();
+      if(audio.paused) audio.play().catch(function(){});
+      return;
+    }
+    playTrack(btn.dataset.mp3, btn.dataset.title, btn.dataset.sub, btn.dataset.photo, true);
+  }
+
   function rowById(id){
     for(var i=0; i<rows.length; i++){
       if(String(rows[i].id) === String(id)) return rows[i];
@@ -1002,12 +1299,24 @@
     setupDescClamp();
     bindRange(document.getElementById('sheetRange'));
     syncSheetScrub();
+    syncSheetRestart();
   }
 
-  function openSheetById(id, trigger){
+  // `fromHistory` marks an open that a popstate is already accounting for, so it
+  // must not push an entry of its own.
+  function openSheetById(id, trigger, fromHistory){
     var r = rowById(id);
     if(!r) return;
+    // One history entry per *opening*, not per sheet: swapping from one show to
+    // another with the sheet already up replaces the entry, so Back always
+    // returns to the listing rather than walking back through shows.
+    var wasOpen = sheet.classList.contains('show');
     paintSheet(r);
+    if(canHistory && !fromHistory){
+      try {
+        history[wasOpen ? 'replaceState' : 'pushState']({sheetId:r.id}, '', urlFor(r.id));
+      } catch(e){}
+    }
     sheetReturnFocus = trigger || document.activeElement;
     sheet.classList.add('show');
     sheetScrim.classList.add('show');
@@ -1025,7 +1334,16 @@
     }
   }
 
+  // Closing from the UI goes through history so the entry pushed on open is
+  // consumed; popstate then calls dismissSheet() to do the actual work. Without
+  // this, closing by button would leave a dead entry that Back would replay.
   function closeSheet(){
+    if(!sheet.classList.contains('show')) return;
+    if(canHistory && history.state && history.state.sheetId){ history.back(); return; }
+    dismissSheet();
+  }
+
+  function dismissSheet(){
     if(!sheet.classList.contains('show')) return;
     sheet.classList.remove('show');
     sheetScrim.classList.remove('show');
@@ -1036,7 +1354,15 @@
     sheetReturnFocus = null;
     sheetRowId = null;
     sheetMp3 = null;
+    syncUrl();
   }
+
+  // Back/forward: the entry either names a sheet or it doesn't.
+  window.addEventListener('popstate', function(){
+    var id = (history.state && history.state.sheetId) || param('show');
+    if(id && rowById(id)) openSheetById(id, null, true);
+    else dismissSheet();
+  });
 
   function onSheetKey(e){
     if(e.key === 'Escape'){ closeSheet(); return; }
@@ -1054,8 +1380,24 @@
   // bound on the dialog, so it covers the pinned footer as well as the body
   sheet.addEventListener('click', function(e){
     var btn = e.target.closest('.sheet-play');
-    if(btn) togglePlayFrom(btn);
+    if(btn){ togglePlayFrom(btn); return; }
+    if(e.target.closest('.sheet-restart')){ restartSheetEpisode(); return; }
+    if(e.target.closest('.sheet-share')) shareSheet();
   });
+
+  // Deliberately a bare `?show=` link, without whatever category or search the
+  // sharer happened to have applied — the recipient wants the episode, not the
+  // sharer's filters. It stays valid only until the episode's retention window
+  // closes; openDeepLink() handles the other side of that.
+  function shareSheet(){
+    var r = sheetRowId && rowById(sheetRowId);
+    if(!r || !navigator.share) return;
+    navigator.share({
+      title: r.title,
+      text: r.title + ' — WBAI 99.5 FM Archive',
+      url: location.origin + location.pathname + '?show=' + encodeURIComponent(r.id)
+    }).catch(function(){ /* dismissed by the user, or no target chosen */ });
+  }
   // artwork that 404s falls back to the station placeholder behind it
   sheetBody.addEventListener('error', function(e){
     if(e.target && e.target.tagName === 'IMG') e.target.classList.add('failed');
@@ -1107,6 +1449,20 @@
     btn.addEventListener('click', openMenu);
     closeBtn.addEventListener('click', closeMenu);
     scrim.addEventListener('click', closeMenu);
+  })();
+
+  document.getElementById('linkNoticeClose').addEventListener('click', function(){
+    document.getElementById('linkNotice').hidden = true;
+  });
+
+  // Category and search arrive from the URL before the first render, so a
+  // manifest shortcut or a shared link paints its result directly rather than
+  // showing everything and then filtering.
+  (function(){
+    var cat = param('cat');
+    if(cat && CAT_BY_KEY[cat]) state.cat = cat;
+    var q = param('q');
+    if(q){ state.query = q.trim().toLowerCase(); searchEl.value = q; }
   })();
 
   renderChips();

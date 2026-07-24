@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "WBAI Archive",
+  "version": "1.0.0",
+  "identifier": "io.github.catskill909.wbaiarchive",
+  "build": {
+    "frontendDist": "../../public"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app", "nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Music",
+    "shortDescription": "WBAI 99.5 FM on-demand archive",
+    "longDescription": "Search, stream, and browse WBAI 99.5 FM's on-demand broadcast archive. Unofficial client; audio, artwork and listings come from WBAI's own public systems.",
+    "copyright": "Unofficial client. Content (c) WBAI / Pacifica Foundation."
+  }
+}

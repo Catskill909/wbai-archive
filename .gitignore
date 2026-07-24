@@ -6,3 +6,8 @@ npm-debug.log
 *.log
 # harvested show-info cache (rebuilt from the live feed)
 data/
+
+# Tauri desktop shell (optional, isolated from the zero-dependency web app)
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

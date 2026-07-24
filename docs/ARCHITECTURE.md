@@ -71,8 +71,8 @@ prose comes from wbai.org's own program pages.
 2. Fetch each program page through a 4-at-a-time worker pool and parse the
    `pagetitle`, airtime, host, Web Site / Facebook / Twitter links, and the
    `.description` block. Description HTML is flattened to text — some of those
-   pages carry an injected third-party `<script>`, and none of it is ever
-   rendered as markup.
+   pages carry third-party `<script>` tags alongside the prose, and none of it is
+   ever rendered as markup.
 3. Key the result by a **normalised title** (lowercased, non-alphanumerics
    collapsed): the archive and wbai.org share nothing else. The front end matches
    rows against those keys through widening tiers — exact, ignore-spacing,
@@ -91,8 +91,16 @@ a map keyed by `sh_altid` — the same altid the archive rows carry — so cover
 fills in as the schedule rotates. It is strictly additive: an empty upstream
 field never overwrites a value already held.
 
-`data[0]` of that feed is the station's global config block, which contains
-upstream credentials. It is never read, forwarded, or logged.
+These fields arrive as **HTML, not text** — descriptions carry `<br>` and
+typographic entities, names carry entities alone — so they are flattened with
+the same `htmlToText` / `unescapeHtml` the program directory uses. The front end
+renders everything through `textContent` and `esc()`, so anything not flattened
+here reaches the sheet as a literal `&ldquo;`. Because a record is only rewritten
+when its show rotates back on air, the cache is also normalised once at boot;
+that pass is idempotent and writes nothing when the data is already clean.
+
+`data[0]` of that feed is a station configuration block rather than schedule
+data, and is treated as sensitive: never read, never forwarded, never logged.
 
 ### `GET /pix/<file>`
 - The filename is validated against `^[A-Za-z0-9_]+_med_\d+\.jpg$` before any

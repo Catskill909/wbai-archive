@@ -1,0 +1,73 @@
+name: Desktop (Windows)
+
+# Builds the Tauri shell for Windows. macOS is built locally (`npm run build`
+# in desktop/) because it needs signing on the developer's own machine; adding
+# it here is a one-line matrix change once that's sorted.
+#
+# WBAI_APP_URL is the deployment the app window points at. It is baked in at
+# compile time, so a build without it falls back to http://localhost:8080 and
+# is only useful for testing against a local `npm start`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "URL the app window loads (e.g. https://archive.example.org)"
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Tauri CLI
+        working-directory: desktop
+        run: npm ci
+
+      - name: Resolve target URL
+        id: url
+        shell: bash
+        run: |
+          URL="${{ inputs.app_url }}"
+          if [ -z "$URL" ]; then URL="${{ vars.WBAI_APP_URL }}"; fi
+          if [ -z "$URL" ]; then
+            echo "::error::No app URL. Set the repository variable WBAI_APP_URL, or run this workflow manually and supply one."
+            exit 1
+          fi
+          echo "value=$URL" >> "$GITHUB_OUTPUT"
+          echo "Building against $URL"
+
+      - name: Build
+        working-directory: desktop
+        env:
+          WBAI_APP_URL: ${{ steps.url.outputs.value }}
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wbai-archive-windows
+          if-no-files-found: error
+          path: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/msi/*.msi

@@ -3,11 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WBAI 99.5 — On-Demand Archive</title>
+<title>WBAI 99.5 FM Archive</title>
 <meta name="description" content="Search, stream, and browse WBAI 99.5 FM's on-demand broadcast archive — Free Speech Radio, Pacifica Radio in New York City.">
 <meta name="color-scheme" content="dark light">
+<!-- Tints the mobile browser chrome to the appbar behind it, per theme. There is
+     deliberately no service worker: the listing is a live proxy of an archive
+     that rotates, and a cached copy would mostly serve shows that are gone. -->
+<meta name="theme-color" content="#1c1615" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WBAI Archive">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" type="image/png" href="/assets/icon-256.png">
 <link rel="apple-touch-icon" href="/assets/icon-256.png">
+<link rel="manifest" href="/manifest.webmanifest">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -79,6 +89,16 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Shown only when a shared ?show= link names an episode whose retention
+       window has already closed. The archive is a rotating view, so every deep
+       link is perishable and this is the honest way to say so. -->
+  <div class="link-notice" id="linkNotice" role="status" hidden>
+    <span>That broadcast has rotated out of the archive — WBAI keeps each show for a limited window. Everything still available is listed below.</span>
+    <button class="link-notice-close" id="linkNoticeClose" type="button" aria-label="Dismiss">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
   </div>
 
   <section class="listing" id="listing">
@@ -186,9 +206,37 @@
 <audio id="liveAudio" preload="none"></audio>
 
 <div class="player-bar" id="playerBar" hidden>
-  <button class="player-toggle" id="playerToggle" type="button" aria-label="Play or pause">
-    <svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-  </button>
+  <!-- Shown for a few seconds after playback picks up where it left off. Sits
+       above the bar rather than inside its flex row, so restoring a position
+       never changes the bar's height. -->
+  <div class="resume-toast" id="resumeToast" role="status" hidden>
+    <span class="resume-text">Resumed at <b id="resumeToastTime">0:00</b></span>
+    <button class="resume-restart" id="resumeRestart" type="button">Start over</button>
+    <button class="resume-dismiss" id="resumeDismiss" type="button" aria-label="Dismiss">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <!-- ±15s sit either side of play/pause, matching SKIP_SECONDS and the lock
+       screen's own skip controls. -->
+  <div class="player-transport">
+    <button class="player-skip" id="playerBack" type="button" aria-label="Back 15 seconds" title="Back 15 seconds (←)">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+        <text x="12" y="16.6" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor">15</text>
+      </svg>
+    </button>
+    <button class="player-toggle" id="playerToggle" type="button" aria-label="Play or pause" title="Play or pause (Space)">
+      <svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <button class="player-skip" id="playerFwd" type="button" aria-label="Forward 15 seconds" title="Forward 15 seconds (→)">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <g transform="translate(24,0) scale(-1,1)">
+          <path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+        </g>
+        <text x="12" y="16.6" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor">15</text>
+      </svg>
+    </button>
+  </div>
   <!-- art + title open the info modal for whatever is playing; tabindex=-1 keeps
        the redundant artwork out of the tab order, the labelled title is the stop -->
   <button class="player-art player-open" id="playerArtBtn" type="button" tabindex="-1" aria-hidden="true">
