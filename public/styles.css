@@ -429,10 +429,18 @@
 
   /* ---------------- Controls ---------------- */
   .controls{
-    max-width:1180px; margin:0 auto; padding:0 1rem 1rem;
+    max-width:1180px; margin:0 auto; padding:.85rem 1rem 1rem;
     display:flex; flex-direction:column; gap:.75rem;
   }
+  /* Sticky search + category bar. It's a direct child of <main> (a tall
+     scroll parent) — if it lived inside the short .controls box it would
+     un-stick the moment that box scrolled past. top:57px parks it flush
+     under the app bar; the table header (.row.head) sticks below it. */
   .controls-row{
+    position:sticky; top:57px; z-index:40;
+    max-width:1180px; margin:0 auto; padding:.7rem 1rem;
+    background:var(--surface-0);
+    border-bottom:1px solid var(--outline);
     display:flex; align-items:stretch; gap:.6rem;
   }
   .search-field{
@@ -560,7 +568,8 @@
   }
   .row:last-child{border-bottom:none;}
   .row.head{
-    background:var(--surface-2); position:sticky; top:57px; z-index:10;
+    /* Parks below the sticky app bar (57px) + the sticky search bar (~64px). */
+    background:var(--surface-2); position:sticky; top:121px; z-index:10;
     font-family:var(--font-display); text-transform:uppercase; letter-spacing:.07em;
     font-size:.68rem; color:var(--ink-dim); font-weight:700;
   }
@@ -1179,6 +1188,17 @@
   @media (min-width:700px){
     .player-bar{
       padding-inline:max(1rem, calc((100% - 1180px) / 2 + 1rem));
+    }
+  }
+  /* Wide screens: the right gutter beyond the 1180 column is now deep enough to hold
+     Close on its own. Lift Close out of the flex row and pin it to the true right edge
+     (where it already sat) so the status text ends flush with the content column
+     instead of being shoved into the gutter beside Close. The bar is position:fixed,
+     so absolute here anchors to the full-width bar. */
+  @media (min-width:1400px){
+    .player-close{
+      position:absolute; right:8px; top:calc(.6rem - 3px);
+      margin:0; align-self:auto;
     }
   }
 

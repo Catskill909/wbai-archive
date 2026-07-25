@@ -36,7 +36,7 @@
               aria-haspopup="dialog" aria-controls="livePlayer" aria-expanded="false"
               aria-label="Open the live player — WBAI is on air now">
         <span class="on-air-dot" aria-hidden="true"></span>
-        <span class="on-air-label">On Air</span>
+        <span class="on-air-label">Listen Live</span>
         <span class="on-air-eq" aria-hidden="true"><i></i><i></i><i></i></span>
       </button>
       <a class="btn btn-filled btn-donate" href="https://wbai.org/donate/" target="_blank" rel="noopener noreferrer">
@@ -62,21 +62,22 @@
     </div>
   </section>
 
-  <div class="controls">
-    <div class="controls-row">
-      <label class="search-field" for="q">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-        <input id="q" type="search" placeholder="Search shows — “Democracy Now”, “jazz”, “housing”…" autocomplete="off">
-      </label>
-      <div class="cat-select" id="catSelect">
-        <button class="cat-trigger" id="catTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by category">
-          <span class="cat-trigger-icon" id="catTriggerIcon" aria-hidden="true"></span>
-          <span class="cat-trigger-value" id="catTriggerValue">All shows</span>
-          <svg class="cat-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-        </button>
-        <div class="cat-menu" id="catMenu" role="listbox" aria-label="Category" hidden></div>
-      </div>
+  <div class="controls-row">
+    <label class="search-field" for="q">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="q" type="search" placeholder="Search shows — “Democracy Now”, “jazz”, “housing”…" autocomplete="off">
+    </label>
+    <div class="cat-select" id="catSelect">
+      <button class="cat-trigger" id="catTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by category">
+        <span class="cat-trigger-icon" id="catTriggerIcon" aria-hidden="true"></span>
+        <span class="cat-trigger-value" id="catTriggerValue">All shows</span>
+        <svg class="cat-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="cat-menu" id="catMenu" role="listbox" aria-label="Category" hidden></div>
     </div>
+  </div>
+
+  <div class="controls">
     <div class="result-meta">
       <span class="result-count" id="resultCount"></span>
       <div class="result-meta-right">

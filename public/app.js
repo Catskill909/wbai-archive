@@ -367,7 +367,7 @@
       var photo = r.photo || '';
       return (
       '<div class="card-wrap">'+
-        '<button class="card card-art play-btn'+(isPlaying?' playing':'')+(isLoading?' loading':'')+'" '+playAttrs(r, subLine, photo, isLoading, isPlaying)+'>'+
+        '<button class="card card-art play-btn'+(isPlaying?' playing':'')+(isLoading?' loading':'')+'" data-id="'+esc(r.id)+'" '+playAttrs(r, subLine, photo, isLoading, isPlaying)+'>'+
           (photo ? '<img loading="lazy" alt="" src="'+photo+'">' : '')+
           '<span class="card-fade" aria-hidden="true"></span>'+
           '<span class="card-play">'+glyph(isLoading, isPlaying)+'</span>'+
@@ -719,7 +719,18 @@
     if(opener){ openSheetById(opener.dataset.id, opener); return; }
 
     var btn = e.target.closest('.play-btn');
-    if(btn) togglePlayFrom(btn);
+    if(btn){
+      // On a gallery card the artwork play control does what the title/More do —
+      // opens the info sheet — and *also* starts playback, so one tap both plays
+      // the show and reveals its detail. Play first so the sheet paints with the
+      // track already active (scrubber shown). List-view play buttons just play.
+      if(btn.classList.contains('card-art') && btn.dataset.id){
+        togglePlayFrom(btn);
+        openSheetById(btn.dataset.id, btn);
+        return;
+      }
+      togglePlayFrom(btn);
+    }
   });
 
   // Any element carrying the play button's data-* attributes can drive playback:
@@ -847,6 +858,10 @@
     onAirBtn.setAttribute('aria-label', playing
       ? 'Live stream playing — open the player'
       : 'Open the live player — WBAI is on air now');
+    // Resting label is a call-to-action ("Listen Live"); once the stream is
+    // playing it reads "On Air", matching the animated equaliser.
+    var onAirLabel = onAirBtn.querySelector('.on-air-label');
+    if(onAirLabel) onAirLabel.textContent = playing ? 'On Air' : 'Listen Live';
   }
 
   function setLiveLoading(on){ lpToggle.classList.toggle('loading', on); }
