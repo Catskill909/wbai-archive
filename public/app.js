@@ -133,6 +133,13 @@
   }
   function renderCat(){ renderCatMenu(); renderCatTrigger(); }
 
+  function catOptionEls(){ return Array.prototype.slice.call(catMenu.querySelectorAll('.cat-option')); }
+  function focusCatOption(i){
+    var els = catOptionEls();
+    if(!els.length) return;
+    i = (i + els.length) % els.length;
+    els[i].focus();
+  }
   function openCatMenu(){
     renderCatMenu();
     catMenu.hidden = false;
@@ -140,6 +147,9 @@
     catTrigger.setAttribute('aria-expanded', 'true');
     document.addEventListener('click', onDocClickCat, true);
     document.addEventListener('keydown', onCatKeydown);
+    // Land focus on the current choice so the arrow keys have a starting point.
+    var sel = catMenu.querySelector('.cat-option[aria-selected="true"]');
+    (sel || catMenu.querySelector('.cat-option')).focus();
   }
   function closeCatMenu(){
     catMenu.hidden = true;
@@ -149,10 +159,22 @@
     document.removeEventListener('keydown', onCatKeydown);
   }
   function onDocClickCat(e){ if(!catSelect.contains(e.target)) closeCatMenu(); }
-  function onCatKeydown(e){ if(e.key === 'Escape'){ closeCatMenu(); catTrigger.focus(); } }
+  function onCatKeydown(e){
+    if(e.key === 'Escape'){ closeCatMenu(); catTrigger.focus(); return; }
+    var els = catOptionEls();
+    var idx = els.indexOf(document.activeElement);
+    if(e.key === 'ArrowDown'){ e.preventDefault(); focusCatOption(idx < 0 ? 0 : idx + 1); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); focusCatOption(idx < 0 ? els.length - 1 : idx - 1); }
+    else if(e.key === 'Home'){ e.preventDefault(); focusCatOption(0); }
+    else if(e.key === 'End'){ e.preventDefault(); focusCatOption(els.length - 1); }
+  }
 
   catTrigger.addEventListener('click', function(){
     if(catMenu.hidden) openCatMenu(); else closeCatMenu();
+  });
+  // ↓/↑ on the closed trigger opens the menu (Enter/Space already do, via click).
+  catTrigger.addEventListener('keydown', function(e){
+    if(catMenu.hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp')){ e.preventDefault(); openCatMenu(); }
   });
   catMenu.addEventListener('click', function(e){
     var opt = e.target.closest('.cat-option');
@@ -1470,12 +1492,12 @@
 
     return {
       body:
-        '<div class="sheet-head" style="--c:'+c.color+'">'+
+        '<div class="sheet-head">'+
           '<span class="sheet-art" aria-hidden="true">'+
             (photo ? '<img alt="" src="'+esc(photo)+'">' : '')+
           '</span>'+
           '<div class="sheet-titles">'+
-            (c.label ? '<span class="sheet-eyebrow"><span class="swatch"></span>'+esc(c.label)+'</span>' : '')+
+            (c.label ? '<span class="sheet-eyebrow">'+catIcon(r.cat)+esc(c.label)+'</span>' : '')+
             '<h2 id="sheetTitle">'+esc(r.title)+'</h2>'+
             (host ? '<div class="sheet-host">with '+esc(host)+'</div>' : '')+
           '</div>'+

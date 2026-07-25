@@ -41,7 +41,7 @@ These were considered and rejected. Reopen one only if its reason has changed.
   certainly a dependency.
 - **Manifest `screenshots`** — would bake dated broadcasts into the repo as
   binary assets nobody will regenerate. If revisited, shoot chrome (appbar,
-  search, chips), not a wall of episode rows.
+  search, category dropdown), not a wall of episode rows.
 - **Playback rate** — 1×/1.5×/2× on the archive player. Dropped, not deferred.
 - **Share Target, Badging, Periodic Background Sync, File Handling** — nothing
   to receive, nothing to count, contradicts the live-proxy design, no file types.
