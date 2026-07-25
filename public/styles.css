@@ -90,13 +90,20 @@
 
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
+  /* Contain horizontal overflow at the root. The off-canvas menu drawer is
+     position:fixed and parked off the right edge (translateX(100%)); iOS Safari
+     does NOT clip a fixed off-canvas box with body{overflow-x:hidden} alone, so
+     the whole page became horizontally pannable ("content slightly off to the
+     right"). `clip` (not `hidden`) contains it WITHOUT making html/body a scroll
+     container, so the sticky appbar and normal vertical scroll are unaffected. */
+  html{overflow-x:clip;}
   body{
     background:var(--surface-0);
     color:var(--ink);
     font-family:var(--font-body);
     -webkit-font-smoothing:antialiased;
     min-height:100vh;
-    overflow-x:hidden;
+    overflow-x:clip;
   }
   a{color:var(--accent-2);}
   button{font-family:inherit;}
