@@ -559,7 +559,7 @@
     barMode = 'archive';
     playerBar.classList.remove('live');
     showPlayerBar();
-    liveAudio.pause();
+    liveAudio.pause();            // hand the bar to the archive track
     audio.src = mp3;
     audio.play().catch(function(){ /* surfaced by the error event below */ });
     updatePlayButtons();
@@ -780,28 +780,24 @@
     }
   }
 
-  // Always (re)connect to the live edge before playing. A live stream is not a
-  // file: once the <audio> element has buffered, pausing or backgrounding the tab
-  // and hitting play again resumes from that stale buffer, minutes behind air.
-  // Reassigning src discards the buffer, load() forces a fresh request, and the
-  // cache-buster defeats any HTTP/proxy caching — so play is always current.
-  function connectLive(){
-    liveAudio.src = LIVE_URL + (LIVE_URL.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now();
-    liveAudio.load();
-    liveLoaded = true;
-  }
-
+  // DEAD-SIMPLE STANDARD MODEL (see docs/big-audio-bug.md). One <audio>, two verbs:
+  // pause() to pause, play() to resume. The source is set exactly once and never
+  // torn down or reconnected. Resume may be a few seconds behind live — accepted;
+  // that trade is what the whole teardown/reconnect cascade was trying to avoid,
+  // and it is what broke pause/play. No load(), no removeAttribute, no cache-buster.
   function toggleLive(){
     if(liveErrored){
       window.open('https://wbai.org/listen-live/', '_blank', 'noopener');
       return;
     }
-    if(liveLoaded && !liveAudio.paused){
+    if(!liveAudio.paused){                    // currently playing -> pause
       liveAudio.pause();
       return;
     }
-    if(!audio.paused) audio.pause();
-    connectLive();                 // never resume the buffer — always fetch live
+    if(!audio.paused) audio.pause();          // the two players never run at once
+    liveErrored = false;
+    if(!liveAudio.getAttribute('src')) liveAudio.src = LIVE_URL;  // set the source once
+    liveLoaded = true;
     setLiveLoading(true);
     setLiveNote('Connecting…');
     liveAudio.play().catch(function(){});
@@ -847,6 +843,8 @@
     if(barMode === 'live'){ refreshToggleIcon(); setStatus('Paused'); }
   });
   liveAudio.addEventListener('error', function(){
+    // ignore a stray error when there is no source to fail on
+    if(!liveAudio.getAttribute('src')) return;
     liveErrored = true;
     setLiveLoading(false);
     setLiveIcon(false);

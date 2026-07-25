@@ -554,9 +554,47 @@ function notFound(req, res, filePath) {
   sendFile(req, res, path.join(PUBLIC_DIR, 'index.html'), '.html');
 }
 
+// NEVER-STALE GUARDRAIL. app.js/styles.css have no build hash, so a browser can
+// keep running a previous version — this cost us hours of "fixes" that were never
+// actually loaded. Fix: version each asset URL by its own mtime+size, and serve
+// the HTML that references them with `no-store` so it is always fresh and always
+// points at the current versions. A changed file => changed URL => guaranteed
+// fetch. `serveStatic` already strips the `?v=` query when resolving the file.
+function fileVer(relFromPublic) {
+  try {
+    const s = fs.statSync(path.join(PUBLIC_DIR, relFromPublic));
+    return s.size.toString(16) + '-' + Math.round(s.mtimeMs).toString(36);
+  } catch (e) { return '0'; }
+}
+// Combined stamp for the whole client bundle — exposed on /healthz and the
+// X-App-Version header so a deploy can be verified from the command line.
+function appVersion() { return `${fileVer('/app.js')}.${fileVer('/styles.css')}`; }
+function stampAssets(html) {
+  return html
+    .replace('href="/styles.css"', `href="/styles.css?v=${fileVer('/styles.css')}"`)
+    .replace('src="/app.js"', `src="/app.js?v=${fileVer('/app.js')}"`);
+}
+
 function sendFile(req, res, filePath, ext) {
   fs.stat(filePath, (err, st) => {
     if (err || !st.isFile()) return notFound(req, res, filePath);
+    // HTML is the freshness anchor: never cached, and its asset links carry the
+    // current version stamps so app.js/styles.css can never be served stale.
+    if (ext === '.html') {
+      fs.readFile(filePath, 'utf8', (e2, html) => {
+        if (e2) return notFound(req, res, filePath);
+        const body = Buffer.from(stampAssets(html), 'utf8');
+        res.writeHead(200, {
+          'Content-Type': MIME['.html'],
+          'Content-Length': body.length,
+          'Cache-Control': 'no-store',
+          'X-App-Version': appVersion(),
+          ...securityHeaders(),
+        });
+        return res.end(body);
+      });
+      return;
+    }
     const etag = `W/"${st.size.toString(16)}-${Math.round(st.mtimeMs).toString(36)}"`;
     const validators = {
       'ETag': etag,
@@ -635,7 +673,7 @@ const server = http.createServer(async (req, res) => {
       }, 200, 600);
     }
     if (url === '/healthz') {
-      return sendJson(res, { ok: true });
+      return sendJson(res, { ok: true, version: appVersion() });
     }
     if (url.startsWith('/pix/')) {
       return proxyPix(url.slice('/pix/'.length).split('?')[0], res);
