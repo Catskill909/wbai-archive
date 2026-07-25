@@ -80,9 +80,12 @@ async function fetchText(url, opts) {
     signal: AbortSignal.timeout(12000),
   });
   if (!res.ok) throw new Error(`upstream ${res.status} for ${url}`);
-  // Upstream pages are declared ISO-8859-1; decode as latin1 to keep bytes intact.
+  // Most upstream pages (the listings) are declared ISO-8859-1, so latin1 is the
+  // default and keeps their bytes intact. The now-playing JSON feed, however, is
+  // served as UTF-8 — decoding that as latin1 turns "í" (0xC3 0xAD) into "Ã­".
+  // Callers pass opts.encoding: 'utf8' for those. See docs/big-audio-bug.md family.
   const buf = Buffer.from(await res.arrayBuffer());
-  return buf.toString('latin1');
+  return buf.toString(opts.encoding || 'latin1');
 }
 
 // simple TTL cache
@@ -435,6 +438,9 @@ async function getNowPlaying() {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: '',
+    // This feed is served charset=UTF-8; decode it as such (not the latin1 default)
+    // so accented names like "Mongo Santamaría" don't arrive as mojibake.
+    encoding: 'utf8',
   });
   const data = JSON.parse(text);
   // data[0] is a station configuration block rather than schedule data, and is

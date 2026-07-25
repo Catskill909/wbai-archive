@@ -857,6 +857,54 @@
   }
   .sheet-art img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   .sheet-art img.failed{ display:none; }
+  /* the artwork tile is a button when it can open the lightbox */
+  button.sheet-art{ padding:0; border:0; cursor:zoom-in; -webkit-appearance:none; appearance:none; }
+  button.sheet-art:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+  .sheet-art-zoom-badge{
+    position:absolute; right:6px; bottom:6px; z-index:1;
+    width:26px; height:26px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:color-mix(in srgb, #000 55%, transparent); color:#fff;
+    -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+    opacity:0; transform:translateY(3px);
+    transition:opacity .16s ease, transform .16s ease;
+  }
+  .sheet-art-zoom-badge svg{ width:15px; height:15px; }
+  .sheet-art-zoom:hover .sheet-art-zoom-badge,
+  .sheet-art-zoom:focus-visible .sheet-art-zoom-badge{ opacity:1; transform:none; }
+  /* touch devices have no hover — keep the affordance visible there */
+  @media (hover:none){ .sheet-art-zoom-badge{ opacity:1; transform:none; } }
+
+  /* ---------------- Artwork lightbox ---------------- */
+  .lightbox{
+    position:fixed; inset:0; z-index:200;
+    display:flex; align-items:center; justify-content:center;
+    padding:clamp(1rem, 5vw, 3rem);
+    background:color-mix(in srgb, #000 82%, transparent);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    opacity:0; visibility:hidden; pointer-events:none; cursor:zoom-out;
+    transition:opacity .2s ease, visibility 0s linear .2s;
+  }
+  .lightbox.show{
+    opacity:1; visibility:visible; pointer-events:auto;
+    transition:opacity .2s ease;
+  }
+  .lightbox img{
+    max-width:min(760px, 100%); max-height:100%;
+    width:auto; height:auto; object-fit:contain;
+    border-radius:14px; box-shadow:0 30px 80px -20px rgba(0,0,0,.8);
+    cursor:default;
+  }
+  .lightbox-close{
+    position:absolute; top:clamp(.85rem, 3vw, 1.4rem); right:clamp(.85rem, 3vw, 1.4rem);
+    z-index:1; width:40px; height:40px; border-radius:50%;
+    border:1px solid var(--outline-strong); background:var(--surface-2); color:var(--ink);
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .lightbox-close:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .lightbox-close svg{ width:16px; height:16px; }
+  @media (prefers-reduced-motion:reduce){ .lightbox{ transition-duration:0s; } }
   .sheet-titles{ display:flex; flex-direction:column; gap:.5rem; min-width:0; padding-top:.15rem; }
   .sheet-eyebrow{
     display:inline-flex; align-items:center; gap:.4rem; align-self:flex-start;

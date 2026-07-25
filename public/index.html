@@ -206,6 +206,15 @@
   <div class="sheet-foot" id="sheetFoot"></div>
 </div>
 
+<!-- Artwork lightbox: opened by tapping the show art in the sheet, so a listener
+     can see the image at full size. Reuses the scrim/dialog pattern above. -->
+<div class="lightbox" id="artLightbox" role="dialog" aria-modal="true" aria-label="Show artwork" aria-hidden="true">
+  <button class="lightbox-close" id="lightboxClose" type="button" aria-label="Close artwork">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+  <img id="lightboxImg" alt="">
+</div>
+
 <!-- Live stream player. A full-feature "now playing" screen for the live stream,
      opened from the On Air button; reuses the .sheet scrim + focus-trap pattern.
      Fields are painted by app.js from the same /api/nowplaying data the header

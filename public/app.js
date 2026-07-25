@@ -721,11 +721,9 @@
     var btn = e.target.closest('.play-btn');
     if(btn){
       // On a gallery card the artwork play control does what the title/More do —
-      // opens the info sheet — and *also* starts playback, so one tap both plays
-      // the show and reveals its detail. Play first so the sheet paints with the
-      // track already active (scrubber shown). List-view play buttons just play.
+      // it opens the info sheet. It does *not* autoplay; playback is started
+      // deliberately from the sheet's Play button. List-view play buttons play.
       if(btn.classList.contains('card-art') && btn.dataset.id){
-        togglePlayFrom(btn);
         openSheetById(btn.dataset.id, btn);
         return;
       }
@@ -1337,6 +1335,36 @@
   var sheetRowId = null;        // which archive row the sheet is currently showing
   var sheetMp3 = null;
 
+  // Artwork lightbox: layered above the open sheet so a listener can tap the show
+  // art for a full-size look. Opens from within the sheet only.
+  var lightbox = document.getElementById('artLightbox');
+  var lightboxImg = document.getElementById('lightboxImg');
+  var lightboxClose = document.getElementById('lightboxClose');
+  var lightboxReturnFocus = null;
+  function lightboxOpen(){ return lightbox.classList.contains('show'); }
+  function openLightbox(src, trigger){
+    if(!src) return;
+    lightboxReturnFocus = trigger || document.activeElement;
+    lightboxImg.src = src;
+    lightbox.classList.add('show');
+    lightbox.setAttribute('aria-hidden', 'false');
+    lightboxClose.focus();
+  }
+  function closeLightbox(){
+    if(!lightboxOpen()) return;
+    lightbox.classList.remove('show');
+    lightbox.setAttribute('aria-hidden', 'true');
+    lightboxImg.removeAttribute('src');
+    if(lightboxReturnFocus && lightboxReturnFocus.focus) lightboxReturnFocus.focus();
+    lightboxReturnFocus = null;
+  }
+  lightboxClose.addEventListener('click', closeLightbox);
+  // tapping the backdrop (anywhere but the image) closes it too
+  lightbox.addEventListener('click', function(e){
+    if(e.target === lightboxImg) return;
+    closeLightbox();
+  });
+
   function fetchShowInfo(){
     fetch('/api/showinfo', {cache:'no-store'})
       .then(function(r){ return r.json(); })
@@ -1508,9 +1536,16 @@
     return {
       body:
         '<div class="sheet-head">'+
-          '<span class="sheet-art" aria-hidden="true">'+
-            (photo ? '<img alt="" src="'+esc(photo)+'">' : '')+
-          '</span>'+
+          // With art, the tile is a real control that opens the lightbox for a
+          // closer look. With none, it stays a decorative (aria-hidden) span.
+          (photo
+            ? '<button type="button" class="sheet-art sheet-art-zoom" data-photo="'+esc(photo)+'" aria-label="View larger artwork for '+esc(r.title)+'">'+
+                '<img alt="" src="'+esc(photo)+'">'+
+                '<span class="sheet-art-zoom-badge" aria-hidden="true">'+
+                  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg>'+
+                '</span>'+
+              '</button>'
+            : '<span class="sheet-art" aria-hidden="true"></span>')+
           '<div class="sheet-titles">'+
             (c.label ? '<span class="sheet-eyebrow">'+catIcon(r.cat)+esc(c.label)+'</span>' : '')+
             '<h2 id="sheetTitle">'+esc(r.title)+'</h2>'+
@@ -1652,6 +1687,7 @@
 
   function dismissSheet(){
     if(!sheet.classList.contains('show')) return;
+    closeLightbox();   // never leave the artwork overlay stranded over a closed sheet
     sheet.classList.remove('show');
     sheetScrim.classList.remove('show');
     sheet.setAttribute('aria-hidden', 'true');
@@ -1672,6 +1708,13 @@
   });
 
   function onSheetKey(e){
+    // The lightbox layers above the sheet, so it gets first refusal on both keys:
+    // Escape closes the image (not the sheet), and Tab is trapped on its one control.
+    if(lightboxOpen()){
+      if(e.key === 'Escape'){ e.preventDefault(); closeLightbox(); }
+      else if(e.key === 'Tab'){ e.preventDefault(); lightboxClose.focus(); }
+      return;
+    }
     if(e.key === 'Escape'){ closeSheet(); return; }
     if(e.key !== 'Tab') return;
     // keep keyboard focus inside the dialog while it is open
@@ -1686,6 +1729,8 @@
   sheetScrim.addEventListener('click', closeSheet);
   // bound on the dialog, so it covers the pinned footer as well as the body
   sheet.addEventListener('click', function(e){
+    var art = e.target.closest('.sheet-art-zoom');
+    if(art){ openLightbox(art.dataset.photo, art); return; }
     var btn = e.target.closest('.sheet-play');
     if(btn){ togglePlayFrom(btn); return; }
     if(e.target.closest('.sheet-restart')){ restartSheetEpisode(); return; }
