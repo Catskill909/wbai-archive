@@ -84,22 +84,85 @@
     return m ? {date:m[1], time:m[2]} : {date:txt, time:''};
   }
 
-  var chipsEl = document.getElementById('chips');
-  function renderChips(){
-    var html = '<button class="chip" data-cat="all" aria-pressed="'+(state.cat==='all')+'">All shows</button>';
-    CATS.forEach(function(c){
-      html += '<button class="chip" data-cat="'+c.key+'" aria-pressed="'+(state.cat===c.key)+'">'+
-        '<span class="swatch" style="background:'+c.color+'"></span>'+c.label+'</button>';
-    });
-    chipsEl.innerHTML = html;
+  // ---- Category dropdown ----
+  // A custom listbox (not a native <select>) so each option can carry its
+  // colour swatch and match the app's styling. Keeps the same `state.cat`
+  // contract the chips used, so URL sync and filtering are unchanged.
+  var catSelect = document.getElementById('catSelect');
+  var catTrigger = document.getElementById('catTrigger');
+  var catTriggerIcon = document.getElementById('catTriggerIcon');
+  var catTriggerValue = document.getElementById('catTriggerValue');
+  var catMenu = document.getElementById('catMenu');
+
+  // Per-category glyphs. Colour swatches carried no meaning for listeners, so
+  // each category is signalled with a recognisable line icon instead. Keys match
+  // CATS; 'all' uses a funnel to read as "the filter control".
+  var CAT_ICONS = {
+    all:'<path d="M4 5h16l-6 7v6l-4 2v-8z"/>',
+    news:'<rect x="4" y="5" width="13" height="14" rx="1.5"/><path d="M17 9h3v8a2 2 0 01-2 2h-1"/><path d="M7 9h7M7 12.5h7M7 16h4"/>',
+    'public-affairs':'<path d="M3 21h18"/><path d="M5 21V10m4 11V10m6 11V10m4 11V10"/><path d="M12 3l8 5H4z"/>',
+    arts:'<path d="M4 20c1.6 0 3-1.1 3-3 0-1.1-.9-2-2-2s-2 .9-2 2c0 1-.4 2-1 2.6.6.3 1.3.4 2 .4z"/><path d="M6.5 15.5l9-9a2 2 0 013 3l-9 9"/>',
+    health:'<path d="M12 20s-7-4.4-7-9.6A3.6 3.6 0 0112 7a3.6 3.6 0 017 3.4C19 15.6 12 20 12 20z"/>',
+    music:'<path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="2.6"/><circle cx="16" cy="16" r="2.6"/>',
+    science:'<path d="M9 3h6M10 3v5.5l-4.6 8A2 2 0 007.2 20h9.6a2 2 0 001.8-3.5L14 8.5V3"/><path d="M7.5 14h9"/>',
+    special:'<path d="M12 3l2.3 5.8L20 10l-4.6 3.9L17 20l-5-3.3L7 20l1.6-6.1L3 10l5.7-1.2z"/>'
+  };
+  function catIcon(key){
+    return '<svg class="cat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" '+
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(CAT_ICONS[key]||'')+'</svg>';
   }
-  chipsEl.addEventListener('click', function(e){
-    var btn = e.target.closest('.chip');
-    if(!btn) return;
-    state.cat = btn.dataset.cat;
-    renderChips();
+
+  function catOption(key, label){
+    var sel = state.cat === key;
+    return '<button class="cat-option" type="button" role="option" data-cat="'+key+'" aria-selected="'+sel+'">'+
+      catIcon(key)+
+      '<span class="cat-option-label">'+label+'</span>'+
+      '<svg class="cat-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>'+
+      '</button>';
+  }
+  function renderCatMenu(){
+    var html = catOption('all', 'All shows');
+    CATS.forEach(function(c){ html += catOption(c.key, c.label); });
+    catMenu.innerHTML = html;
+  }
+  function renderCatTrigger(){
+    var c = CAT_BY_KEY[state.cat];
+    catTriggerIcon.innerHTML = catIcon(c ? c.key : 'all');
+    catTriggerValue.textContent = c ? c.label : 'All shows';
+    catTrigger.classList.toggle('is-filtered', state.cat !== 'all');
+  }
+  function renderCat(){ renderCatMenu(); renderCatTrigger(); }
+
+  function openCatMenu(){
+    renderCatMenu();
+    catMenu.hidden = false;
+    catSelect.classList.add('open');
+    catTrigger.setAttribute('aria-expanded', 'true');
+    document.addEventListener('click', onDocClickCat, true);
+    document.addEventListener('keydown', onCatKeydown);
+  }
+  function closeCatMenu(){
+    catMenu.hidden = true;
+    catSelect.classList.remove('open');
+    catTrigger.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('click', onDocClickCat, true);
+    document.removeEventListener('keydown', onCatKeydown);
+  }
+  function onDocClickCat(e){ if(!catSelect.contains(e.target)) closeCatMenu(); }
+  function onCatKeydown(e){ if(e.key === 'Escape'){ closeCatMenu(); catTrigger.focus(); } }
+
+  catTrigger.addEventListener('click', function(){
+    if(catMenu.hidden) openCatMenu(); else closeCatMenu();
+  });
+  catMenu.addEventListener('click', function(e){
+    var opt = e.target.closest('.cat-option');
+    if(!opt) return;
+    state.cat = opt.dataset.cat;
+    closeCatMenu();
+    renderCatTrigger();
     render();
     syncUrl();
+    catTrigger.focus();
   });
 
   var searchEl = document.getElementById('q');
@@ -1672,6 +1735,6 @@
     if(q){ state.query = q.trim().toLowerCase(); searchEl.value = q; }
   })();
 
-  renderChips();
+  renderCat();
   loadArchive();
 })();
