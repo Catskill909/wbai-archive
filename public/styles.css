@@ -329,7 +329,77 @@
 
   .lp-note{margin:0; font-size:.8rem; color:var(--ink-faint); text-align:center; min-height:1.1em;}
   .live-player.errored .lp-volume{display:none;}
-  .live-player.errored .lp-note{color:var(--danger);}
+
+  /* ---- stream-failure alert ----------------------------------------------
+     Shown inside the modal only after a play attempt fails. Danger-tinted so it
+     reads as a problem at a glance, but it stays a card (not a scolding banner):
+     one-line title, a plain-language cause, and two ways forward. */
+  .lp-alert{
+    display:flex; align-items:flex-start; gap:.8rem;
+    width:100%; margin-top:-.25rem; padding:.9rem 1rem;
+    border-radius:14px; text-align:left;
+    color:var(--ink);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--danger) 12%, transparent), transparent 70%),
+      var(--surface-2);
+    border:1px solid color-mix(in srgb, var(--danger) 38%, var(--outline-strong));
+    box-shadow:var(--elev-1);
+    animation:lpAlertIn .26s cubic-bezier(.2,0,.2,1) both;
+  }
+  .lp-alert[hidden]{display:none;}
+  @keyframes lpAlertIn{
+    from{opacity:0; transform:translateY(8px) scale(.98);}
+    to{opacity:1; transform:none;}
+  }
+  .lp-alert-icon{
+    flex:none; width:32px; height:32px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--danger); background:var(--danger-bg);
+  }
+  .lp-alert-icon svg{width:18px; height:18px;}
+  .lp-alert-body{flex:1 1 auto; min-width:0;}
+  .lp-alert-title{
+    margin:0; font-family:var(--font-display); font-weight:800;
+    font-size:.98rem; letter-spacing:.01em; line-height:1.2;
+    color:color-mix(in srgb, var(--danger) 78%, var(--ink));
+  }
+  .lp-alert-text{margin:.28rem 0 0; font-size:.82rem; line-height:1.42; color:var(--ink-dim);}
+  .lp-alert-text:empty{display:none;}
+  .lp-alert-actions{display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-top:.75rem;}
+  .lp-alert-btn{
+    display:inline-flex; align-items:center; gap:.35rem; cursor:pointer;
+    padding:.42rem .8rem; border-radius:999px; text-decoration:none; white-space:nowrap;
+    font-family:var(--font-display); font-size:.78rem; font-weight:800;
+    letter-spacing:.03em; text-transform:uppercase;
+    border:1px solid var(--outline-strong); background:transparent; color:var(--ink-dim);
+    transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
+  }
+  .lp-alert-btn svg{width:14px; height:14px; flex:none;}
+  .lp-alert-btn:hover{background:var(--surface-hover); color:var(--ink); border-color:var(--ink-faint);}
+  .lp-alert-btn:active{transform:scale(.97);}
+  .lp-alert-btn-primary{
+    background:var(--danger); border-color:transparent; color:var(--accent-ink);
+    box-shadow:0 4px 12px -4px color-mix(in srgb, var(--danger) 60%, transparent);
+  }
+  .lp-alert-btn-primary:hover{
+    background:color-mix(in srgb, var(--danger) 88%, white);
+    color:var(--accent-ink); border-color:transparent;
+  }
+  .lp-alert-dismiss{
+    flex:none; width:26px; height:26px; margin:-.15rem -.25rem 0 0; padding:0;
+    display:flex; align-items:center; justify-content:center;
+    border:none; border-radius:50%; cursor:pointer;
+    background:transparent; color:var(--ink-faint);
+    transition:background .15s ease, color .15s ease;
+  }
+  .lp-alert-dismiss svg{width:13px; height:13px;}
+  .lp-alert-dismiss:hover{background:var(--surface-hover); color:var(--ink);}
+  /* the alert carries the whole message when it is up — no duplicate note line */
+  .live-player.errored .lp-note{display:none;}
+  @media (prefers-reduced-motion:reduce){
+    .lp-alert{animation-duration:.01s;}
+    .lp-alert-btn:active{transform:none;}
+  }
 
   /* Phones: dock to the bottom as a slide-up sheet, matching the info sheet. */
   @media (max-width:560px){
@@ -351,6 +421,7 @@
     .lp-art{width:min(180px, 30vh); grid-row:2 / span 4;}
     .lp-meta{text-align:left;}
     .lp-transport{max-width:none; justify-content:flex-start; margin-left:0;}
+    .lp-alert{grid-column:1 / -1;}
   }
   /* compact donate button in the appbar */
   .appbar-actions .btn{padding:.36rem .8rem; font-size:.76rem;}

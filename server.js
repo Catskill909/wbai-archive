@@ -31,6 +31,7 @@ const UPSTREAM = {
   pixBase: 'https://confessor2.wbai.org/pix/',
   programList: 'https://wbai.org/programlist/',
   program: 'https://wbai.org/program.php?program=',
+  liveStream: 'https://streaming.wbai.org/wbai_verizon',
 };
 
 const CAT_MAP = {
@@ -483,6 +484,54 @@ async function getNowPlaying() {
   return payload;
 }
 
+// -------------------------------------------------- live stream reachability
+
+// When the live stream fails to start, the browser hands the page an opaque
+// MediaError: it cannot tell "WBAI's streaming server is down" from "your VPN /
+// firewall / flaky wifi ate it". This probe answers that question from the
+// server side — one short GET, body cancelled the instant the headers land, so
+// we never actually pull stream audio. Cached briefly because a failing player
+// can ask more than once (and several tabs may ask at the same moment).
+const liveStatusCache = makeCache(5000);
+
+async function probeLiveStream() {
+  const cached = liveStatusCache.get();
+  if (cached) return cached;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  let out;
+  try {
+    const upstream = await fetch(UPSTREAM.liveStream, {
+      headers: {
+        'User-Agent': 'wbai-archive/1.0 (+https://github.com/Catskill909/wbai-archive)',
+        // ask for a token amount; icecast may ignore it, hence the cancel below
+        'Range': 'bytes=0-1',
+      },
+      signal: ctrl.signal,
+    });
+    // never drain the stream — headers are the whole answer
+    if (upstream.body) upstream.body.cancel().catch(() => {});
+    out = {
+      ok: upstream.ok || upstream.status === 206,
+      status: upstream.status,
+      type: upstream.headers.get('content-type') || '',
+      checked: Date.now(),
+    };
+  } catch (e) {
+    out = {
+      ok: false,
+      status: 0,
+      reason: e.name === 'AbortError' || e.name === 'TimeoutError' ? 'timeout' : 'unreachable',
+      checked: Date.now(),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+  liveStatusCache.set(out);
+  return out;
+}
+
 // ------------------------------------------------------------- image proxy
 
 const PIX_RE = /^[A-Za-z0-9_]+_med_\d+\.jpg$/;
@@ -692,6 +741,11 @@ const server = http.createServer(async (req, res) => {
         count: Object.keys(programCache.programs || {}).length,
         programs: programCache.programs || {},
       }, 200, 600);
+    }
+    // Asked by the live player only after a play attempt fails, so the modal's
+    // alert can name the actual cause instead of guessing.
+    if (url === '/api/livestatus') {
+      return sendJson(res, await probeLiveStream(), 200, 5);
     }
     if (url === '/healthz') {
       return sendJson(res, { ok: true, version: appVersion() });

@@ -15,6 +15,14 @@
   var LIVE_URL = 'https://streaming.wbai.org/wbai_verizon';
   var ARCHIVE_PAGE = 'https://wbai.org/archive/';
 
+  // Dev switch for the live-failure alert, so it can be seen without waiting for
+  // the station to actually fall over. `?livefail=1` aims the player at a URL
+  // that cannot play (the real error path, end to end); `?livefail=down` also
+  // makes the reachability probe report the stream host as unreachable. Inert
+  // unless the query string is present.
+  var LIVE_FAIL = (location.search.match(/[?&]livefail=([\w-]+)/) || [])[1] || '';
+  if(LIVE_FAIL) LIVE_URL = '/assets/livefail-not-a-stream.mp3';
+
   // ---------------- Feature flags ----------------
   // SHOW_RSS — off by policy, not by accident. Access to episodes stays inside
   // the web app and the native apps: no feeds, no file handoffs. (Upstream's
@@ -855,8 +863,19 @@
   var lpUpNextText = document.getElementById('lpUpNextText');
   var lpSong = document.getElementById('lpSong');
   var lpSongText = document.getElementById('lpSongText');
+  var lpAlert = document.getElementById('lpAlert');
+  var lpAlertTitle = document.getElementById('lpAlertTitle');
+  var lpAlertText = document.getElementById('lpAlertText');
+  var lpAlertRetry = document.getElementById('lpAlertRetry');
+  var lpAlertClose = document.getElementById('lpAlertClose');
   var liveLoaded = false;
   var liveErrored = false;
+  // How long a play attempt may sit connecting before we call it a failure. A
+  // dead stream host often does not error — the connection just never produces
+  // audio — so the timeout is the only signal we get in that case.
+  var LIVE_CONNECT_MS = 12000;
+  var liveWatchdog = null;
+  var liveAlertKind = '';
 
   // Latest on-air snapshot, so the modal can paint whenever it opens and re-paint
   // as the schedule rolls over. Set by renderNowPlaying().
@@ -900,27 +919,137 @@
     }
   }
 
+  // ---- Failure alert. A failed stream reaches the page as an opaque MediaError,
+  // so the modal shows a card that names the likely cause and offers a way out:
+  // retry, or the station's own listen page. The wording is refined once
+  // /api/livestatus reports whether the stream host answered the *server*, which
+  // is what separates "WBAI is off the air" from "something on this device".
+  function showLiveAlert(kind, title, text){
+    liveAlertKind = kind;
+    lpAlertTitle.textContent = title;
+    lpAlertText.textContent = text;
+    lpAlert.hidden = false;
+    livePlayer.classList.add('errored');
+    setLiveNote('');
+  }
+  function hideLiveAlert(){
+    liveAlertKind = '';
+    lpAlert.hidden = true;
+    livePlayer.classList.remove('errored');
+  }
+
+  function clearLiveWatchdog(){
+    if(liveWatchdog){ clearTimeout(liveWatchdog); liveWatchdog = null; }
+  }
+  function armLiveWatchdog(){
+    clearLiveWatchdog();
+    liveWatchdog = setTimeout(function(){
+      liveWatchdog = null;
+      if(!liveAudio.paused && liveAudio.currentTime > 0) return;  // it did start
+      liveFailed('timeout');
+    }, LIVE_CONNECT_MS);
+  }
+
+  // Single funnel for every way the stream can fail: the error event, a rejected
+  // play(), or the watchdog. Leaves the player in a clean paused state so the
+  // retry path is the ordinary play path.
+  function liveFailed(reason){
+    clearLiveWatchdog();
+    // one failure, one alert: a dead source often reports twice (rejected play()
+    // *and* an error event), and the retry path clears this flag before re-trying
+    if(liveErrored && !lpAlert.hidden) return;
+    var wasPlaying = liveAudio.currentTime > 0;
+    liveErrored = true;
+    liveAudio.pause();          // stop a half-open connection retrying in the dark
+    setLiveLoading(false);
+    setLiveIcon(false);
+    if(barMode === 'live') setStatus('Stream unavailable');
+
+    if(reason === 'blocked'){
+      showLiveAlert('blocked', 'Your browser blocked playback',
+        'Something on this device stopped the stream from starting — often an autoplay rule, an extension, or a content blocker. Tap Try again, or open the stream on wbai.org.');
+      return;
+    }
+    if(navigator.onLine === false){
+      showLiveAlert('offline', 'You’re offline',
+        'This device has no internet connection right now, so the live stream can’t load. Reconnect and try again.');
+      return;
+    }
+    showLiveAlert('checking',
+      wasPlaying ? 'The live stream dropped' : 'Can’t reach the live stream',
+      'Checking WBAI’s streaming server…');
+    probeLiveServer();
+  }
+
+  function renderProbeResult(s){
+    if(liveAlertKind !== 'checking') return;      // dismissed or retried meanwhile
+    if(s && s.ok){
+      showLiveAlert('local', 'The stream won’t play here',
+        'WBAI’s streaming server is up and answering, so the problem is between it and this device — a VPN, firewall, or content blocker can cut off audio streams. Try again, or open the stream on wbai.org.');
+      return;
+    }
+    var detail = (s && s.status) ? ' (it replied ' + s.status + ')'
+               : (s && s.reason === 'timeout') ? ' (it timed out)' : '';
+    showLiveAlert('down', 'WBAI’s live stream is down',
+      'The station’s streaming server isn’t serving audio right now' + detail + '. That’s on WBAI’s end, not yours — try again in a few minutes. Archive shows still play normally.');
+  }
+  function probeLiveServer(){
+    if(LIVE_FAIL === 'down'){ renderProbeResult({ ok:false, reason:'unreachable' }); return; }
+    fetch('/api/livestatus', { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(renderProbeResult)
+      .catch(function(){
+        if(liveAlertKind !== 'checking') return;
+        showLiveAlert('unknown', 'Can’t reach the live stream',
+          'The stream didn’t start and we couldn’t check why. Check your connection and try again, or open the stream on wbai.org.');
+      });
+  }
+
+  // Coming back online is the one recovery we can detect on our own; say so
+  // rather than leaving a stale "you're offline" card on screen.
+  window.addEventListener('online', function(){
+    if(liveAlertKind !== 'offline') return;
+    showLiveAlert('unknown', 'You’re back online',
+      'Your connection is back. Tap Try again to tune in.');
+  });
+
+  lpAlertRetry.addEventListener('click', function(){
+    hideLiveAlert();
+    liveErrored = false;
+    toggleLive();
+  });
+  lpAlertClose.addEventListener('click', function(){
+    hideLiveAlert();
+    setLiveNote('Tap play to try again');
+  });
+
   // DEAD-SIMPLE STANDARD MODEL (see docs/big-audio-bug.md). One <audio>, two verbs:
   // pause() to pause, play() to resume. The source is set exactly once and never
   // torn down or reconnected. Resume may be a few seconds behind live — accepted;
   // that trade is what the whole teardown/reconnect cascade was trying to avoid,
   // and it is what broke pause/play. No load(), no removeAttribute, no cache-buster.
   function toggleLive(){
-    if(liveErrored){
-      window.open('https://wbai.org/listen-live/', '_blank', 'noopener');
-      return;
-    }
     if(!liveAudio.paused){                    // currently playing -> pause
+      clearLiveWatchdog();
       liveAudio.pause();
       return;
     }
     if(!audio.paused) audio.pause();          // the two players never run at once
-    liveErrored = false;
+    hideLiveAlert();
     if(!liveAudio.getAttribute('src')) liveAudio.src = LIVE_URL;  // set the source once
+    // The ONE exception to "never load()": the element latched a MediaError, and
+    // per spec a failed element will not play again until the resource is
+    // re-selected. This is the error-recovery path only — pause/resume never
+    // touches it (that reconnect logic is exactly what broke before).
+    if(liveErrored && liveAudio.error) liveAudio.load();
+    liveErrored = false;
     liveLoaded = true;
     setLiveLoading(true);
     setLiveNote('Connecting…');
-    liveAudio.play().catch(function(){});
+    armLiveWatchdog();
+    liveAudio.play().catch(function(err){
+      liveFailed(err && err.name === 'NotAllowedError' ? 'blocked' : 'error');
+    });
   }
 
   // ---- The docked player bar, in live mode. Playing the stream surfaces the same
@@ -951,11 +1080,15 @@
 
   liveAudio.addEventListener('waiting', function(){ if(liveAudio.paused===false) setLiveLoading(true); });
   liveAudio.addEventListener('playing', function(){
+    clearLiveWatchdog();
+    liveErrored = false;
+    hideLiveAlert();
     setLiveLoading(false); setLiveIcon(true); setLiveNote('');
     activateLiveSession();
     showLiveBar();
   });
   liveAudio.addEventListener('pause', function(){
+    clearLiveWatchdog();     // a deliberate pause is not a failed connection
     setLiveLoading(false); setLiveIcon(false);
     if(!liveErrored) setLiveNote('Paused');
     if(mediaMode === 'live') setPlaybackState('paused');
@@ -965,11 +1098,11 @@
   liveAudio.addEventListener('error', function(){
     // ignore a stray error when there is no source to fail on
     if(!liveAudio.getAttribute('src')) return;
-    liveErrored = true;
-    setLiveLoading(false);
-    setLiveIcon(false);
-    livePlayer.classList.add('errored');
-    setLiveNote('Playback blocked — tap play to open on wbai.org');
+    liveFailed('error');
+  });
+  // A live stream has no end; 'ended' means the server closed the connection.
+  liveAudio.addEventListener('ended', function(){
+    if(liveAudio.getAttribute('src')) liveFailed('ended');
   });
 
   audio.addEventListener('play', function(){ if(liveLoaded && !liveAudio.paused) liveAudio.pause(); });
@@ -1028,7 +1161,8 @@
     if(typeof closeSheet === 'function' && sheet && sheet.classList.contains('show')) closeSheet();
     paintLivePlayer();
     // reflect whatever the stream is currently doing
-    if(liveErrored) setLiveNote('Playback blocked — tap play to open on wbai.org');
+    if(!lpAlert.hidden) setLiveNote('');          // the alert says it all
+    else if(liveErrored) setLiveNote('Tap play to try again');
     else if(liveLoaded && !liveAudio.paused) setLiveNote('');
     else if(liveLoaded) setLiveNote('Paused');
     else setLiveNote('Tap play to tune in');
