@@ -1,0 +1,161 @@
+# What WBAI actually exposes
+
+A survey of every upstream endpoint this project could use, what it really
+returns, and which ones are worth depending on. Everything here was tested
+against the live hosts on **2026-07-26**; re-test before trusting it, because
+none of it is a published contract.
+
+## The short version
+
+**There is no WBAI API.** Not a private one, not an undocumented one — the show
+listing exists only as an HTML page, and the endpoints that *look* like an API
+return base64-encoded HTML rather than JSON. "Switch to the real API" is not an
+option available to us; it would have to be something WBAI builds.
+
+What we have instead is a spectrum:
+
+| Source | Shape | Verdict |
+| --- | --- | --- |
+| `_pl_current_ary.php` (on air / up next) | **Real JSON** | Depend on it freely |
+| `_pa_get_show_info.php` (per-show info) | Base64 → HTML table | Stable enough to depend on; parse defensively |
+| `archive2.wbai.org/` (the listing) | Full HTML page | Regex scrape. Fragile, and unavoidable |
+| `getrss.php` (per-show RSS) | **Dead** | Do not use |
+
+## The listing — `https://archive2.wbai.org/`
+
+The only source for "what shows are in the archive." ~765 KB of HTML holding
+~530 `<tr name="show">` rows; `parseArchive()` in `server.js` regexes out id,
+category, altid, air date, duration, days-to-stay, MP3 URL and RSS presence.
+
+**This is the fragile part of the whole project and there is no alternative.**
+If WBAI restructures that table, the parse yields zero rows, `getArchive()`
+throws, and the server falls back to its last-good cache and then to
+`public/data/shows-fallback.json`. That failure path is deliberate — see
+[ARCHITECTURE.md](ARCHITECTURE.md) — but it degrades to a stale archive, so a
+silent HTML change upstream is the single most likely way this site goes wrong.
+
+Worth knowing: `parseArchive` currently anchors on a *very* specific attribute
+order (`id="tt_…" cat="…" sho="…" dt="…"`). Whitespace or reordering breaks it.
+A looser per-attribute parse would survive more upstream churn.
+
+## On air / up next — `_pl_current_ary.php`
+
+```
+GET https://confessor2.wbai.org/playlist/_pl_current_ary.php
+```
+
+Genuine JSON, served as UTF-8 (note: the listing pages are ISO-8859-1 — see the
+`opts.encoding` note on `fetchText`). Returns a global station block plus the
+current and next show, with the richest per-show record WBAI publishes:
+`sh_name`, `sh_djname`, `sh_desc`, `sh_shortdesc`, `sh_url`, `sh_facebook`,
+`sh_med_photo`, keyed by `sh_altid`.
+
+The catch that shaped this project: **it only ever describes two shows** — the
+one on air and the one up next. There is no bulk form. That constraint is why
+`showInfo` is a slowly-accumulating harvest rather than a lookup.
+
+## Per-show info — `_pa_get_show_info.php` ⭐
+
+The endpoint archive2's own front end calls when you pick a show from its
+dropdown. **It works for any show, any time — not just what is on air.**
+
+```
+POST https://archive2.wbai.org/_pa_get_show_info.php
+     sh_altid=<altid>
+```
+
+- **POST only.** A GET returns the literal string `bad` (3 bytes).
+- Response is **base64**; decode it to get an HTML table.
+- Unknown altid returns an **empty body** (0 bytes) — a clean, unambiguous miss.
+- The `sh_altid` key is the same one archive rows carry as `sho`, so we already
+  have it for every show.
+
+Decoded shape:
+
+```html
+<table class="info_table">
+  <tr class="info_heading">…</tr>
+  <tr>
+    <td class="info_category">Public Affairs</td>
+    <td class="info_stmt">Economics Professor Richard D. Wolff and guests…<br><br>…</td>
+    <td class="info_producer">Richard D. Wolff</td>
+  </tr>
+</table>
+```
+
+Three fields: `info_category`, `info_stmt` (the description, with `<br>` inside),
+`info_producer`. Spot-checked against six shows absent from `seed/showinfo.json`:
+
+```
+shortwave           54 chars
+econupsat          663 chars
+blackagendareport  255 chars
+drive              531 chars
+resistanradio      373 chars
+tcoyhealth           0 chars   (genuinely has no description upstream)
+```
+
+### Why it matters
+
+A description is currently learnable only while its show is on the air, which is
+the root of a whole chain of workarounds: the `showInfo` harvest, the
+`seed/showinfo.json` shipped in the image, and the persistent-volume requirement
+in [DEPLOYMENT.md](DEPLOYMENT.md). This endpoint removes that constraint — any
+show, on demand, from a cold start.
+
+### What it does *not* give you
+
+It is narrower than the on-air feed, so it complements rather than replaces it:
+
+| Field | `_pa_get_show_info.php` | On-air feed | Elsewhere |
+| --- | --- | --- | --- |
+| Description | ✅ | ✅ | — |
+| Producer / host | ✅ | ✅ (`sh_djname`) | also `/api/programs` |
+| Category | ✅ | — | also the archive row (`cat`) |
+| Artwork | ❌ | ✅ | ✅ already covered by the schedule photo map |
+| Website / Facebook | ❌ | ✅ | ✅ `/api/programs` for listed shows |
+| Short description | ❌ | ✅ | — |
+
+So: use it as the **primary** description source, and keep the on-air harvest for
+the link fields it alone supplies. Artwork is unaffected — that comes from
+`pub_sched.php`'s image preloads, independently of all this.
+
+## Per-show RSS — `getrss.php` ☠️
+
+```
+GET https://archive2.wbai.org/getrss.php?id=<altid>
+```
+
+**Returns 0 bytes** for every id tried (`wbaisports`, `econupsat`,
+`democracynow`), while still answering `200 OK`. The archive page continues to
+render RSS links, so the feature looks alive from the outside and isn't.
+
+This is why the front end has `SHOW_RSS = false` in `public/app.js`. Leave it
+off. If it ever revives, per-show feeds would be a much better description and
+episode source than any of the above.
+
+## Also present, unused
+
+- **`_srch_show.php`** — POST `str=<query>`; the page decodes the reply with
+  `Base64.decode()` then `eval()`, so it returns base64'd JSON (a list of row
+  ids). We filter client-side over the full listing instead, which is faster and
+  needs no round trip. No reason to adopt it.
+- **`_sn_get_cur_show.php`** — archive2's own current-show poll. Redundant with
+  the richer `_pl_current_ary.php` we already use.
+- **`_pa_dodown.php`** — download handler; we link MP3s directly.
+- **`wbai.org/programlist/` + `program.php`** — the program directory behind
+  `/api/programs`. Covers 149 programs, but **not all of them**: "WBAI Sports",
+  for instance, is absent, which is why it can't be the description source on its
+  own.
+
+## Rules of thumb
+
+1. **Assume none of this is stable.** No endpoint here is documented or
+   versioned. Every parser must fail to a cached or empty value, never a crash.
+2. **Prefer the JSON feed, then the base64 endpoints, then the page scrape** —
+   in that order, by fragility.
+3. **Cache aggressively and re-fetch politely.** A full listing scrape is ~765 KB
+   plus ~182 KB for the schedule; that is real load on a small station's server.
+   See the TTL and single-flight notes in [ARCHITECTURE.md](ARCHITECTURE.md).
+4. **Re-test before relying on anything in this file.** Dates matter here: the
+   RSS feeds presumably worked once.

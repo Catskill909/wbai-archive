@@ -140,6 +140,9 @@ reload the page. `npm start` serves them directly.
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how the server and its
   proxies fit together, and why they're needed.
 - **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — container build and Coolify.
+- **[docs/UPSTREAM.md](docs/UPSTREAM.md)** — what WBAI actually exposes: which
+  endpoints are real JSON, which are base64'd HTML, which are dead, and why the
+  listing has to be scraped. Read before changing any upstream call.
 
 To exercise the mobile layout and lock-screen player, open the dev server from a
 phone on the same network (`http://<your-lan-ip>:8080`) — Media Session behavior
