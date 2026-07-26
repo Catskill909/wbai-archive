@@ -57,6 +57,9 @@ does this for you.
   hosts.
 - **Scaling:** it's fine to run a single instance. If you run several, each keeps
   its own cache — that's harmless (each just scrapes independently).
+- **Don't trust the volume until you've read `showinfoOnDisk`.** Declaring a
+  volume in `docker-compose.yml` is not proof one is mounted — Coolify has been
+  observed ignoring it. See [Troubleshooting](#coolify-ignores-the-compose-volumes-block).
 
 ## Deploy with plain Docker
 
@@ -90,8 +93,76 @@ archive.example.org {
 ## Verifying a deployment
 
 ```bash
-curl -s https://YOUR-DOMAIN/healthz            # {"ok":true}
+curl -s https://YOUR-DOMAIN/healthz            # version + storage facts (see below)
 curl -s https://YOUR-DOMAIN/api/nowplaying     # current + next show
 curl -s https://YOUR-DOMAIN/api/archive | head # {"updated":…,"count":…,"shows":[…]}
 curl -s https://YOUR-DOMAIN/api/programs | head -c 200   # {"updated":…,"count":149,…}
+curl -s https://YOUR-DOMAIN/api/showinfo | head -c 40    # {"updated":…,"count":47,…}
 ```
+
+`/healthz` is the one to read carefully — it reports the bundle version *and*
+what the server found on disk at boot:
+
+```json
+{"ok":true,"version":"…","storage":{"writable":true,"showinfoOnDisk":0,"showinfoNow":47}}
+```
+
+- **`version`** — must change after a deploy. If it doesn't, the old image is
+  still running and nothing you're looking at reflects your changes.
+- **`storage.showinfoOnDisk`** — records read from the data dir *before* the seed
+  was merged. This is the only field that tells you whether persistent storage is
+  really working. See the volume table under [Deploy on Coolify](#deploy-on-coolify).
+- **`storage.showinfoNow`** — count after seeding. Reads ~47 whether or not a
+  volume is mounted, so it diagnoses nothing. Don't use it.
+
+## Troubleshooting
+
+### Descriptions missing from the info sheet
+
+A show's description comes from `/api/showinfo`, harvested from the on-air feed —
+and that feed only exposes rich records for the show **on air** and the one **up
+next**. A server therefore learns a show's description only while that show is
+broadcasting. wbai.org's program directory (`/api/programs`) covers some shows
+but not all; "WBAI Sports", for instance, isn't listed there at all, so the
+harvest is its only possible source.
+
+This is why the image ships `seed/showinfo.json` — see
+[ARCHITECTURE.md](ARCHITECTURE.md#get-apishowinfo). If descriptions are missing
+in production but present locally, compare the two counts:
+
+```bash
+curl -s http://localhost:8080/api/showinfo | head -c 40
+curl -s https://YOUR-DOMAIN/api/showinfo  | head -c 40
+```
+
+A production count far below the seed's means the seed didn't ship — check that
+`COPY seed ./seed` is still in the `Dockerfile` and that `seed/` isn't excluded by
+`.dockerignore` (note `data/` *is* gitignored; `seed/` deliberately is not).
+Refresh the seed from a long-running instance with `npm run seed`, then commit.
+
+### Coolify ignores the compose `volumes:` block
+
+**Confirmed on `wbai.supersoul.top`, 2026-07-26.** `docker-compose.yml` declares
+`wbai-data:/app/data`, but after a redeploy `/healthz` reported:
+
+```json
+"storage": {"writable": true, "showinfoOnDisk": 0, "showinfoNow": 47}
+```
+
+The previous container had harvested 2 records and run ~40 minutes — well past the
+10-second debounce, so they were certainly written to `/app/data/showinfo.json`.
+Reading back **0** means the directory was fresh again: the volume is not
+persisting. `writable: true` rules out a permissions problem.
+
+Coolify does not reliably act on a compose `volumes:` block; persistent storage
+generally has to be added in its own **Storages** panel, mapped to `/app/data`.
+
+**Impact is mild by design** — the seed refills the cache on every boot, so
+descriptions keep working. What is lost is production's ability to accumulate
+*beyond* the seed: anything it learns from the on-air feed evaporates at the next
+deploy, leaving a developer laptop as the effective source of truth.
+
+**To confirm a fix**, redeploy and read `showinfoOnDisk` again. It should come
+back at or above the seed size (47) rather than 0. Because the seed makes every
+other count look healthy, `showinfoOnDisk` at boot is the only honest signal —
+which is precisely why it's exposed.

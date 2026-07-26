@@ -63,7 +63,31 @@ starting a new one (`EADDRINUSE` means one is up).
   deviated from what the archive player does (`pause()` / `play()`, `src` set
   once). Match the thing that already works.
 
-## 4. Project shape (orientation)
+## 4. PROD IS NOT YOUR LAPTOP — read its state, don't infer it
+
+Local runs write `data/` straight to disk and keep it forever. Containers don't:
+their filesystem is rebuilt from the image every deploy, and a volume declared in
+`docker-compose.yml` is a *request*, not proof one is mounted. Coolify has been
+observed ignoring it (confirmed 2026-07-26 — see `docs/DEPLOYMENT.md`).
+
+This bit us once already: descriptions worked locally and were blank in
+production, because `/api/showinfo` is harvested only while a show is on air and
+prod's cache started empty every deploy. Diagnosis took a while because every
+obvious number looked fine.
+
+**So when local and production disagree, measure production — don't reason about
+it.** `curl -s https://<host>/healthz` reports the live bundle version and what
+was on disk at boot:
+
+- `version` must change after a deploy, or the old image is still serving.
+- `storage.showinfoOnDisk` is the *only* field that proves persistent storage
+  works. `storage.showinfoNow` reads healthy either way (the seed fills it) — it
+  diagnoses nothing.
+
+Same instinct as §1: don't conclude anything about code you haven't proven is the
+code that ran.
+
+## 5. Project shape (orientation)
 
 - Zero-dependency Node server (`server.js`) = static files + a proxy for WBAI
   listings / now-playing / artwork. No build step; filenames are stable.
