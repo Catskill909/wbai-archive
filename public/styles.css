@@ -905,6 +905,62 @@
   .lightbox-close:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
   .lightbox-close svg{ width:16px; height:16px; }
   @media (prefers-reduced-motion:reduce){ .lightbox{ transition-duration:0s; } }
+
+  /* ---------------- Donate modal ---------------- */
+  /* A framed embed of WBAI's real donate page. Tall + wide on desktop/tablet,
+     near full-screen on phones, always with breathing room around the card. */
+  .donate-scrim{
+    position:fixed; inset:0; z-index:290;
+    background:color-mix(in srgb, #000 74%, transparent);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition:opacity .22s ease, visibility 0s linear .22s;
+  }
+  .donate-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .22s ease; }
+  .donate-modal{
+    position:fixed; z-index:300;
+    top:50%; left:50%;
+    width:min(940px, 94vw);
+    height:min(860px, 90vh);
+    transform:translate(-50%, -46%) scale(.98);
+    display:flex; flex-direction:column;
+    background:#fff; border-radius:18px; overflow:hidden;
+    box-shadow:0 40px 100px -24px rgba(0,0,0,.72);
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition:opacity .22s ease, transform .22s ease, visibility 0s linear .22s;
+  }
+  .donate-modal.show{
+    opacity:1; visibility:visible; pointer-events:auto;
+    transform:translate(-50%, -50%) scale(1);
+    transition:opacity .22s ease, transform .22s ease;
+  }
+  .donate-frame{ flex:1 1 auto; width:100%; border:0; background:#fff; }
+  /* Close control tuned for the white donate page: light chip, dark glyph. */
+  .donate-close{
+    position:absolute; top:12px; right:12px; z-index:2;
+    width:40px; height:40px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    border:1px solid rgba(0,0,0,.12);
+    background:rgba(255,255,255,.86);
+    -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+    color:#222;
+    box-shadow:0 2px 10px rgba(0,0,0,.18);
+    transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
+  }
+  .donate-close:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .donate-close:active{ transform:scale(.94); }
+  .donate-close svg{ width:16px; height:16px; }
+  @media (max-width:560px){
+    .donate-modal{
+      width:100vw; height:100dvh; max-height:100dvh;
+      top:0; left:0; transform:translate(0,0) scale(1);
+      border-radius:0;
+    }
+    .donate-modal.show{ transform:translate(0,0) scale(1); }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .donate-scrim, .donate-modal{ transition-duration:0s; }
+  }
   .sheet-titles{ display:flex; flex-direction:column; gap:.5rem; min-width:0; padding-top:.15rem; }
   .sheet-eyebrow{
     display:inline-flex; align-items:center; gap:.4rem; align-self:flex-start;

@@ -240,7 +240,7 @@
   // header is focusable again.
   function refreshBgInert(){
     var anyOpen = document.querySelector(
-      '.menu-panel.show, .sheet.show, .lightbox.show, .live-player.show'
+      '.menu-panel.show, .sheet.show, .lightbox.show, .live-player.show, .donate-modal.show'
     );
     ['.appbar', 'main#top'].forEach(function(sel){
       var el = document.querySelector(sel);
@@ -1390,6 +1390,50 @@
     if(e.target === lightboxImg) return;
     closeLightbox();
   });
+
+  // ---------------- Donate modal ----------------
+  // The Donate button embeds WBAI's real donate page in an iframe so the flow
+  // never leaves the site. Same scrim/dialog/focus-trap/inert lifecycle as the
+  // live player. The iframe src is set on first open so the page isn't fetched
+  // until someone actually wants to donate.
+  var DONATE_URL = 'https://docs.pacifica.org/wbai/donate/';
+  var donateBtn = document.getElementById('donateBtn');
+  var donateModal = document.getElementById('donateModal');
+  var donateScrim = document.getElementById('donateScrim');
+  var donateClose = document.getElementById('donateClose');
+  var donateFrame = document.getElementById('donateFrame');
+  var donateReturnFocus = null;
+  function donateOpen(){ return donateModal.classList.contains('show'); }
+  function openDonate(){
+    if(donateOpen()) return;
+    donateReturnFocus = document.activeElement;
+    if(!donateFrame.src) donateFrame.src = DONATE_URL;   // lazy: load on first open
+    donateScrim.classList.add('show');
+    donateModal.classList.add('show');
+    donateModal.setAttribute('aria-hidden', 'false');
+    refreshBgInert();
+    donateClose.focus();
+    document.addEventListener('keydown', onDonateKey);
+  }
+  function closeDonate(){
+    if(!donateOpen()) return;
+    donateScrim.classList.remove('show');
+    donateModal.classList.remove('show');
+    donateModal.setAttribute('aria-hidden', 'true');
+    document.removeEventListener('keydown', onDonateKey);
+    refreshBgInert();
+    if(donateReturnFocus && donateReturnFocus.focus) donateReturnFocus.focus();
+    donateReturnFocus = null;
+  }
+  // Only one focusable control lives in the modal chrome (the iframe manages its
+  // own internal focus), so trap Tab on the close button and let Escape close.
+  function onDonateKey(e){
+    if(e.key === 'Escape'){ e.preventDefault(); closeDonate(); }
+    else if(e.key === 'Tab'){ e.preventDefault(); donateClose.focus(); }
+  }
+  if(donateBtn) donateBtn.addEventListener('click', openDonate);
+  donateClose.addEventListener('click', closeDonate);
+  donateScrim.addEventListener('click', closeDonate);
 
   function fetchShowInfo(){
     fetch('/api/showinfo', {cache:'no-store'})
