@@ -98,6 +98,19 @@ a map keyed by `sh_altid` — the same altid the archive rows carry — so cover
 fills in as the schedule rotates. It is strictly additive: an empty upstream
 field never overwrites a value already held.
 
+**Seeding.** The corollary of "harvested only while on air" is that a freshly
+deployed server knows two shows, and a weekly programme it missed is a week away
+from coming round again — so every info sheet would be blank until the schedule
+had rotated all the way through. The image therefore ships `seed/showinfo.json`,
+merged into the cache at boot. The seed is a floor, never an override: a record
+already present is kept, and only fields it is *missing* are filled, because
+anything harvested from the live feed is newer than the image. Refresh the seed
+from a long-running instance with `npm run seed`.
+
+It lives at `seed/` rather than inside `data/` deliberately — a volume mounted at
+`/app/data` shadows whatever the image placed there, so a seed shipped in the
+data dir would be invisible on exactly the deployments that need it.
+
 These fields arrive as **HTML, not text** — descriptions carry `<br>` and
 typographic entities, names carry entities alone — so they are flattened with
 the same `htmlToText` / `unescapeHtml` the program directory uses. The front end

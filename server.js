@@ -21,6 +21,11 @@ const path = require('path');
 const PORT = process.env.PORT || 8080;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const SHOWINFO_PATH = process.env.SHOWINFO_PATH || path.join(__dirname, 'data', 'showinfo.json');
+// Read-only starting set for the harvest cache, baked into the image. Lives
+// outside the data dir on purpose: a mounted volume shadows whatever the image
+// put at /app/data, so a seed placed there would never be seen. See the merge
+// below and docs/ARCHITECTURE.md.
+const SEED_PATH = process.env.SEED_PATH || path.join(__dirname, 'seed', 'showinfo.json');
 const PROGRAMS_PATH = process.env.PROGRAMS_PATH || path.join(__dirname, 'data', 'programs.json');
 const PROGRAMS_TTL = 24 * 60 * 60 * 1000;
 
@@ -250,6 +255,38 @@ function writeJsonSoon(file, getData, delayMs = 10000) {
 
 const showInfo = readJsonFile(SHOWINFO_PATH, {});
 let showInfoUpdated = Object.keys(showInfo).length ? Date.now() : 0;
+
+/**
+ * A show's record can only be harvested while that show is on the air, so a
+ * server that has just booted knows almost nothing: two records, and a weekly
+ * show it missed is a week away from coming round again. That is fine on a
+ * long-lived box and miserable on a fresh deploy, where every info sheet would
+ * be blank until the schedule had rotated all the way through.
+ *
+ * So the image ships a seed of what we have already learned. It is strictly a
+ * floor, never an override: a field harvested from the live feed always wins,
+ * because it is newer than anything baked into the image.
+ */
+(function seedShowInfo() {
+  const seed = readJsonFile(SEED_PATH, null);
+  if (!seed) return;
+  let added = 0, filled = 0;
+  for (const [altid, rec] of Object.entries(seed)) {
+    if (!rec || typeof rec !== 'object') continue;
+    const live = showInfo[altid];
+    if (!live) { showInfo[altid] = Object.assign({}, rec); added++; continue; }
+    // Known show, but the live record may be thinner than the seed (a poll that
+    // caught it without a description, say). Fill the gaps, touch nothing else.
+    for (const [k, v] of Object.entries(rec)) {
+      if (k !== 'seen' && v && !live[k]) { live[k] = v; filled++; }
+    }
+  }
+  if (added || filled) {
+    showInfoUpdated = Date.now();
+    console.log(`[showinfo] seeded ${added} record(s), filled ${filled} field(s) from ${path.basename(SEED_PATH)}`);
+    saveShowInfoSoon();
+  }
+})();
 
 /**
  * Records harvested before descriptions were flattened still hold raw HTML.

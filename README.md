@@ -163,6 +163,8 @@ can't be verified in a desktop devtools viewport.
 ├── data/                         # runtime caches (gitignored, rebuildable)
 │   ├── programs.json             # wbai.org program directory
 │   └── showinfo.json             # records harvested from the on-air feed
+├── seed/                         # committed, shipped in the image
+│   └── showinfo.json             # starting set for the harvest above (npm run seed)
 ├── desktop/                      # Tauri shell (optional; the only build step)
 │   ├── package.json              # Tauri CLI only
 │   └── src-tauri/                # Cargo.toml, main.rs, tauri.conf.json, icons

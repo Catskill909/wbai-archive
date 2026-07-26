@@ -9,8 +9,15 @@ COPY package.json ./
 COPY server.js ./
 COPY public ./public
 
+# Starting set for the show-info cache. Kept outside /app/data because a mounted
+# volume shadows the image's copy of that directory — the server merges this in
+# at boot so a fresh deploy has descriptions immediately instead of waiting for
+# the whole schedule to rotate past the on-air feed.
+COPY seed ./seed
+
 # Writable spot for the harvested show-info cache. Mount a volume here to keep
-# it across redeploys; without one the app just relearns it from the live feed.
+# it across redeploys; without one the app relearns from the live feed, starting
+# from the seed above.
 RUN mkdir -p /app/data && chown node:node /app/data
 VOLUME ["/app/data"]
 

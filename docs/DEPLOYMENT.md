@@ -19,10 +19,19 @@ does this for you.
    - `NODE_ENV=production` — already set in the image.
    - `PROGRAMS_PATH` / `SHOWINFO_PATH` — where the show-info caches are written;
      default `/app/data/*.json`.
+   - `SEED_PATH` — the read-only starting set merged into the show-info cache at
+     boot; default `/app/seed/showinfo.json`. Rarely worth changing.
    - **Persistent storage (recommended):** mount a volume at **`/app/data`**.
      The compose file already declares one. Without it the show-info caches are
      rebuilt after each redeploy — the app works either way, but the program
-     directory is re-scraped and the on-air harvest starts from empty.
+     directory is re-scraped and the on-air harvest restarts from the seed rather
+     than from everything the instance had learned since its last deploy.
+
+   To check the volume is actually persisting, compare
+   `curl -s https://<host>/api/showinfo | head -c 40` across a redeploy: the
+   record count should keep climbing past the seed's, not reset to it. A count
+   that snaps back to the seed size after every deploy means the mount isn't
+   taking effect.
 5. **Health check:** the container defines `HEALTHCHECK` against `/healthz`.
    Coolify will also surface it; no extra config needed.
 6. **Deploy.** First load triggers a live scrape of the WBAI archive (cached for

@@ -5,7 +5,8 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "seed": "node -e \"const fs=require('fs'),d=JSON.parse(fs.readFileSync('data/showinfo.json','utf8')),o={};Object.keys(d).sort().forEach(k=>o[k]=d[k]);fs.mkdirSync('seed',{recursive:true});fs.writeFileSync('seed/showinfo.json',JSON.stringify(o));console.log('seed/showinfo.json <- '+Object.keys(o).length+' records')\""
   },
   "engines": {
     "node": ">=18"
