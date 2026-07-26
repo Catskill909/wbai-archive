@@ -228,6 +228,28 @@
   var countEl = document.getElementById('resultCount');
   var clockEl = document.getElementById('clock');
 
+  // ---------------- Overlay background inert ----------------
+  // Focus is already Tab-trapped inside each modal, but a screen-reader virtual
+  // cursor (VoiceOver swipe / NVDA browse) can still wander into the listing
+  // behind an open overlay. Marking the appbar + main `inert` removes them from
+  // both the focus order and the a11y tree while any overlay is up. We read the
+  // real .show state rather than counting opens, so nested cases stay correct:
+  // the lightbox over the sheet, or the sheet handing off to the live player,
+  // never prematurely un-inert the background. Call after toggling .show — and
+  // in close handlers, BEFORE returning focus, so a trigger in the (now un-inert)
+  // header is focusable again.
+  function refreshBgInert(){
+    var anyOpen = document.querySelector(
+      '.menu-panel.show, .sheet.show, .lightbox.show, .live-player.show'
+    );
+    ['.appbar', 'main#top'].forEach(function(sel){
+      var el = document.querySelector(sel);
+      if(!el) return;
+      if(anyOpen) el.setAttribute('inert', '');
+      else el.removeAttribute('inert');
+    });
+  }
+
   // ---------------- Infinite scroll ----------------
   // Render the filtered list in pages and append more as the sentinel scrolls
   // into view, so the DOM never holds all ~500 rows at once.
@@ -1016,6 +1038,7 @@
     livePlayer.setAttribute('aria-hidden', 'false');
     onAirBtn.setAttribute('aria-expanded', 'true');
     document.body.classList.add('sheet-open');
+    refreshBgInert();
     lpToggle.focus();
     document.addEventListener('keydown', onLivePlayerKey);
   }
@@ -1027,6 +1050,7 @@
     onAirBtn.setAttribute('aria-expanded', 'false');
     document.body.classList.remove('sheet-open');
     document.removeEventListener('keydown', onLivePlayerKey);
+    refreshBgInert();
     if(livePlayerReturnFocus && livePlayerReturnFocus.focus) livePlayerReturnFocus.focus();
     livePlayerReturnFocus = null;
   }
@@ -1348,6 +1372,7 @@
     lightboxImg.src = src;
     lightbox.classList.add('show');
     lightbox.setAttribute('aria-hidden', 'false');
+    refreshBgInert();
     lightboxClose.focus();
   }
   function closeLightbox(){
@@ -1355,6 +1380,7 @@
     lightbox.classList.remove('show');
     lightbox.setAttribute('aria-hidden', 'true');
     lightboxImg.removeAttribute('src');
+    refreshBgInert();
     if(lightboxReturnFocus && lightboxReturnFocus.focus) lightboxReturnFocus.focus();
     lightboxReturnFocus = null;
   }
@@ -1664,6 +1690,7 @@
     sheetScrim.classList.add('show');
     sheet.setAttribute('aria-hidden', 'false');
     document.body.classList.add('sheet-open');
+    refreshBgInert();
     sheetClose.focus();
     document.addEventListener('keydown', onSheetKey);
 
@@ -1693,6 +1720,7 @@
     sheet.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('sheet-open');
     document.removeEventListener('keydown', onSheetKey);
+    refreshBgInert();
     if(sheetReturnFocus && sheetReturnFocus.focus) sheetReturnFocus.focus();
     sheetReturnFocus = null;
     sheetRowId = null;
@@ -1775,6 +1803,7 @@
       panel.setAttribute('aria-hidden', 'false');
       btn.setAttribute('aria-expanded', 'true');
       document.body.classList.add('menu-open');
+      refreshBgInert();
       closeBtn.focus();
       document.addEventListener('keydown', onKey);
     }
@@ -1785,6 +1814,7 @@
       btn.setAttribute('aria-expanded', 'false');
       document.body.classList.remove('menu-open');
       document.removeEventListener('keydown', onKey);
+      refreshBgInert();
       if(lastFocus && lastFocus.focus) lastFocus.focus();
     }
     function onKey(e){
