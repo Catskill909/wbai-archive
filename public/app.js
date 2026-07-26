@@ -866,6 +866,7 @@
   var lpSong = document.getElementById('lpSong');
   var lpSongText = document.getElementById('lpSongText');
   var lpAlert = document.getElementById('lpAlert');
+  var lpAlertScrim = document.getElementById('lpAlertScrim');
   var lpAlertTitle = document.getElementById('lpAlertTitle');
   var lpAlertText = document.getElementById('lpAlertText');
   var lpAlertRetry = document.getElementById('lpAlertRetry');
@@ -880,6 +881,10 @@
   var liveAudio = null;
   var liveWanted = false;
   var liveEngaged = false;
+  // The outgoing connection during a drift handover — still playing, still
+  // audible, kept alive until its replacement proves it works. See resyncLive().
+  var livePrev = null;
+  var liveHandoverTimer = null;
   var liveErrored = false;
   // How long a play attempt may sit connecting before we call it a failure. A
   // dead stream host often does not error — the connection just never produces
@@ -941,18 +946,64 @@
   // retry, or the station's own listen page. The wording is refined once
   // /api/livestatus reports whether the stream host answered the *server*, which
   // is what separates "WBAI is off the air" from "something on this device".
+  // The alert is a dialog layered over the live player, so its visibility is
+  // tied to the player's by hand (it used to be a child, which did that for
+  // free). A failure while the player is closed is remembered, not thrown in the
+  // listener's face: the bar already reads "Stream unavailable", and the dialog
+  // is there when they open the player.
+  var lpAlertReturnFocus = null;
   function showLiveAlert(kind, title, text){
     liveAlertKind = kind;
     lpAlertTitle.textContent = title;
     lpAlertText.textContent = text;
-    lpAlert.hidden = false;
     livePlayer.classList.add('errored');
     setLiveNote('');
+    paintLiveAlert();
   }
   function hideLiveAlert(){
     liveAlertKind = '';
-    lpAlert.hidden = true;
     livePlayer.classList.remove('errored');
+    paintLiveAlert();
+  }
+  function paintLiveAlert(){
+    var want = !!liveAlertKind && livePlayer.classList.contains('show');
+    if(want === !lpAlert.hidden) return;              // already in that state
+    lpAlert.hidden = lpAlertScrim.hidden = !want;
+    lpAlert.setAttribute('aria-hidden', want ? 'false' : 'true');
+    if(want){
+      // Capture focus BEFORE inerting the player — inert blurs whatever is
+      // focused inside it, and by then there is nothing left to remember.
+      var focused = document.activeElement;
+      lpAlertReturnFocus = (focused && livePlayer.contains(focused)) ? focused : lpToggle;
+      // aria-modal means what is behind must be unreachable, including the
+      // player the dialog is sitting on top of.
+      livePlayer.setAttribute('inert', '');
+      document.addEventListener('keydown', onLiveAlertKey);
+      lpAlertRetry.focus();
+    } else {
+      livePlayer.removeAttribute('inert');
+      document.removeEventListener('keydown', onLiveAlertKey);
+      if(lpAlertReturnFocus && lpAlertReturnFocus.focus) lpAlertReturnFocus.focus();
+      lpAlertReturnFocus = null;
+    }
+  }
+  // Escape dismisses the alert only — the player behind it stays open. This runs
+  // ahead of the player's own Escape handler, which bails while the alert is up.
+  function onLiveAlertKey(e){
+    if(e.key === 'Escape'){ e.stopPropagation(); dismissLiveAlert(); return; }
+    if(e.key !== 'Tab') return;
+    var f = [].filter.call(
+      lpAlert.querySelectorAll('a[href], button:not([disabled])'),
+      function(el){ return el.offsetParent !== null; }
+    );
+    if(!f.length) return;
+    var first = f[0], last = f[f.length-1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  }
+  function dismissLiveAlert(){
+    hideLiveAlert();
+    setLiveNote('Tap play to try again');
   }
 
   function clearLiveWatchdog(){
@@ -1034,10 +1085,8 @@
     liveErrored = false;
     startLive();
   });
-  lpAlertClose.addEventListener('click', function(){
-    hideLiveAlert();
-    setLiveNote('Tap play to try again');
-  });
+  lpAlertClose.addEventListener('click', dismissLiveAlert);
+  lpAlertScrim.addEventListener('click', dismissLiveAlert);
 
   // ================= ONE CONNECTION, NEVER REUSED =================
   // A live stream has no timeline. An <audio> element that is paused and later
@@ -1110,6 +1159,11 @@
       setLiveLoading(false); setLiveIcon(true); setLiveNote('');
       activateLiveSession();
       showLiveBar();
+      // Recovering from a stall is the moment we learn how far behind we are:
+      // the element resumes at the byte it stopped on, so a 60s stall means 60s
+      // behind live, forever. Deferred — resyncLive() may replace this element,
+      // and doing that inside its own handler is asking for trouble.
+      if(liveDriftMs() >= LIVE_DRIFT_MS) setTimeout(resyncLive, 0);
     }));
     el.addEventListener('error', current(function(){ liveFailed('error'); }));
     // A live stream has no end; 'ended' means the server closed the connection.
@@ -1137,10 +1191,13 @@
 
   function stopLive(){
     clearLiveWatchdog();
-    var el = liveAudio;
+    clearTimeout(liveHandoverTimer);
+    var el = liveAudio, old = livePrev;
     liveAudio = null;            // from here, `el`'s remaining events are ignored
+    livePrev = null;
     liveWanted = false;
     destroyLiveEl(el);
+    destroyLiveEl(old);          // a half-finished handover must not be orphaned
     setLiveLoading(false);
     setLiveIcon(false);
     if(mediaMode === 'live') setPlaybackState('paused');
@@ -1179,17 +1236,44 @@
 
   // Staying at the live edge without a click. A connection that is still running
   // can fall behind — a long stall, a throttled background tab, a sleeping
-  // laptop — and it then plays a backlog forever. When the user comes back and
-  // the gap is real, swap in a fresh connection through the same startLive()
-  // path. Rate-limited, and never while hidden (a reconnect nobody is listening
-  // to just churns the station's server).
+  // laptop — and it then plays that backlog forever, permanently behind.
+  //
+  // This is a HANDOVER, not a restart, and the difference matters: there is no
+  // user gesture behind it, so `play()` on the replacement can simply be refused
+  // (autoplay policy — confirmed in Chrome, and the same rule on iOS). So the
+  // replacement has to prove it plays before the working connection is dropped,
+  // and a refusal costs nothing: the old connection is handed back, still
+  // audible, and the user's next tap gets them live the ordinary way.
+  // Rate-limited, and never while hidden — a reconnect nobody is listening to
+  // just churns the station's server.
   function resyncLive(){
-    if(!liveWanted || !liveAudio || liveErrored) return;
+    if(!liveWanted || !liveAudio || liveErrored || livePrev) return;
     if(document.visibilityState === 'hidden') return;
     if(liveDriftMs() < LIVE_DRIFT_MS) return;
     if(Date.now() - liveResyncAt < LIVE_RESYNC_MIN_MS) return;
     liveResyncAt = Date.now();
-    startLive();
+
+    var prev = liveAudio;
+    var next = newLiveEl();
+    livePrev = prev;             // `prev` keeps playing, but its events go quiet
+    liveAudio = next;
+    // Abandon a handover that never starts, or we would sit on two connections
+    // with the silent one nominally in charge.
+    liveHandoverTimer = setTimeout(function(){ handback(next, prev); }, LIVE_CONNECT_MS);
+    next.src = liveSrc();
+    next.play().then(function(){
+      if(next !== liveAudio) return;         // superseded by a stop or a restart
+      clearTimeout(liveHandoverTimer);
+      livePrev = null;
+      destroyLiveEl(prev);                   // only now is the old one expendable
+    }).catch(function(){ handback(next, prev); });
+  }
+  function handback(next, prev){
+    if(next !== liveAudio) return;
+    clearTimeout(liveHandoverTimer);
+    liveAudio = prev;            // whatever it is playing, it is playing something
+    livePrev = null;
+    destroyLiveEl(next);
   }
   document.addEventListener('visibilitychange', resyncLive);
   window.addEventListener('focus', resyncLive);
@@ -1297,10 +1381,12 @@
     refreshBgInert();
     lpToggle.focus();
     document.addEventListener('keydown', onLivePlayerKey);
+    paintLiveAlert();      // a failure that happened while this was closed
   }
   function closeLivePlayer(){
     if(!livePlayer.classList.contains('show')) return;
     livePlayer.classList.remove('show');
+    paintLiveAlert();      // the dialog goes with it; liveAlertKind is remembered
     livePlayerScrim.classList.remove('show');
     livePlayer.setAttribute('aria-hidden', 'true');
     onAirBtn.setAttribute('aria-expanded', 'false');
@@ -1311,6 +1397,7 @@
     livePlayerReturnFocus = null;
   }
   function onLivePlayerKey(e){
+    if(!lpAlert.hidden) return;          // the alert dialog owns the keyboard
     if(e.key === 'Escape'){ closeLivePlayer(); return; }
     if(e.key !== 'Tab') return;
     var f = [].filter.call(

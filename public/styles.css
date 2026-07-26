@@ -331,25 +331,37 @@
   .live-player.errored .lp-volume{display:none;}
 
   /* ---- stream-failure alert ----------------------------------------------
-     Shown inside the modal only after a play attempt fails. Danger-tinted so it
-     reads as a problem at a glance, but it stays a card (not a scolding banner):
-     one-line title, a plain-language cause, and two ways forward. */
+     Its own dialog layer over the live player, not a card inside it: the player
+     is a fixed, transformed, scrolling box, so a child gets clipped at its edge
+     and the retry buttons ended up below the fold at every window size. Danger-
+     tinted so it reads as a problem at a glance — one-line title, a plain-
+     language cause, and two ways forward. */
+  .lp-alert-scrim{
+    position:fixed; inset:0; z-index:185;
+    background:color-mix(in srgb, #000 46%, transparent);
+    animation:lpScrimIn .2s ease both;
+  }
+  .lp-alert-scrim[hidden]{display:none;}
+  @keyframes lpScrimIn{ from{opacity:0;} to{opacity:1;} }
   .lp-alert{
+    position:fixed; z-index:190; left:50%; top:50%;
+    width:min(420px, 92vw); max-height:min(86dvh, 560px); overflow-y:auto;
     display:flex; align-items:flex-start; gap:.8rem;
-    width:100%; margin-top:-.25rem; padding:.9rem 1rem;
-    border-radius:14px; text-align:left;
+    padding:1.15rem 1.2rem; border-radius:16px; text-align:left;
     color:var(--ink);
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--danger) 12%, transparent), transparent 70%),
       var(--surface-2);
     border:1px solid color-mix(in srgb, var(--danger) 38%, var(--outline-strong));
-    box-shadow:var(--elev-1);
+    box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
     animation:lpAlertIn .26s cubic-bezier(.2,0,.2,1) both;
   }
   .lp-alert[hidden]{display:none;}
+  /* the centring transform has to be carried through the keyframes, or the
+     end state (transform:none) would fling the dialog off-centre */
   @keyframes lpAlertIn{
-    from{opacity:0; transform:translateY(8px) scale(.98);}
-    to{opacity:1; transform:none;}
+    from{opacity:0; transform:translate(-50%,-50%) translateY(8px) scale(.98);}
+    to{opacity:1; transform:translate(-50%,-50%) scale(1);}
   }
   .lp-alert-icon{
     flex:none; width:32px; height:32px; border-radius:50%;
@@ -397,7 +409,7 @@
   /* the alert carries the whole message when it is up — no duplicate note line */
   .live-player.errored .lp-note{display:none;}
   @media (prefers-reduced-motion:reduce){
-    .lp-alert{animation-duration:.01s;}
+    .lp-alert, .lp-alert-scrim{animation-duration:.01s;}
     .lp-alert-btn:active{transform:none;}
   }
 
@@ -421,7 +433,6 @@
     .lp-art{width:min(180px, 30vh); grid-row:2 / span 4;}
     .lp-meta{text-align:left;}
     .lp-transport{max-width:none; justify-content:flex-start; margin-left:0;}
-    .lp-alert{grid-column:1 / -1;}
   }
   /* compact donate button in the appbar */
   .appbar-actions .btn{padding:.36rem .8rem; font-size:.76rem;}

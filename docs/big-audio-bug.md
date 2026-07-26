@@ -39,10 +39,17 @@ misread. So the element is never reused:
   still says "Paused"; the behavior is stop/retune, which is what every live
   radio app does.
 - **Drift resync:** wall-clock elapsed minus audio elapsed since a connection's
-  first frame measures how far behind live it has fallen. Past 45s, returning to
-  the tab (`visibilitychange`/`focus`/`online`/`pageshow`, or opening the modal)
-  swaps in a fresh connection through the same `startLive()`. Rate-limited to
-  once per 30s and never while hidden.
+  first frame measures how far behind live it has fallen. It is 0 on a healthy
+  stream and grows 1:1 with any stall (measured — see §0.6). Past 45s, either
+  returning to the tab (`visibilitychange`/`focus`/`online`/`pageshow`, or
+  opening the modal) or recovering from the stall itself triggers a resync.
+  Rate-limited to once per 30s and never while hidden.
+- **The resync is a HANDOVER, not a restart**, and that distinction is load-
+  bearing: there is no user gesture behind it, so `play()` on the replacement can
+  simply be *refused* by autoplay policy. So the replacement must prove it plays
+  before the working connection is dropped; on refusal the old connection is
+  handed back, still audible, and the user's next tap gets them live the ordinary
+  way. A background resync can never cost the listener their audio.
 
 **Why this doesn't reopen the old bug:** the race was *reading a torn-down
 element*. Now nothing does. There is exactly one way audio starts (`startLive()`)
@@ -51,6 +58,37 @@ and one way it ends (`stopLive()`), and they never share an element.
 **Regression watch:** the 5-step repro in §1 must still pass, plus: play → wait
 5+ minutes → play again must open a **new** connection (Network tab: a second
 request to `streaming.wbai.org`, audio at the live edge, not where it left off).
+
+---
+
+## 0.6 What the tests measured (2026-07-26)
+
+The fix was verified end to end against the real page in headless Chrome, with
+Chrome's resolver pointed at a fake Icecast that behaves like a true live source
+(one cursor advancing in real time; every client served from wherever it is
+*now*, no rewind, no per-client backlog). The app ran unmodified — same URL, same
+CSP. Because the fake station cannot replay the past, "did it reconnect?" is
+decided by the station's own connection ledger rather than inferred from the app.
+
+**40/40 under Chrome's default autoplay policy, 39/39 under the strictest one**
+(`user-gesture-required`, standing in for iOS). Covered: fresh connection per
+play; stop actually closing the socket; play after a 25s idle joining the live
+edge 25s further on; archive takeover; an outside pause treated as a stop; rapid
+stop/play not misreporting `AbortError`; a 60s stall; a dead station and retry.
+
+Two things the tests found that reasoning had not:
+
+1. **Drift is real and linear.** During a 60s stall Chrome does *not* error — it
+   fires `waiting`/`stalled`, holds `currentTime`, and resumes playing the
+   backlog permanently behind. Drift tracked the stall 1:1 (10s→60s). Nothing
+   triggered a check while the tab stayed in the foreground, which is why the
+   `playing` handler now checks drift on stall recovery.
+2. **The first version of the resync was itself a bug.** It hard-cut to a new
+   connection, and under the strict autoplay policy `play()` was refused — the
+   working (stale) audio was destroyed and the listener landed on "Your browser
+   blocked playback". That is what the handover in §0.5 exists to prevent, and
+   the strict-policy run now asserts the failure is free: audio keeps playing,
+   no error card, no orphaned socket.
 
 ---
 

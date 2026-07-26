@@ -274,32 +274,40 @@
 
   <p class="lp-note" id="lpNote" role="status" aria-live="polite">Tap play to tune in</p>
 
-  <!-- Stream-failure alert. Hidden until a play attempt actually fails; app.js
-       writes the title/message from what went wrong (station stream down, this
-       device offline, or the browser refusing playback) and offers a retry plus
-       the station's own listen page as a fallback. -->
-  <div class="lp-alert" id="lpAlert" role="alert" hidden>
-    <span class="lp-alert-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M10.3 3.9 1.8 18.1A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.9L13.7 3.9a2 2 0 0 0-3.4 0z"/>
-        <path d="M12 9v4.2"/><path d="M12 17.2h.01"/>
-      </svg>
-    </span>
-    <div class="lp-alert-body">
-      <p class="lp-alert-title" id="lpAlertTitle">Live stream unavailable</p>
-      <p class="lp-alert-text" id="lpAlertText"></p>
-      <div class="lp-alert-actions">
-        <button class="lp-alert-btn lp-alert-btn-primary" id="lpAlertRetry" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-.6 4"/><path d="M20 4v7h-7"/></svg>
-          Try again
-        </button>
-        <a class="lp-alert-btn" id="lpAlertOpen" href="https://wbai.org/listen-live/" target="_blank" rel="noopener">Listen on wbai.org</a>
-      </div>
+</div>
+
+<!-- Stream-failure alert. Hidden until a play attempt actually fails; app.js
+     writes the title/message from what went wrong (station stream down, this
+     device offline, or the browser refusing playback) and offers a retry plus
+     the station's own listen page as a fallback.
+
+     It lives OUT here, as its own dialog layer above the live player, rather
+     than inside it. The player is a fixed, transformed, scrolling box, so a
+     child is clipped at its edge — which is exactly how the retry buttons ended
+     up below the fold at every window size. Out here nothing can clip it. -->
+<div class="lp-alert-scrim" id="lpAlertScrim" hidden></div>
+<div class="lp-alert" id="lpAlert" role="alertdialog" aria-modal="true"
+     aria-labelledby="lpAlertTitle" aria-describedby="lpAlertText" aria-hidden="true" hidden>
+  <span class="lp-alert-icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.3 3.9 1.8 18.1A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.9L13.7 3.9a2 2 0 0 0-3.4 0z"/>
+      <path d="M12 9v4.2"/><path d="M12 17.2h.01"/>
+    </svg>
+  </span>
+  <div class="lp-alert-body">
+    <p class="lp-alert-title" id="lpAlertTitle">Live stream unavailable</p>
+    <p class="lp-alert-text" id="lpAlertText"></p>
+    <div class="lp-alert-actions">
+      <button class="lp-alert-btn lp-alert-btn-primary" id="lpAlertRetry" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-.6 4"/><path d="M20 4v7h-7"/></svg>
+        Try again
+      </button>
+      <a class="lp-alert-btn" id="lpAlertOpen" href="https://wbai.org/listen-live/" target="_blank" rel="noopener">Listen on wbai.org</a>
     </div>
-    <button class="lp-alert-dismiss" id="lpAlertClose" type="button" aria-label="Dismiss this message">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-    </button>
   </div>
+  <button class="lp-alert-dismiss" id="lpAlertClose" type="button" aria-label="Dismiss this message">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
 </div>
 
 <!-- The live stream has no static element on purpose: app.js builds a fresh
