@@ -53,7 +53,14 @@ megabytes of audio through the app.
 3. Regex-parse each `<tr name="show" …>` row into a structured object: title,
    category, host, air date/time, duration, days-to-stay, MP3 URL, RSS feed, and
    a `/pix/…` artwork path when the show has a photo.
-4. Cache the result in memory for 10 minutes.
+4. Cache the result in memory for 5 minutes. Concurrent misses share a single
+   in-flight scrape, so a burst of requests at expiry still costs one upstream
+   fetch.
+
+`GET /api/archive/head` returns `{updated, count, latest}` off the same cache —
+the ~57-byte freshness probe an open tab polls every 5 minutes to decide whether
+to offer the "new shows" refresh pill. `count` + `latest` is the signature: a new
+episode moves `latest`, one aging out of retention moves `count`.
 
 ### `GET /api/nowplaying`
 1. Fetch the now-playing feed and `JSON.parse` it.

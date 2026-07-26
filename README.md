@@ -75,7 +75,8 @@ attack surface at zero.
 | Route              | Description                                                        | Cache  |
 | ------------------ | ------------------------------------------------------------------ | ------ |
 | `GET /`            | The single-page app (`public/index.html`)                          | revalidate |
-| `GET /api/archive` | Live scrape of `archive2.wbai.org` → JSON list of shows            | 10 min |
+| `GET /api/archive` | Live scrape of `archive2.wbai.org` → JSON list of shows            | 5 min  |
+| `GET /api/archive/head` | Freshness probe: `{updated, count, latest}` from the same cached scrape, minus the rows (~57 B) | 5 min  |
 | `GET /api/nowplaying` | Proxy of WBAI's on-air / up-next feed → normalized JSON         | 15 s   |
 | `GET /api/programs` | wbai.org's program directory → host, description, links per show  | 10 min |
 | `GET /api/showinfo` | Richer per-show records harvested from the on-air feed over time  | 1 min  |

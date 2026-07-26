@@ -26,7 +26,7 @@ does this for you.
 5. **Health check:** the container defines `HEALTHCHECK` against `/healthz`.
    Coolify will also surface it; no extra config needed.
 6. **Deploy.** First load triggers a live scrape of the WBAI archive (cached for
-   10 minutes thereafter).
+   5 minutes thereafter).
 
 ### Notes
 

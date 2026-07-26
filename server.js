@@ -168,24 +168,46 @@ function parseArchive(html, photoMap) {
   return rows;
 }
 
-const archiveCache = makeCache(10 * 60 * 1000); // 10 minutes
+// 5 minutes. A re-scrape costs ~950 KB from upstream and ~2 ms of parse, so the
+// tighter window is cheap; what it buys is that a show posted just after a scrape
+// surfaces in about five minutes instead of ten.
+const archiveCache = makeCache(5 * 60 * 1000);
+
+// Shared promise for a scrape that is currently running. Without it, every
+// request arriving during a cache miss starts its own upstream fetch — and since
+// open tabs poll /api/archive/head on the same 5-minute cycle as the TTL, misses
+// arrive in clusters. One flight per miss, no matter how many callers.
+let archiveInFlight = null;
 
 async function getArchive() {
   const cached = archiveCache.get();
   if (cached) return cached;
-  const [html, photoMap] = await Promise.all([
-    fetchText(UPSTREAM.archive),
-    fetchPhotoMap().catch(() => ({})),
-  ]);
-  const rows = parseArchive(html, photoMap);
-  if (!rows.length) throw new Error('parsed zero rows');
-  // `latest` (newest air date) plus `count` is the freshness signature the client
-  // polls via /api/archive/head — an episode added moves `latest`, one aging out
-  // of the retention window moves `count`.
-  const latest = rows.reduce((max, r) => Math.max(max, r.dt), 0);
-  const payload = { updated: Date.now(), count: rows.length, latest, shows: rows };
-  archiveCache.set(payload);
-  return payload;
+  if (archiveInFlight) return archiveInFlight;
+
+  archiveInFlight = (async () => {
+    const [html, photoMap] = await Promise.all([
+      fetchText(UPSTREAM.archive),
+      fetchPhotoMap().catch(() => ({})),
+    ]);
+    const rows = parseArchive(html, photoMap);
+    if (!rows.length) throw new Error('parsed zero rows');
+    // `latest` (newest air date) plus `count` is the freshness signature the client
+    // polls via /api/archive/head — an episode added moves `latest`, one aging out
+    // of the retention window moves `count`.
+    const latest = rows.reduce((max, r) => Math.max(max, r.dt), 0);
+    const payload = { updated: Date.now(), count: rows.length, latest, shows: rows };
+    archiveCache.set(payload);
+    return payload;
+  })();
+
+  // Only the caller that started the flight clears it; joiners took the early
+  // return above. A rejection propagates to every joiner, which is what we want —
+  // they all fall through to the stale-cache path in the request handler.
+  try {
+    return await archiveInFlight;
+  } finally {
+    archiveInFlight = null;
+  }
 }
 
 // ---------------------------------------------------------- show info cache
