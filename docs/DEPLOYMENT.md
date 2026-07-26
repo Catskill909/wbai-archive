@@ -157,10 +157,11 @@ persisting. `writable: true` rules out a permissions problem.
 Coolify does not reliably act on a compose `volumes:` block; persistent storage
 generally has to be added in its own **Storages** panel, mapped to `/app/data`.
 
-**Impact is mild by design** — the seed refills the cache on every boot, so
-descriptions keep working. What is lost is production's ability to accumulate
-*beyond* the seed: anything it learns from the on-air feed evaporates at the next
-deploy, leaving a developer laptop as the effective source of truth.
+**As of 2026-07-26 this no longer costs anything visible.** Since
+`GET /api/showinfo/<altid>` resolves a description on demand for any show, a
+server that starts with an empty data dir fills itself in as visitors browse. The
+volume is now purely an optimisation — it saves repeat lookups across a redeploy,
+nothing more. Configure it if it's easy; ignore it if it isn't.
 
 **To confirm a fix**, redeploy and read `showinfoOnDisk` again. It should come
 back at or above the seed size (47) rather than 0. Because the seed makes every

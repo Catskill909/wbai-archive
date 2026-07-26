@@ -80,6 +80,7 @@ attack surface at zero.
 | `GET /api/nowplaying` | Proxy of WBAI's on-air / up-next feed → normalized JSON         | 15 s   |
 | `GET /api/programs` | wbai.org's program directory → host, description, links per show  | 10 min |
 | `GET /api/showinfo` | Richer per-show records harvested from the on-air feed over time  | 1 min  |
+| `GET /api/showinfo/<altid>` | One show, resolved on demand from archive2's per-show endpoint — works for any show, not just what's on air | 1 hr |
 | `GET /pix/<file>`  | Image proxy for show artwork (allow-listed `*_med_*.jpg` names)    | 1 day  |
 | `GET /healthz`     | Health check for the container / load balancer, plus the bundle version and boot-time storage facts (`storage.showinfoOnDisk` tells you whether a persistent volume is really mounted) | —      |
 

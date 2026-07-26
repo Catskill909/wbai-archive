@@ -95,13 +95,23 @@ resistanradio      373 chars
 tcoyhealth           0 chars   (genuinely has no description upstream)
 ```
 
-### Why it matters
+### Why it matters — **adopted 2026-07-26**
 
-A description is currently learnable only while its show is on the air, which is
+A description used to be learnable only while its show was on the air, which was
 the root of a whole chain of workarounds: the `showInfo` harvest, the
 `seed/showinfo.json` shipped in the image, and the persistent-volume requirement
 in [DEPLOYMENT.md](DEPLOYMENT.md). This endpoint removes that constraint — any
 show, on demand, from a cold start.
+
+It now backs `GET /api/showinfo/<altid>`, called by the front end when someone
+opens a sheet for a show nothing else describes. Verified against a server booted
+with no seed and an empty data dir: it began with 2 records and resolved every
+show asked of it.
+
+Note the two sources can carry *different* prose for the same show — the harvest
+had 808 characters for `wbaisports`, this endpoint 1357. Neither is wrong. The
+merge keeps whatever is already held, so adopting this changed nothing that was
+already rendering; it only fills gaps.
 
 ### What it does *not* give you
 

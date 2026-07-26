@@ -1,7 +1,58 @@
 # Big audio bug — live player pause/play loop
 
-**Status: RESOLVED (2026-07-24).** Fixed by reverting to the dead-simple standard
-model — see §0. The rest of the doc is kept as the post-mortem.
+**Status: RESOLVED (2026-07-24), then superseded (2026-07-26) — read §0.5 first.**
+§0 records the 2026-07-24 fix; §0.5 records the follow-on fix that replaced its
+accepted trade-off. §1–§7 are the original post-mortem.
+
+---
+
+## 0.5 Follow-on — "it played the cache" (2026-07-26)
+
+§0 accepted a trade-off: *"resuming may be a few seconds behind the live edge."*
+**That estimate was wrong, and the trade-off was not survivable.** A live stream
+has no timeline. An `<audio>` element that is paused and later resumed continues
+from the byte it stopped on, so it plays what was in the buffer **at pause time**
+and there is no seekable range to jump forward in. Leave the page sitting, press
+play, and you hear the past — indefinitely far back, never catching up. Same
+failure with no pause at all: a long stall, a throttled background tab, or a
+sleeping laptop leaves the element playing a backlog forever.
+
+**The fix (`public/app.js`, "ONE CONNECTION, NEVER REUSED"):** do what §0 itself
+prescribed — make "go live" explicit, and keep it out of one element's pause/play
+state machine. Every earlier attempt (rows 1–4 below) violated that by tearing
+down and reconnecting **the same element**, which is what left
+`readyState`/`networkState`/`paused` in transient states for the next click to
+misread. So the element is never reused:
+
+- **Stop** → tear the connection down and **throw the element away**
+  (`pause()`, `removeAttribute('src')`, `load()`, remove from the DOM). Its dying
+  events are ignored — every handler checks `el === liveAudio` first — and no
+  branch ever reads its state again, so the transient values that caused the
+  original cascade are unobservable by construction.
+- **Play** → build a **brand-new** `<audio>`, set `src` on it once, `play()` it. A
+  fresh element starts at `readyState 0` with an empty buffer, so a play can only
+  open a new connection, at the live edge. `src` carries a `?_=<ts>` so no cache,
+  proxy, or service worker can answer with the previous connection's bytes.
+- **Branching is on `liveWanted`**, a flag we own — never on `element.paused`
+  (this is hypothesis **H3** below, fixed). `liveAudio` is `null` when stopped.
+- **There is no resume path**, therefore no stale buffer can be played. The UI
+  still says "Paused"; the behavior is stop/retune, which is what every live
+  radio app does.
+- **Drift resync:** wall-clock elapsed minus audio elapsed since a connection's
+  first frame measures how far behind live it has fallen. Past 45s, returning to
+  the tab (`visibilitychange`/`focus`/`online`/`pageshow`, or opening the modal)
+  swaps in a fresh connection through the same `startLive()`. Rate-limited to
+  once per 30s and never while hidden.
+
+**Why this doesn't reopen the old bug:** the race was *reading a torn-down
+element*. Now nothing does. There is exactly one way audio starts (`startLive()`)
+and one way it ends (`stopLive()`), and they never share an element.
+
+**Regression watch:** the 5-step repro in §1 must still pass, plus: play → wait
+5+ minutes → play again must open a **new** connection (Network tab: a second
+request to `streaming.wbai.org`, audio at the live edge, not where it left off).
+
+---
 
 The live stream, once playing and controlled from the bottom player bar, would not
 reliably pause/resume. Every fix traded one broken symptom for another. This
@@ -10,7 +61,7 @@ and records the resolution.
 
 ---
 
-## 0. Resolution — what actually fixed it
+## 0. Resolution — what fixed the pause/play loop (superseded by §0.5)
 
 **Two things were wrong at once, and they compounded each other:**
 

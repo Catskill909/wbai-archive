@@ -625,8 +625,10 @@
   function setStatus(html){ playerStatus.innerHTML = html; }
 
   function refreshToggleIcon(){
+    // Live has no "paused element" to read — a stopped stream has no element at
+    // all — so the bar reads the intent flag the live section owns.
     var playing = (barMode === 'live')
-      ? (liveLoaded && !liveAudio.paused)
+      ? !!liveWanted
       : (!audio.paused && !audio.ended);
     playerIcon.outerHTML = playing
       ? '<svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
@@ -674,7 +676,7 @@
     barMode = 'archive';
     playerBar.classList.remove('live');
     showPlayerBar();
-    liveAudio.pause();            // hand the bar to the archive track
+    stopLive();                   // hand the bar to the archive track
     audio.src = mp3;
     audio.play().catch(function(){ /* surfaced by the error event below */ });
     updatePlayButtons();
@@ -795,12 +797,12 @@
       if(audio.paused) audio.play().catch(function(){}); else audio.pause();
       return;
     }
-    if(liveLoaded) toggleLive();
+    if(liveEngaged) toggleLive();
   }
   playerClose.addEventListener('click', function(){
     // Live mode: stop the stream and drop the bar, nothing archive-specific.
     if(barMode === 'live'){
-      liveAudio.pause();
+      stopLive();
       barMode = null;
       playerBar.classList.remove('live');
       setStatus('');
@@ -843,9 +845,9 @@
 
   // ---------------- Live stream + on-air metadata (modal player) ----------------
   // The On Air button in the appbar opens #livePlayer; the modal is the whole
-  // live experience now. Audio flows through the same #liveAudio element and the
-  // same media-session plumbing the header strip used before.
-  var liveAudio = document.getElementById('liveAudio');
+  // live experience now. Audio flows through a live <audio> element (built per
+  // connection — see "one connection, never reused" below) and the same
+  // media-session plumbing the header strip used before.
   var onAirBtn = document.getElementById('onAirBtn');
   var livePlayer = document.getElementById('livePlayer');
   var livePlayerScrim = document.getElementById('livePlayerScrim');
@@ -868,7 +870,16 @@
   var lpAlertText = document.getElementById('lpAlertText');
   var lpAlertRetry = document.getElementById('lpAlertRetry');
   var lpAlertClose = document.getElementById('lpAlertClose');
-  var liveLoaded = false;
+  // ---- Live playback state. Three flags, each with one meaning:
+  //   liveAudio   — the element carrying the CURRENT connection, or null when
+  //                 there is no connection at all (stopped). Never reused.
+  //   liveWanted  — user intent: the stream should be running right now. This,
+  //                 not `element.paused`, is what every branch and icon reads.
+  //   liveEngaged — live has been used at least once this session, so the bar
+  //                 and the Space key are allowed to drive it.
+  var liveAudio = null;
+  var liveWanted = false;
+  var liveEngaged = false;
   var liveErrored = false;
   // How long a play attempt may sit connecting before we call it a failure. A
   // dead stream host often does not error — the connection just never produces
@@ -876,6 +887,12 @@
   var LIVE_CONNECT_MS = 12000;
   var liveWatchdog = null;
   var liveAlertKind = '';
+  var liveVolume = 1;
+  // How far behind the live edge a running connection may fall before we swap it
+  // for a fresh one, and how often that is allowed to happen.
+  var LIVE_DRIFT_MS = 45000;
+  var LIVE_RESYNC_MIN_MS = 30000;
+  var liveResyncAt = 0;
 
   // Latest on-air snapshot, so the modal can paint whenever it opens and re-paint
   // as the schedule rolls over. Set by renderNowPlaying().
@@ -945,7 +962,8 @@
     clearLiveWatchdog();
     liveWatchdog = setTimeout(function(){
       liveWatchdog = null;
-      if(!liveAudio.paused && liveAudio.currentTime > 0) return;  // it did start
+      // it did start
+      if(liveAudio && !liveAudio.paused && liveAudio.currentTime > 0) return;
       liveFailed('timeout');
     }, LIVE_CONNECT_MS);
   }
@@ -958,11 +976,9 @@
     // one failure, one alert: a dead source often reports twice (rejected play()
     // *and* an error event), and the retry path clears this flag before re-trying
     if(liveErrored && !lpAlert.hidden) return;
-    var wasPlaying = liveAudio.currentTime > 0;
-    liveErrored = true;
-    liveAudio.pause();          // stop a half-open connection retrying in the dark
-    setLiveLoading(false);
-    setLiveIcon(false);
+    var wasPlaying = !!(liveAudio && liveAudio.currentTime > 0);
+    liveErrored = true;         // set first: stopLive() leaves the error UI alone
+    stopLive();                 // throw the half-open connection away entirely
     if(barMode === 'live') setStatus('Stream unavailable');
 
     if(reason === 'blocked'){
@@ -1016,41 +1032,169 @@
   lpAlertRetry.addEventListener('click', function(){
     hideLiveAlert();
     liveErrored = false;
-    toggleLive();
+    startLive();
   });
   lpAlertClose.addEventListener('click', function(){
     hideLiveAlert();
     setLiveNote('Tap play to try again');
   });
 
-  // DEAD-SIMPLE STANDARD MODEL (see docs/big-audio-bug.md). One <audio>, two verbs:
-  // pause() to pause, play() to resume. The source is set exactly once and never
-  // torn down or reconnected. Resume may be a few seconds behind live — accepted;
-  // that trade is what the whole teardown/reconnect cascade was trying to avoid,
-  // and it is what broke pause/play. No load(), no removeAttribute, no cache-buster.
-  function toggleLive(){
-    if(!liveAudio.paused){                    // currently playing -> pause
-      clearLiveWatchdog();
-      liveAudio.pause();
-      return;
+  // ================= ONE CONNECTION, NEVER REUSED =================
+  // A live stream has no timeline. An <audio> element that is paused and later
+  // resumed picks up at the byte it stopped on, so it plays whatever sat in the
+  // buffer at pause time — audio that is minutes old and can never catch up,
+  // because there is no seekable range to jump forward in. That is the "it
+  // played the cache" bug (2026-07-26): leave the page sitting, press play, hear
+  // the past. docs/big-audio-bug.md §0 knowingly accepted this ("resume may be a
+  // few seconds behind live"); in practice the gap is unbounded.
+  //
+  // That post-mortem also wrote the rule for fixing it: "go live" must be an
+  // explicit mechanism and must never be folded into one element's pause/play
+  // state machine. Every earlier attempt broke that rule — they tore down and
+  // reconnected the SAME element (removeAttribute('src') / load() / cache-
+  // buster), which left readyState/networkState/paused in transient states that
+  // the next click then misread. So:
+  //
+  //   * There is no resume. STOP tears the connection down and THROWS THE
+  //     ELEMENT AWAY. Its dying pause/error/emptied events are ignored (every
+  //     handler checks it is still the current element) and nothing ever reads
+  //     its state again, so those transient values cannot be observed at all.
+  //   * PLAY builds a BRAND NEW <audio>, sets src on it once, and plays it. A
+  //     fresh element starts at readyState 0 with an empty buffer, so a play can
+  //     only ever open a new connection — at the live edge, by construction.
+  //   * Branching is on `liveWanted`, a flag we own, never on `element.paused`
+  //     (hypothesis H3 of the post-mortem).
+  //
+  // The element is therefore short-lived, and `liveAudio` may legitimately be
+  // null. Nothing outside this section touches it — use startLive()/stopLive().
+
+  // A unique query per connection. Icecast ignores it; it guarantees that no
+  // layer between here and the station (HTTP cache, proxy, Safari's media cache)
+  // can answer a new connection with the previous one's bytes.
+  function liveSrc(){
+    return LIVE_URL + (LIVE_URL.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now();
+  }
+
+  // Drift = wall-clock elapsed minus audio elapsed since this connection's first
+  // frame. It is 0 on a healthy stream and grows with every stall, throttled
+  // background tab, or laptop sleep — i.e. it measures exactly how far behind the
+  // live edge we have fallen. The baseline is stamped once per connection: a
+  // stall must never be allowed to reset it, or the lag it caused disappears.
+  function markLiveEdge(el){
+    if(el._wall) return;
+    el._wall = Date.now();
+    el._time = el.currentTime;
+  }
+  function liveDriftMs(){
+    if(!liveAudio || !liveAudio._wall) return 0;
+    return (Date.now() - liveAudio._wall) - ((liveAudio.currentTime - liveAudio._time) * 1000);
+  }
+
+  // Every connection gets its own element and its own listeners. A discarded
+  // element still emits events while it is torn down, so each handler first
+  // checks that it is still the current one and otherwise does nothing.
+  function newLiveEl(){
+    var el = document.createElement('audio');
+    el.preload = 'none';
+    el.volume = liveVolume;
+    function current(fn){
+      return function(){ if(el === liveAudio) fn(); };
     }
+    el.addEventListener('play', claimAudioSession);
+    el.addEventListener('waiting', current(function(){ if(liveWanted) setLiveLoading(true); }));
+    el.addEventListener('playing', current(function(){
+      markLiveEdge(el);
+      clearLiveWatchdog();
+      liveErrored = false;
+      hideLiveAlert();
+      setLiveLoading(false); setLiveIcon(true); setLiveNote('');
+      activateLiveSession();
+      showLiveBar();
+    }));
+    el.addEventListener('error', current(function(){ liveFailed('error'); }));
+    // A live stream has no end; 'ended' means the server closed the connection.
+    el.addEventListener('ended', current(function(){ liveFailed('ended'); }));
+    // A pause we did not ask for — an OS interruption, a headset unplug, another
+    // app taking the audio session — is a stop, not a pause: that connection is
+    // dead to us and the next play must open a new one.
+    el.addEventListener('pause', current(function(){ if(liveWanted) stopLive(); }));
+    document.body.appendChild(el);
+    return el;
+  }
+
+  // Detach and abandon. removeAttribute('src') + load() is the spec's way to make
+  // an element stop downloading, and it is safe *here* precisely because this
+  // element is garbage the moment it returns — no branch ever reads it again.
+  function destroyLiveEl(el){
+    if(!el) return;
+    try{
+      el.pause();
+      el.removeAttribute('src');
+      el.load();
+    }catch(e){ /* the element is on its way out either way */ }
+    if(el.parentNode) el.parentNode.removeChild(el);
+  }
+
+  function stopLive(){
+    clearLiveWatchdog();
+    var el = liveAudio;
+    liveAudio = null;            // from here, `el`'s remaining events are ignored
+    liveWanted = false;
+    destroyLiveEl(el);
+    setLiveLoading(false);
+    setLiveIcon(false);
+    if(mediaMode === 'live') setPlaybackState('paused');
+    if(liveErrored) return;      // liveFailed() owns the note and the bar status
+    setLiveNote(liveEngaged ? 'Paused' : 'Tap play to tune in');
+    if(barMode === 'live'){ refreshToggleIcon(); setStatus('Paused'); }
+  }
+
+  // The one and only way audio starts. Always a new element, always a new
+  // connection, therefore always the live edge — whether it is the first play,
+  // a play after a stop, a retry after a failure, or a drift resync.
+  function startLive(){
+    stopLive();                               // no-op when nothing is connected
     if(!audio.paused) audio.pause();          // the two players never run at once
     hideLiveAlert();
-    if(!liveAudio.getAttribute('src')) liveAudio.src = LIVE_URL;  // set the source once
-    // The ONE exception to "never load()": the element latched a MediaError, and
-    // per spec a failed element will not play again until the resource is
-    // re-selected. This is the error-recovery path only — pause/resume never
-    // touches it (that reconnect logic is exactly what broke before).
-    if(liveErrored && liveAudio.error) liveAudio.load();
     liveErrored = false;
-    liveLoaded = true;
+    liveWanted = true;
+    liveEngaged = true;
     setLiveLoading(true);
     setLiveNote('Connecting…');
+    if(barMode === 'live'){ refreshToggleIcon(); setStatus('Connecting…'); }
+    var el = liveAudio = newLiveEl();
+    el.src = liveSrc();
     armLiveWatchdog();
-    liveAudio.play().catch(function(err){
+    el.play().catch(function(err){
+      // Stopping (or restarting) while play() is still pending rejects it with
+      // AbortError. That is us, not a failure — only report for the live element.
+      if(el !== liveAudio) return;
       liveFailed(err && err.name === 'NotAllowedError' ? 'blocked' : 'error');
     });
   }
+
+  function toggleLive(){
+    if(liveWanted) stopLive(); else startLive();
+  }
+
+  // Staying at the live edge without a click. A connection that is still running
+  // can fall behind — a long stall, a throttled background tab, a sleeping
+  // laptop — and it then plays a backlog forever. When the user comes back and
+  // the gap is real, swap in a fresh connection through the same startLive()
+  // path. Rate-limited, and never while hidden (a reconnect nobody is listening
+  // to just churns the station's server).
+  function resyncLive(){
+    if(!liveWanted || !liveAudio || liveErrored) return;
+    if(document.visibilityState === 'hidden') return;
+    if(liveDriftMs() < LIVE_DRIFT_MS) return;
+    if(Date.now() - liveResyncAt < LIVE_RESYNC_MIN_MS) return;
+    liveResyncAt = Date.now();
+    startLive();
+  }
+  document.addEventListener('visibilitychange', resyncLive);
+  window.addEventListener('focus', resyncLive);
+  window.addEventListener('online', resyncLive);
+  window.addEventListener('pageshow', resyncLive);
 
   // ---- The docked player bar, in live mode. Playing the stream surfaces the same
   // bar the archive uses (so pause/navigation are persistent and familiar), with a
@@ -1078,34 +1222,7 @@
     refreshToggleIcon();
   }
 
-  liveAudio.addEventListener('waiting', function(){ if(liveAudio.paused===false) setLiveLoading(true); });
-  liveAudio.addEventListener('playing', function(){
-    clearLiveWatchdog();
-    liveErrored = false;
-    hideLiveAlert();
-    setLiveLoading(false); setLiveIcon(true); setLiveNote('');
-    activateLiveSession();
-    showLiveBar();
-  });
-  liveAudio.addEventListener('pause', function(){
-    clearLiveWatchdog();     // a deliberate pause is not a failed connection
-    setLiveLoading(false); setLiveIcon(false);
-    if(!liveErrored) setLiveNote('Paused');
-    if(mediaMode === 'live') setPlaybackState('paused');
-    // the stream is paused but the bar stays put; just reflect the state
-    if(barMode === 'live'){ refreshToggleIcon(); setStatus('Paused'); }
-  });
-  liveAudio.addEventListener('error', function(){
-    // ignore a stray error when there is no source to fail on
-    if(!liveAudio.getAttribute('src')) return;
-    liveFailed('error');
-  });
-  // A live stream has no end; 'ended' means the server closed the connection.
-  liveAudio.addEventListener('ended', function(){
-    if(liveAudio.getAttribute('src')) liveFailed('ended');
-  });
-
-  audio.addEventListener('play', function(){ if(liveLoaded && !liveAudio.paused) liveAudio.pause(); });
+  audio.addEventListener('play', function(){ if(liveWanted) stopLive(); });
 
   // ---- Volume. New to the modal; the strip had none. Setting .volume is a no-op
   // on iOS (the OS owns it), so the slider is dropped there rather than shown dead.
@@ -1114,12 +1231,15 @@
                     (/Mac/.test(navigator.platform) && navigator.maxTouchPoints > 1));
   function paintVol(){ lpVolume.style.setProperty('--pct', (parseFloat(lpVolume.value) || 0) * 100); }
   if(canVolume){
+    // The setting lives here, not on the element: each connection builds a new
+    // <audio> and reads `liveVolume` when it does.
     var storedVol = parseFloat(localStorage.getItem(LIVE_VOL_KEY));
-    if(isFinite(storedVol)){ liveAudio.volume = storedVol; lpVolume.value = String(storedVol); }
+    if(isFinite(storedVol)){ liveVolume = storedVol; lpVolume.value = String(storedVol); }
     paintVol();
     lpVolume.addEventListener('input', function(){
       var v = parseFloat(lpVolume.value);
-      liveAudio.volume = v;
+      liveVolume = v;
+      if(liveAudio) liveAudio.volume = v;
       paintVol();
       try{ localStorage.setItem(LIVE_VOL_KEY, String(v)); }catch(e){}
     });
@@ -1163,9 +1283,11 @@
     // reflect whatever the stream is currently doing
     if(!lpAlert.hidden) setLiveNote('');          // the alert says it all
     else if(liveErrored) setLiveNote('Tap play to try again');
-    else if(liveLoaded && !liveAudio.paused) setLiveNote('');
-    else if(liveLoaded) setLiveNote('Paused');
+    else if(liveWanted) setLiveNote('');
+    else if(liveEngaged) setLiveNote('Paused');
     else setLiveNote('Tap play to tune in');
+    // opening the player is "I'm back" — the moment to check for a stale connection
+    resyncLive();
     livePlayerReturnFocus = document.activeElement;
     livePlayer.classList.add('show');
     livePlayerScrim.classList.add('show');
@@ -1220,7 +1342,7 @@
     if(e.key === ' ' || e.key === 'Spacebar'){
       // let a focused button or link handle its own activation
       if(tag === 'BUTTON' || tag === 'A') return;
-      if(!nowPlaying.mp3 && !liveLoaded) return;
+      if(!nowPlaying.mp3 && !liveEngaged) return;
       e.preventDefault();               // otherwise Space scrolls the listing
       togglePlayback();
       return;
@@ -1247,7 +1369,7 @@
   }
   claimAudioSession();
   audio.addEventListener('play', claimAudioSession);
-  liveAudio.addEventListener('play', claimAudioSession);
+  // the live element is built per connection; newLiveEl() binds this on each one
 
   // ---------------- Media Session: lock screen, hardware keys, car displays ----
   // Both <audio> elements share one OS-level session, so `mediaMode` tracks which
@@ -1359,9 +1481,9 @@
     if(!hasMediaSession) return;
     mediaMode = 'live';
     refreshLiveMetadata();
-    setHandler('play', function(){ if(liveAudio.paused) toggleLive(); });
-    setHandler('pause', function(){ liveAudio.pause(); });
-    setHandler('stop', function(){ liveAudio.pause(); });
+    setHandler('play', function(){ if(!liveWanted) startLive(); });
+    setHandler('pause', function(){ stopLive(); });
+    setHandler('stop', function(){ stopLive(); });
     setHandler('seekbackward', null);
     setHandler('seekforward', null);
     setHandler('seekto', null);
@@ -1672,6 +1794,28 @@
     return programsPromise;
   }
 
+  // Descriptions for shows the on-air harvest has never met are resolved one at
+  // a time, when someone actually opens that show's sheet. The sheet paints
+  // immediately from whatever we already hold and fills in when this lands, so a
+  // slow or failed lookup costs nothing — it just leaves the sheet as it was.
+  var detailAsked = {};
+  function ensureShowDetail(altid){
+    if(!altid || detailAsked[altid]) return;
+    var have = showInfo[altid];
+    if(have && have.desc) return;          // already have what the sheet needs
+    detailAsked[altid] = true;
+    fetch('/api/showinfo/' + encodeURIComponent(altid), {cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d || !d.info) return;
+        showInfo[altid] = d.info;
+        // repaint only if this is still the sheet on screen
+        var same = rowById(sheetRowId);
+        if(same && same.sho === altid && sheet.classList.contains('show')) paintSheet(same);
+      })
+      .catch(function(){ /* non-fatal: the sheet keeps what it had */ });
+  }
+
   // Same normalisation the server keys the directory with: the archive and
   // wbai.org share nothing but the show's name.
   function normTitle(s){
@@ -1964,6 +2108,8 @@
         if(same && sheet.classList.contains('show')) paintSheet(same);
       });
     }
+    // and the per-show record, for anything neither source already describes
+    ensureShowDetail(r.sho);
   }
 
   // Closing from the UI goes through history so the entry pushed on open is

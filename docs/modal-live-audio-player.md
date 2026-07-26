@@ -1,6 +1,12 @@
 # Modal Live Audio Player — spec & plan
 
-**Status:** proposal. Nothing here is built. This document specifies a redesign of
+**Status:** proposal, now built — kept as the design record. One thing here is
+out of date: the transport no longer drives a single shared `#liveAudio` element
+and no longer reads `liveAudio.paused`. A live connection is built and thrown
+away per play/stop, and state is read from the `liveWanted` flag. See
+[big-audio-bug.md §0.5](big-audio-bug.md) before touching §5.5 or §5.6.
+
+This document specifies a redesign of
 the header live-stream affordance and the modal player it opens. It follows the
 conventions already in the codebase — the `.sheet` dialog pattern, the shared
 `liveAudio` element, the on-air metadata pipeline, and the design tokens in

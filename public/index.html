@@ -302,7 +302,9 @@
   </div>
 </div>
 
-<audio id="liveAudio" preload="none"></audio>
+<!-- The live stream has no static element on purpose: app.js builds a fresh
+     <audio> per connection so a play can never resume a stale buffer. See the
+     "ONE CONNECTION, NEVER REUSED" block in public/app.js. -->
 
 <div class="player-bar" id="playerBar" hidden>
   <!-- Shown for a few seconds after playback picks up where it left off. Sits

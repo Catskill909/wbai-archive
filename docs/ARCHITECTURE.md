@@ -98,14 +98,35 @@ a map keyed by `sh_altid` — the same altid the archive rows carry — so cover
 fills in as the schedule rotates. It is strictly additive: an empty upstream
 field never overwrites a value already held.
 
-**Seeding.** The corollary of "harvested only while on air" is that a freshly
-deployed server knows two shows, and a weekly programme it missed is a week away
-from coming round again — so every info sheet would be blank until the schedule
-had rotated all the way through. The image therefore ships `seed/showinfo.json`,
-merged into the cache at boot. The seed is a floor, never an override: a record
-already present is kept, and only fields it is *missing* are filled, because
-anything harvested from the live feed is newer than the image. Refresh the seed
-from a long-running instance with `npm run seed`.
+### `GET /api/showinfo/<altid>` — the gap filler
+
+The corollary of "harvested only while on air" used to be that a freshly deployed
+server knew two shows, and a weekly programme it had missed was a week away from
+coming round again.
+
+archive2 exposes a per-show endpoint that answers for **any** show at any time
+(`_pa_get_show_info.php` — POST-only, base64'd HTML, see
+[UPSTREAM.md](UPSTREAM.md)). This route wraps it. The front end calls it when
+someone opens a sheet nothing else describes; the sheet paints immediately from
+what is already held and repaints if the lookup lands, so a slow or failed
+request costs nothing.
+
+- **Lazy, never a sweep.** One request, for a show a real person just opened.
+  Fetching all ~150 programmes up front would be a rude thing to send a small
+  station's server for data nobody has asked for.
+- **Never overwrites.** The on-air feed carries strictly more (artwork, links,
+  short description), so anything already held wins on a clash. Purely additive:
+  adopting it changed nothing that was already rendering.
+- **Misses are remembered** for 6 hours, so a show with genuinely no description
+  upstream isn't re-asked every time its sheet opens. One in-flight request per
+  altid, shared by concurrent callers.
+
+**Seeding.** `seed/showinfo.json` still ships in the image and is merged at boot,
+but it is now an optimisation rather than a necessity: it saves a round trip for
+the shows it covers. It is a floor, never an override — a record already present
+is kept, and only fields it is *missing* are filled. It no longer needs periodic
+refreshing, since anything absent is resolved on demand. `npm run seed` remains
+if you want to widen the warm start.
 
 It lives at `seed/` rather than inside `data/` deliberately — a volume mounted at
 `/app/data` shadows whatever the image placed there, so a seed shipped in the

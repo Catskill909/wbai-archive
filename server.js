@@ -389,6 +389,96 @@ function recordShowInfo(sh) {
   saveShowInfoSoon();
 }
 
+// --------------------------------------------- per-show detail, on demand
+
+/**
+ * archive2 answers a per-show record for the dropdown on its own listing page,
+ * keyed by the same altid the archive rows carry — and unlike the on-air feed it
+ * answers for *any* show, not only whichever one happens to be broadcasting.
+ * That lifts the constraint the harvest above is built around: a description no
+ * longer has to be caught while its show is live.
+ *
+ * Quirks, all verified — see docs/UPSTREAM.md:
+ *   - POST only. A GET replies with the literal string "bad".
+ *   - The body is base64 of a small HTML table, not JSON.
+ *   - An unknown altid replies with an empty body.
+ *
+ * Fetched lazily, when a visitor actually opens a show's sheet, rather than
+ * sweeping all ~150 programmes up front — one small request that a real person
+ * asked for is a far politer thing to send a small station's server.
+ */
+const DETAIL_RETRY_MS = 6 * 60 * 60 * 1000;
+const detailTried = new Map();     // altid -> ts of last attempt, misses included
+const detailInFlight = new Map();  // altid -> shared promise, one flight per altid
+
+function parseShowDetail(html) {
+  const pick = (cls) => {
+    const m = html.match(new RegExp(`<td[^>]*class="${cls}"[^>]*>([\\s\\S]*?)</td>`));
+    return m ? htmlToText(m[1]) : '';
+  };
+  // `dj` rather than `producer` so the record matches the shape the on-air feed
+  // and the front end already share
+  return { desc: pick('info_stmt'), dj: pick('info_producer') };
+}
+
+async function fetchShowDetail(altid) {
+  const body = await fetchText(`${UPSTREAM.archive}_pa_get_show_info.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `sh_altid=${encodeURIComponent(altid)}`,
+  });
+  const raw = body.trim();
+  if (!raw) return null;                       // unknown altid: empty reply
+  const html = Buffer.from(raw, 'base64').toString('utf8');
+  if (!html.includes('info_table')) return null;
+  const next = parseShowDetail(html);
+  Object.keys(next).forEach(k => { if (!next[k]) delete next[k]; });
+  return Object.keys(next).length ? next : null;
+}
+
+/**
+ * Resolves to the record for `altid`, fetching it if we have nothing useful.
+ * Never overwrites a field already held: the on-air feed carries strictly more
+ * (artwork, links, short description), so anything it has taught us outranks
+ * this. Failures and genuine no-description shows are both remembered for
+ * DETAIL_RETRY_MS so opening such a sheet repeatedly doesn't re-ask upstream.
+ */
+async function getShowDetail(altid) {
+  const held = showInfo[altid];
+  if (held && held.desc) return held;
+
+  const tried = detailTried.get(altid) || 0;
+  if (Date.now() - tried < DETAIL_RETRY_MS) return held || null;
+  if (detailInFlight.has(altid)) return detailInFlight.get(altid);
+
+  const flight = (async () => {
+    let found = null;
+    try {
+      found = await fetchShowDetail(altid);
+    } catch (e) {
+      console.warn(`[detail] ${altid} lookup failed:`, e.message);
+    }
+    detailTried.set(altid, Date.now());
+    if (!found) return showInfo[altid] || null;
+
+    const prev = showInfo[altid];
+    const merged = Object.assign({}, found, prev);   // prev wins on every clash
+    if (!prev || Object.keys(found).some(k => !prev[k])) {
+      showInfoUpdated = Date.now();
+      showInfo[altid] = Object.assign(merged, { seen: showInfoUpdated });
+      saveShowInfoSoon();
+    }
+    return showInfo[altid];
+  })();
+
+  detailInFlight.set(altid, flight);
+  try {
+    return await flight;
+  } finally {
+    detailInFlight.delete(altid);
+  }
+}
+
 // ------------------------------------------------------- program directory
 
 /**
@@ -811,6 +901,19 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/nowplaying') {
       const data = await getNowPlaying();
       return sendJson(res, data, 200, 10);
+    }
+    // Single-show lookup, resolved on demand from archive2's per-show endpoint.
+    // The bulk /api/showinfo below stays the front end's first paint; this fills
+    // the gaps for shows the on-air harvest has never met.
+    if (url.startsWith('/api/showinfo/')) {
+      const altid = decodeURIComponent(url.slice('/api/showinfo/'.length).split('?')[0]);
+      // altids upstream are bare word characters; refuse anything else rather
+      // than forward it into a POST body
+      if (!/^[A-Za-z0-9_]{1,64}$/.test(altid)) {
+        return sendJson(res, { error: 'bad altid' }, 400);
+      }
+      const info = await getShowDetail(altid);
+      return sendJson(res, { altid, info: info || null }, 200, info ? 3600 : 300);
     }
     if (url === '/api/showinfo') {
       // harvested lazily by the now-playing poll; empty until the first one lands
