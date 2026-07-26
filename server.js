@@ -257,6 +257,34 @@ const showInfo = readJsonFile(SHOWINFO_PATH, {});
 let showInfoUpdated = Object.keys(showInfo).length ? Date.now() : 0;
 
 /**
+ * Boot-time storage facts, reported by /healthz.
+ *
+ * Whether a persistent volume is actually mounted at the data dir is otherwise
+ * only answerable by watching a redeploy and inferring from record counts. These
+ * are captured *before* the seed merge below, so they describe what genuinely
+ * survived on disk rather than what the seed has just put in memory.
+ */
+const storageDiag = {
+  // records read out of the data dir at boot; >0 means a previous run's cache
+  // outlived its container, which is exactly what a working volume looks like
+  showinfoOnDisk: Object.keys(showInfo).length,
+  writable: false,
+};
+(function probeDataDir() {
+  const dir = path.dirname(SHOWINFO_PATH);
+  const probe = path.join(dir, '.write-probe');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(probe, String(Date.now()));
+    storageDiag.writable = true;
+  } catch (e) {
+    console.warn('[storage] data dir is not writable, caches are memory-only:', e.message);
+  } finally {
+    try { fs.unlinkSync(probe); } catch (e) { /* nothing to clean up */ }
+  }
+})();
+
+/**
  * A show's record can only be harvested while that show is on the air, so a
  * server that has just booted knows almost nothing: two records, and a weekly
  * show it missed is a week away from coming round again. That is fine on a
@@ -807,7 +835,17 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, await probeLiveStream(), 200, 5);
     }
     if (url === '/healthz') {
-      return sendJson(res, { ok: true, version: appVersion() });
+      return sendJson(res, {
+        ok: true,
+        version: appVersion(),
+        // Answers "is the volume mounted?" without having to infer it from a
+        // redeploy: showinfoOnDisk > 0 means a previous run's cache survived.
+        storage: {
+          writable: storageDiag.writable,
+          showinfoOnDisk: storageDiag.showinfoOnDisk,
+          showinfoNow: Object.keys(showInfo).length,
+        },
+      });
     }
     if (url.startsWith('/pix/')) {
       return proxyPix(url.slice('/pix/'.length).split('?')[0], res);

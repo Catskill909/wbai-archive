@@ -81,7 +81,7 @@ attack surface at zero.
 | `GET /api/programs` | wbai.org's program directory → host, description, links per show  | 10 min |
 | `GET /api/showinfo` | Richer per-show records harvested from the on-air feed over time  | 1 min  |
 | `GET /pix/<file>`  | Image proxy for show artwork (allow-listed `*_med_*.jpg` names)    | 1 day  |
-| `GET /healthz`     | Health check for the container / load balancer                     | —      |
+| `GET /healthz`     | Health check for the container / load balancer, plus the bundle version and boot-time storage facts (`storage.showinfoOnDisk` tells you whether a persistent volume is really mounted) | —      |
 
 All upstream responses are cached in memory; if an upstream is briefly down, the
 last good response (or a shipped snapshot at `public/data/shows-fallback.json`)

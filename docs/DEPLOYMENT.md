@@ -27,11 +27,21 @@ does this for you.
      directory is re-scraped and the on-air harvest restarts from the seed rather
      than from everything the instance had learned since its last deploy.
 
-   To check the volume is actually persisting, compare
-   `curl -s https://<host>/api/showinfo | head -c 40` across a redeploy: the
-   record count should keep climbing past the seed's, not reset to it. A count
-   that snaps back to the seed size after every deploy means the mount isn't
-   taking effect.
+   **To check the volume is actually mounted, ask the server** — `/healthz`
+   reports what it found on disk at boot, before the seed was merged in:
+
+   ```sh
+   curl -s https://<host>/healthz
+   ```
+
+   | `storage` shows | Means |
+   | --- | --- |
+   | `writable:true, showinfoOnDisk:>0` | Volume mounted and a previous run's cache survived. Correct. |
+   | `writable:true, showinfoOnDisk:0` | Writable, but nothing carried over. Expected on the very first boot; **on any later redeploy it means the volume is not persisting.** |
+   | `writable:false` | The data dir can't be written at all — caches are memory-only and nothing will ever survive. Check mount permissions (the container runs as uid `node`). |
+
+   `showinfoNow` is the count after seeding, so it will read ~47 even with no
+   volume — compare `showinfoOnDisk`, not `showinfoNow`.
 5. **Health check:** the container defines `HEALTHCHECK` against `/healthz`.
    Coolify will also surface it; no extra config needed.
 6. **Deploy.** First load triggers a live scrape of the WBAI archive (cached for
