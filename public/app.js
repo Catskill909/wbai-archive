@@ -1303,6 +1303,7 @@
   function ingest(list){
     rows = list;
     latestDt = rows.reduce(function(max,r){ return Math.max(max, r.dt); }, 0);
+    archiveSig = rows.length + ':' + latestDt;
     render();
     setClock();
     openDeepLink();
@@ -1341,6 +1342,90 @@
           .catch(function(){ loadingEl.hidden = true; countEl.textContent = 'Could not load the archive.'; emptyEl.hidden = false; });
       });
   }
+
+  // ---------------- Freshness poll + refresh pill ----------------
+  // The listing is fetched once at load, so a tab left open all day would sit on
+  // a frozen archive. Rather than re-render under the user (which would move the
+  // list while they read, or while a show is playing), poll the cheap
+  // /api/archive/head probe and let *them* pull the update in.
+  //
+  // Upstream is scraped at most every 10 min server-side, so a 5-minute poll of
+  // a ~60-byte response is the cheapest thing that never lags the source by more
+  // than one cache window.
+  var FRESH_POLL_MS = 5 * 60 * 1000;
+  var archiveSig = '';        // count:latestDt of what is currently rendered
+  var pendingSig = '';        // signature the pill is offering, if shown
+  var refreshBusy = false;
+  var lastFreshCheck = 0;
+  var refreshBtn = document.getElementById('refreshBtn');
+  var refreshBtnText = document.getElementById('refreshBtnText');
+
+  function showRefreshPill(sig, count){
+    if(pendingSig === sig) return;
+    pendingSig = sig;
+    var added = count - rows.length;
+    refreshBtnText.textContent = added > 0
+      ? (added === 1 ? '1 new show' : added + ' new shows')
+      : 'Archive updated';
+    refreshBtn.setAttribute('aria-label', refreshBtnText.textContent + ' — refresh the listing');
+    refreshBtn.hidden = false;
+  }
+
+  function hideRefreshPill(){
+    pendingSig = '';
+    refreshBtn.hidden = true;
+    refreshBtn.classList.remove('busy');
+    refreshBtn.disabled = false;
+  }
+
+  function checkFreshness(){
+    if(!archiveSig || refreshBusy) return;         // nothing loaded yet, or mid-refresh
+    if(document.hidden) return;                    // don't poll a backgrounded tab
+    lastFreshCheck = Date.now();
+    fetch('/api/archive/head', {cache:'no-store'})
+      .then(function(r){ if(!r.ok) throw new Error('head '+r.status); return r.json(); })
+      .then(function(d){
+        if(!d || !d.count) return;
+        var sig = d.count + ':' + d.latest;
+        if(sig !== archiveSig) showRefreshPill(sig, d.count);
+      })
+      .catch(function(){ /* transient; the next poll tries again */ });
+  }
+
+  // Swap the new listing in without a page reload: playback, the open sheet and
+  // the scroll position all survive, and the paging depth is restored so someone
+  // deep in the list isn't thrown back to the first page.
+  function refreshArchive(){
+    if(refreshBusy) return;
+    refreshBusy = true;
+    refreshBtn.classList.add('busy');
+    refreshBtn.disabled = true;
+    var keepShown = shown;
+    var keepScroll = window.pageYOffset;
+    fetch('/api/archive', {cache:'no-store'})
+      .then(function(r){ if(!r.ok) throw new Error('archive '+r.status); return r.json(); })
+      .then(function(data){
+        ingest(data.shows || []);
+        while(shown < keepShown && shown < filtered.length) showMore();
+        window.scrollTo(0, Math.min(keepScroll, Math.max(0, document.body.scrollHeight - window.innerHeight)));
+        hideRefreshPill();
+      })
+      .catch(function(){
+        // leave the pill up so the user can try again
+        refreshBtn.classList.remove('busy');
+        refreshBtn.disabled = false;
+      })
+      .then(function(){ refreshBusy = false; lastFreshCheck = Date.now(); });
+  }
+
+  refreshBtn.addEventListener('click', refreshArchive);
+  setInterval(checkFreshness, FRESH_POLL_MS);
+  // Coming back to a tab that has been parked for a while is exactly when the
+  // listing is most likely stale, so check on return rather than waiting out the
+  // rest of the interval.
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden && Date.now() - lastFreshCheck > 60000) checkFreshness();
+  });
 
   // ---------------- Show info sheet ----------------
   // Two sources feed it: /api/programs (wbai.org's program directory — host,

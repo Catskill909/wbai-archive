@@ -178,7 +178,11 @@ async function getArchive() {
   ]);
   const rows = parseArchive(html, photoMap);
   if (!rows.length) throw new Error('parsed zero rows');
-  const payload = { updated: Date.now(), count: rows.length, shows: rows };
+  // `latest` (newest air date) plus `count` is the freshness signature the client
+  // polls via /api/archive/head — an episode added moves `latest`, one aging out
+  // of the retention window moves `count`.
+  const latest = rows.reduce((max, r) => Math.max(max, r.dt), 0);
+  const payload = { updated: Date.now(), count: rows.length, latest, shows: rows };
   archiveCache.set(payload);
   return payload;
 }
@@ -657,6 +661,17 @@ const server = http.createServer(async (req, res) => {
       const data = await getArchive();
       return sendJson(res, data, 200, 300);
     }
+    // Freshness probe: the same cached scrape as /api/archive minus the ~185 KB
+    // of rows, so an open tab can poll for new episodes cheaply and only pull the
+    // full listing when the user asks for it.
+    if (url === '/api/archive/head') {
+      const data = await getArchive();
+      return sendJson(res, {
+        updated: data.updated,
+        count: data.count,
+        latest: data.latest,
+      }, 200, 60);
+    }
     if (url === '/api/nowplaying') {
       const data = await getNowPlaying();
       return sendJson(res, data, 200, 10);
@@ -689,6 +704,10 @@ const server = http.createServer(async (req, res) => {
     // graceful degradation: serve last-good cached data if we have it
     if (url === '/api/archive' && archiveCache.stale()) {
       return sendJson(res, archiveCache.stale(), 200, 60);
+    }
+    if (url === '/api/archive/head' && archiveCache.stale()) {
+      const s = archiveCache.stale();
+      return sendJson(res, { updated: s.updated, count: s.count, latest: s.latest }, 200, 60);
     }
     if (url === '/api/nowplaying' && nowCache.stale()) {
       return sendJson(res, nowCache.stale(), 200, 10);

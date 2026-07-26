@@ -520,6 +520,29 @@
   .result-meta-right{display:flex; align-items:center; gap:.85rem;}
   .result-count{font-size:.8rem; color:var(--ink-faint); font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
 
+  /* "New shows" pill — hidden until a freshness poll finds upstream has moved */
+  .refresh-pill{
+    display:inline-flex; align-items:center; gap:.4rem; flex:none;
+    padding:.3rem .7rem .3rem .55rem; border-radius:999px; cursor:pointer;
+    border:1px solid color-mix(in srgb, var(--accent-2) 55%, transparent);
+    background:color-mix(in srgb, var(--accent-2) 16%, var(--surface-1));
+    color:var(--ink); font-family:var(--font-body); font-size:.75rem; font-weight:600;
+    letter-spacing:.01em; white-space:nowrap;
+    animation:refresh-pill-in .25s ease both;
+    transition:background .15s ease, border-color .15s ease, transform .15s ease;
+  }
+  .refresh-pill[hidden]{display:none;}
+  .refresh-pill svg{width:14px; height:14px; color:var(--accent-2);}
+  .refresh-pill:hover{background:color-mix(in srgb, var(--accent-2) 26%, var(--surface-1));}
+  .refresh-pill:active{transform:scale(.97);}
+  .refresh-pill:disabled{cursor:default; opacity:.75;}
+  .refresh-pill.busy svg{animation:spin .9s linear infinite;}
+  @keyframes refresh-pill-in{from{opacity:0; transform:translateY(-3px) scale(.94);} to{opacity:1; transform:none;}}
+  @media (prefers-reduced-motion:reduce){
+    .refresh-pill{animation:none;}
+    .refresh-pill.busy svg{animation-duration:1.6s;}
+  }
+
   /* Segmented list / gallery view switch */
   .view-toggle{display:inline-flex; gap:2px; padding:2px; border:1px solid var(--outline-strong); border-radius:999px; background:var(--surface-1); flex:none;}
   .view-btn{

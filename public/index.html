@@ -82,6 +82,13 @@
       <span class="result-count" id="resultCount" role="status" aria-live="polite"></span>
       <div class="result-meta-right">
         <span class="result-count" id="clock"></span>
+        <!-- Revealed by app.js only when a background freshness poll finds the
+             upstream archive has changed. Clicking swaps the new listing in
+             place: no page reload, so playback and scroll position survive. -->
+        <button class="refresh-pill" id="refreshBtn" type="button" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-.9 4.5"/><path d="M20 5v6h-6"/></svg>
+          <span id="refreshBtnText">New shows</span>
+        </button>
         <div class="view-toggle" id="viewToggle" role="group" aria-label="Change layout">
           <button class="view-btn" data-view="list" type="button" aria-pressed="true" aria-label="List view" title="List view">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="4" width="4" height="4" rx="1"/><rect x="9" y="5" width="12" height="2" rx="1"/><rect x="3" y="10" width="4" height="4" rx="1"/><rect x="9" y="11" width="12" height="2" rx="1"/><rect x="3" y="16" width="4" height="4" rx="1"/><rect x="9" y="17" width="12" height="2" rx="1"/></svg>
