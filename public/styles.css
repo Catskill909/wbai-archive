@@ -486,18 +486,37 @@
     .lp-alert-btn:active{transform:none;}
   }
 
-  /* Phones: dock to the bottom as a slide-up sheet, matching the info sheet. */
+  /* Phones: take the whole screen, sliding up from the bottom edge. A 92dvh
+     sheet on a 360x640 handset left the art, transport and status text fighting
+     over one cramped box; edge to edge, the same stack gets room to breathe. */
   @media (max-width:560px){
     .live-player{
-      left:0; top:auto; bottom:0; width:100%; max-height:92dvh;
-      border-radius:20px 20px 0 0; border-bottom:none;
-      padding-bottom:calc(1.4rem + env(safe-area-inset-bottom,0px));
+      left:0; top:0; bottom:auto; width:100%;
+      height:100dvh; max-height:100dvh;
+      border-radius:0; border:none;
+      padding:calc(1.8rem + env(safe-area-inset-top,0px)) 1.4rem calc(1.5rem + env(safe-area-inset-bottom,0px));
       transform:translate(0, 100%) scale(1);
+      /* Centre the stack in the taller box. `safe` matters because this is also
+         a scroll container: plain `center` would push the top of an overflowing
+         stack out of reach. Engines that don't know the keyword drop the whole
+         declaration and top-align, which is the old behaviour — no worse. */
+      justify-content:safe center;
     }
     .live-player.show{ transform:translate(0, 0) scale(1); }
-    /* Already a bottom sheet: it slides down onto the bar, which *is* the
+    /* Full-screen: it slides straight back down onto the bar, which *is* the
        collapse. Scaling toward a measured point would fight the dock. */
     .live-player.minimizing{ transform:translate(0, 100%) scale(1); }
+    /* Bigger ink on a full-screen dialog: at 36px it read as a detail rather
+       than the way out. The 44px touch target around it is unchanged. */
+    .lp-close{
+      top:calc(.9rem + env(safe-area-inset-top,0px)); right:.9rem;
+      width:42px; height:42px;
+    }
+    .lp-close .lp-close-x{ width:17px; height:17px; }
+    .lp-close .lp-close-min{ width:19px; height:19px; }
+    /* The square art is what pushes the transport off a short screen, so cap it
+       against the viewport height as well as its width. */
+    .lp-art{ width:min(300px, 64vw, 34dvh); }
   }
   /* Short / landscape: art beside the metadata so the controls stay above the fold. */
   @media (max-height:560px) and (min-width:561px){
@@ -1050,10 +1069,16 @@
   /* leave room for the docked player bar so the card never sits on top of it */
   body.has-player .sheet{ max-height:min(76dvh, 700px); }
 
+  /* The only way out of a dialog, so it has to read as a control at a glance.
+     A dimmed glyph on surface-2 was one step off the card behind it and all but
+     vanished over the live player's artwork and accent glow — full ink, the next
+     surface up, a defined edge and a shadow to lift it off whatever it covers. */
   .sheet-close{
     position:absolute; top:.85rem; right:.85rem; z-index:2;
     width:36px; height:36px; border-radius:50%;
-    border:1px solid var(--outline-strong); background:var(--surface-2); color:var(--ink-dim);
+    border:1px solid color-mix(in srgb, var(--ink) 30%, transparent);
+    background:var(--surface-3); color:var(--ink);
+    box-shadow:0 2px 10px rgba(0,0,0,.32);
     display:flex; align-items:center; justify-content:center; cursor:pointer;
     transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
@@ -1315,15 +1340,26 @@
     .link-notice{ margin-inline:1rem; }
   }
 
-  /* Phones: dock it to the bottom as a sheet that slides up. */
+  /* Phones: take the whole screen, sliding up from the bottom edge. As a docked
+     sheet this was capped at 90dvh — and at 76dvh whenever the player bar was
+     up, which on a 360x640 handset is ~430px for art, title, description and
+     controls. Full screen is the only size that fits them without squashing. */
   @media (max-width:560px){
     .sheet{
-      left:0; top:auto; bottom:0; width:100%; max-height:90dvh;
-      border-radius:20px 20px 0 0; border-bottom:none;
+      left:0; top:0; bottom:auto; width:100%;
+      height:100dvh; max-height:100dvh;
+      border-radius:0; border:none;
       transform:translate(0, 100%) scale(1);
     }
     .sheet.show{ transform:translate(0, 0) scale(1); }
-    .sheet-body{ padding:1.3rem 1.1rem 1.1rem; }
+    /* Full screen already covers the docked bar, so don't reserve room for it. */
+    body.has-player .sheet{ height:100dvh; max-height:100dvh; }
+    .sheet-close{
+      top:calc(.9rem + env(safe-area-inset-top,0px)); right:.9rem;
+      width:42px; height:42px;
+    }
+    .sheet-close svg{ width:17px; height:17px; }
+    .sheet-body{ padding:calc(1.3rem + env(safe-area-inset-top,0px)) 1.1rem 1.1rem; }
     .sheet-foot{ padding:.9rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom,0px)); border-radius:0; }
     .sheet-head{ flex-direction:column; align-items:center; text-align:center; padding-right:0; gap:1rem; }
     .sheet-art{ width:min(220px, 60vw); height:min(220px, 60vw); }
@@ -1766,8 +1802,15 @@
      same handler as .show-open / .card-overlay (app.js), which already wrap it
      in a target the size of the whole row or card. */
   @media (pointer: coarse){
-    .play-btn:not(.card-art),
-    .sheet-close, .menu-close, .lightbox-close, .donate-close,
+    /* Deliberately WITHOUT .sheet-close / .lightbox-close / .donate-close.
+       Those are already position:absolute, pinned to a corner of their dialog,
+       and absolute is just as good a containing block for the ::before below.
+       Forcing them to relative dropped them back into normal flow, where their
+       `top`/`right` became flow offsets: the info sheet, lightbox and donate
+       close buttons all landed half off the LEFT edge, and the live player's
+       — a flex child of a centre-aligned column — sat in the middle of the
+       header. Touch devices only, so a fine-pointer browser never showed it. */
+    .play-btn:not(.card-art), .menu-close,
     .link-notice-close, .lp-alert-dismiss, .resume-dismiss,
     .social-btn, .player-close{ position: relative; }
 

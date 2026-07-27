@@ -117,12 +117,33 @@ const RETURN_TO_TAB = `document.dispatchEvent(new Event('visibilitychange'));
   console.log('\n=== S4: archive playback tears the stream down ===');
   await mark('S4 archive takeover');
   await closeModal();
-  await p.eval(`document.querySelector('.play-btn').click(); return 1;`);
+  // Start an archive episode the way a listener does: open its info sheet, then
+  // press Play in the sheet footer.
+  //
+  // Deliberately NOT `querySelector('.play-btn')` — that selector is view
+  // dependent. A gallery card's artwork carries .play-btn but *opens the sheet*
+  // rather than playing (app.js: togglePlayFrom is skipped for .card-art), so
+  // once the gallery became the default view this clicked open a dialog, started
+  // no audio at all, and left the scrim covering #onAirBtn for S5. Both views
+  // render .show-open and both reach the same .sheet-play, so this path holds
+  // whichever view the app defaults to.
+  await p.eval(`
+    var opener = document.querySelector('.show-open');
+    if(!opener) throw new Error('no .show-open in the listing');
+    opener.click(); return 1;`);
+  await sleep(600);
+  const archiveStarted = await p.eval(`
+    var play = document.querySelector('.sheet-play');
+    if(!play) return false;
+    play.click(); return true;`);
+  if (!archiveStarted) throw new Error('S4: the info sheet has no Play button — cannot start archive playback');
   await sleep(2500);
   s = await stats(); v = await probe();
   check('live socket closed by the takeover', s.open === 0, `open=${s.open}`);
   check('live element destroyed', v.liveElements === 0, `count=${v.liveElements}`);
   check('no stray live connection opened', s.total === 2, `total=${s.total}`);
+  await p.eval(`document.getElementById('sheetClose').click(); return 1;`);
+  await sleep(400);
   await p.eval(`document.getElementById('playerClose').click(); return 1;`);
   await sleep(500);
 
