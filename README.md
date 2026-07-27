@@ -144,6 +144,11 @@ reload the page. `npm start` serves them directly.
 - **[docs/UPSTREAM.md](docs/UPSTREAM.md)** — what WBAI actually exposes: which
   endpoints are real JSON, which are base64'd HTML, which are dead, and why the
   listing has to be scraped. Read before changing any upstream call.
+- **[docs/live-audio-pattern.md](docs/live-audio-pattern.md)** — why a live
+  stream can't be paused and resumed like a file, and the pattern that fixes it
+  (one connection, never reused). Written to be portable to any project with a
+  browser-based live player. Read before touching live audio; the regression
+  suite that guards it is [test/live-stream/](test/live-stream/).
 
 To exercise the mobile layout and lock-screen player, open the dev server from a
 phone on the same network (`http://<your-lan-ip>:8080`) — Media Session behavior

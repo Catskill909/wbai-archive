@@ -95,4 +95,11 @@ code that ran.
 - Two `<audio>` elements share one bottom player bar via `barMode`
   (`'archive' | 'live'`). The archive side is the reference implementation; keep
   the live side as close to it as possible.
-- Docs live in `docs/`. Read `big-audio-bug.md` before touching live audio.
+- Docs live in `docs/`. Before touching live audio read
+  `live-audio-pattern.md` (the model and why), then `big-audio-bug.md` (the
+  history of getting it wrong). The live element is built and thrown away per
+  play — never reuse it, never branch on `element.paused`.
+- Live-audio changes have a real regression suite: `test/live-stream/` drives
+  the unmodified app in headless Chrome against a fake station. Run **both**
+  `./run.sh` and `./run.sh --strict` — the strict pass is the one that catches
+  autoplay-policy regressions.
