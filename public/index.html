@@ -2,7 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- viewport-fit=cover is load-bearing: without it iOS resolves every
+     env(safe-area-inset-*) to 0, which silently no-ops the insets the player
+     bar and sheet footer already rely on. No user-scalable=no — pinch-zoom
+     stays available; the 16px input rule in styles.css is what stops the
+     focus-zoom instead. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- iOS autolinks number-shaped strings; show titles and the date/retention
+     columns are full of them, and each autolink becomes a stray tap target
+     sitting inside a button. -->
+<meta name="format-detection" content="telephone=no">
 <title>WBAI 99.5 FM Archive</title>
 <meta name="description" content="Search, stream, and browse WBAI 99.5 FM's on-demand broadcast archive — Free Speech Radio, Pacifica Radio in New York City.">
 <meta name="color-scheme" content="dark light">
@@ -65,7 +74,9 @@
   <div class="controls-row">
     <label class="search-field" for="q">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <input id="q" type="search" placeholder="Search shows — “Democracy Now”, “jazz”, “housing”…" autocomplete="off">
+      <input id="q" type="search" placeholder="Search shows — “Democracy Now”, “jazz”, “housing”…"
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+             inputmode="search" enterkeyhint="search">
     </label>
     <div class="cat-select" id="catSelect">
       <button class="cat-trigger" id="catTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by category">

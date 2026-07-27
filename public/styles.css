@@ -102,7 +102,7 @@
     color:var(--ink);
     font-family:var(--font-body);
     -webkit-font-smoothing:antialiased;
-    min-height:100vh;
+    min-height:100dvh;   /* 100vh ignores the collapsing mobile URL bar */
     overflow-x:clip;
   }
   a{color:var(--accent-2);}
@@ -119,9 +119,52 @@
 
   :focus-visible{outline:2px solid var(--accent-2); outline-offset:2px;}
 
+  /* ================= Touch base layer =================
+     See docs/touch-dev.md. This block is the interaction baseline for coarse
+     pointers, and it is why every :hover rule below lives inside
+     @media (hover:hover) and (pointer:fine) — on touch, hover is synthesized on
+     tap and never cleared, so an unguarded hover rule stays stuck on whatever
+     was last tapped. .play-btn and .card-play are the ones that actually lied:
+     their hover fill is the same orange as the .playing state. */
+
+  html{
+    /* The UA paints an opaque rect over the border box on tap — a *square*,
+       ignoring border-radius, which is why round buttons flashed square. */
+    -webkit-tap-highlight-color: transparent;
+    /* iOS inflates text on portrait -> landscape rotation without this. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* manipulation = keep pan and pinch-zoom, drop double-tap-to-zoom. Two fast
+     taps on ±15s or play/pause used to zoom the page instead of firing twice. */
+  button, a, [role="button"], summary, label{ touch-action: manipulation; }
+  /* Sliders are dragged, so the page must not steal the gesture to pan. */
+  .player-range, .lp-volume-range{ touch-action: none; }
+
+  /* Long-press on a control should activate it, not start a text selection or
+     pop the iOS callout. Scoped to controls — sheet copy stays selectable. */
+  button, [role="button"], .show-open, .card-overlay, .player-info{
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+  }
+  /* ...and long-press on artwork should not offer "Save Image". The lightbox is
+     the intended way to view art; thumbnails are buttons. */
+  .show-thumb img, .player-art img, .card-art img, .card-art{
+    -webkit-touch-callout: none; -webkit-user-drag: none; user-select: none;
+  }
+
+  /* The @media (pointer:coarse) half of this layer lives at the END of the file.
+     Media queries add no specificity, so source order is what decides — placed
+     here, `.menu-btn{width:44px}` would lose to the plain `.menu-btn{width:42px}`
+     declared 700 lines later. Overrides go last. */
+
   /* ---------------- App bar ---------------- */
   .appbar{
     position:sticky; top:0; z-index:50;
+    /* apple-mobile-web-app-status-bar-style=black-translucent puts content
+       under the status bar when installed; without this the bar sits in it. */
+    padding-top:env(safe-area-inset-top, 0px);
     background:color-mix(in srgb, var(--surface-1) 92%, transparent);
     backdrop-filter:blur(10px);
     border-bottom:1px solid var(--outline);
@@ -176,13 +219,15 @@
     background:linear-gradient(105deg, transparent 35%, rgba(255,255,255,.16) 50%, transparent 65%);
     transform:translateX(-130%); transition:transform .55s ease;
   }
-  .on-air-btn:hover{
-    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 11%, var(--surface-3)), color-mix(in srgb, var(--ink) 4%, var(--surface-3)));
+  @media (hover:hover) and (pointer:fine){
+    .on-air-btn:hover{background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 11%, var(--surface-3)), color-mix(in srgb, var(--ink) 4%, var(--surface-3)));
     border-color:color-mix(in srgb, var(--accent) 40%, var(--outline-strong));
     box-shadow:var(--elev-2), inset 0 1px 0 rgba(255,255,255,.08);
-    transform:translateY(-1px);
+    transform:translateY(-1px);}
   }
-  .on-air-btn:hover::after{transform:translateX(130%);}
+  @media (hover:hover) and (pointer:fine){
+    .on-air-btn:hover::after{transform:translateX(130%);}
+  }
   .on-air-btn:active{transform:translateY(0) scale(.98);}
   .on-air-dot{
     width:8px;height:8px;border-radius:50%;flex:none;background:var(--accent);
@@ -201,7 +246,10 @@
   .on-air-btn.playing .on-air-eq{display:inline-flex;}
   @keyframes eqbar{ 0%,100%{height:35%;} 50%{height:100%;} }
   @media (prefers-reduced-motion:reduce){
-    .on-air-btn, .on-air-btn:hover{transform:none;}
+    .on-air-btn{transform:none;}
+    @media (hover:hover) and (pointer:fine){
+      .on-air-btn:hover{transform:none;}
+    }
     .on-air-btn::after{display:none;}
     .on-air-dot{animation:none;}
     .on-air-eq i{animation:none; height:70%;}
@@ -223,6 +271,7 @@
 
   .live-player{
     position:fixed; z-index:180; left:50%; top:50%;
+    overscroll-behavior:contain;
     width:min(460px, 92vw); max-height:min(88dvh, 720px);
     display:flex; flex-direction:column; align-items:center; gap:1rem; overflow-y:auto;
     padding:2.2rem 1.8rem 1.6rem;
@@ -270,7 +319,9 @@
     box-shadow:0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent);
     transition:transform .12s ease, background .15s ease, box-shadow .18s ease;
   }
-  .lp-toggle:hover{ background:color-mix(in srgb, var(--accent) 90%, white); transform:scale(1.05); }
+  @media (hover:hover) and (pointer:fine){
+    .lp-toggle:hover{background:color-mix(in srgb, var(--accent) 90%, white); transform:scale(1.05);}
+  }
   .lp-toggle:active{ transform:scale(.98); }
   .lp-toggle svg{fill:currentColor; margin-left:2px;}
   .lp-toggle.playing svg{margin-left:0;}
@@ -282,7 +333,10 @@
     animation:spin .7s linear infinite;
   }
   @media (prefers-reduced-motion:reduce){
-    .lp-toggle, .lp-toggle:hover{transform:none;}
+    .lp-toggle{transform:none;}
+    @media (hover:hover) and (pointer:fine){
+      .lp-toggle:hover{transform:none;}
+    }
     .lp-toggle.loading .spinner{animation-duration:1.4s;}
   }
   /* muted, slim volume — neutral track + light thumb, no loud accent fill */
@@ -307,7 +361,9 @@
     transition:transform .12s ease;
   }
   .lp-volume-range::-moz-range-thumb{width:11px; height:11px; border:none; border-radius:50%; background:var(--ink);}
-  .lp-volume-range:hover::-webkit-slider-thumb{transform:scale(1.15);}
+  @media (hover:hover) and (pointer:fine){
+    .lp-volume-range:hover::-webkit-slider-thumb{transform:scale(1.15);}
+  }
   .lp-volume-range:focus-visible{outline:none;}
   .lp-volume-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px color-mix(in srgb, var(--ink) 22%, transparent);}
   .lp-volume[hidden]{display:none;}
@@ -345,6 +401,7 @@
   @keyframes lpScrimIn{ from{opacity:0;} to{opacity:1;} }
   .lp-alert{
     position:fixed; z-index:190; left:50%; top:50%;
+    overscroll-behavior:contain;
     width:min(420px, 92vw); max-height:min(86dvh, 560px); overflow-y:auto;
     display:flex; align-items:flex-start; gap:.8rem;
     padding:1.15rem 1.2rem; border-radius:16px; text-align:left;
@@ -387,15 +444,17 @@
     transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
   }
   .lp-alert-btn svg{width:14px; height:14px; flex:none;}
-  .lp-alert-btn:hover{background:var(--surface-hover); color:var(--ink); border-color:var(--ink-faint);}
+  @media (hover:hover) and (pointer:fine){
+    .lp-alert-btn:hover{background:var(--surface-hover); color:var(--ink); border-color:var(--ink-faint);}
+  }
   .lp-alert-btn:active{transform:scale(.97);}
   .lp-alert-btn-primary{
     background:var(--danger); border-color:transparent; color:var(--accent-ink);
     box-shadow:0 4px 12px -4px color-mix(in srgb, var(--danger) 60%, transparent);
   }
-  .lp-alert-btn-primary:hover{
-    background:color-mix(in srgb, var(--danger) 88%, white);
-    color:var(--accent-ink); border-color:transparent;
+  @media (hover:hover) and (pointer:fine){
+    .lp-alert-btn-primary:hover{background:color-mix(in srgb, var(--danger) 88%, white);
+    color:var(--accent-ink); border-color:transparent;}
   }
   .lp-alert-dismiss{
     flex:none; width:26px; height:26px; margin:-.15rem -.25rem 0 0; padding:0;
@@ -405,7 +464,9 @@
     transition:background .15s ease, color .15s ease;
   }
   .lp-alert-dismiss svg{width:13px; height:13px;}
-  .lp-alert-dismiss:hover{background:var(--surface-hover); color:var(--ink);}
+  @media (hover:hover) and (pointer:fine){
+    .lp-alert-dismiss:hover{background:var(--surface-hover); color:var(--ink);}
+  }
   /* the alert carries the whole message when it is up — no duplicate note line */
   .live-player.errored .lp-note{display:none;}
   @media (prefers-reduced-motion:reduce){
@@ -458,8 +519,8 @@
     transform:translateX(-130%);
     transition:transform .55s ease;
   }
-  .appbar-actions .btn-donate:hover{
-    background:linear-gradient(160deg,
+  @media (hover:hover) and (pointer:fine){
+    .appbar-actions .btn-donate:hover{background:linear-gradient(160deg,
       color-mix(in srgb, var(--donate) 86%, white) 0%,
       color-mix(in srgb, var(--donate) 96%, white) 55%,
       var(--donate) 100%);
@@ -467,12 +528,17 @@
     box-shadow:
       0 2px 4px color-mix(in srgb, var(--donate) 42%, transparent),
       0 8px 20px color-mix(in srgb, var(--donate) 32%, transparent),
-      inset 0 1px 0 rgba(255,255,255,.28);
+      inset 0 1px 0 rgba(255,255,255,.28);}
   }
-  .appbar-actions .btn-donate:hover::after{transform:translateX(130%);}
+  @media (hover:hover) and (pointer:fine){
+    .appbar-actions .btn-donate:hover::after{transform:translateX(130%);}
+  }
   .appbar-actions .btn-donate:active{transform:translateY(0) scale(.97);}
   @media (prefers-reduced-motion:reduce){
-    .appbar-actions .btn-donate, .appbar-actions .btn-donate:hover{transform:none;}
+    .appbar-actions .btn-donate{transform:none;}
+    @media (hover:hover) and (pointer:fine){
+      .appbar-actions .btn-donate:hover{transform:none;}
+    }
     .appbar-actions .btn-donate::after{transition:none; display:none;}
   }
   .btn-donate .donate-label{
@@ -487,11 +553,17 @@
   }
   .btn:active{transform:scale(.97);}
   .btn-filled{background:var(--accent); color:var(--accent-ink); box-shadow:var(--shadow);}
-  .btn-filled:hover{background:color-mix(in srgb, var(--accent) 88%, black);}
+  @media (hover:hover) and (pointer:fine){
+    .btn-filled:hover{background:color-mix(in srgb, var(--accent) 88%, black);}
+  }
   .btn-tonal{background:color-mix(in srgb, var(--accent-2) 18%, var(--surface-1)); color:var(--accent-2);}
-  .btn-tonal:hover{background:color-mix(in srgb, var(--accent-2) 28%, var(--surface-1));}
+  @media (hover:hover) and (pointer:fine){
+    .btn-tonal:hover{background:color-mix(in srgb, var(--accent-2) 28%, var(--surface-1));}
+  }
   .btn-icon{width:36px;height:36px;padding:0;border-radius:50%;background:transparent;color:var(--ink-dim);}
-  .btn-icon:hover{background:var(--surface-hover); color:var(--ink);}
+  @media (hover:hover) and (pointer:fine){
+    .btn-icon:hover{background:var(--surface-hover); color:var(--ink);}
+  }
   .btn svg{width:16px;height:16px;flex:none;}
 
   .brand-text-label{display:none;}
@@ -550,7 +622,9 @@
     font-family:var(--font-body); white-space:nowrap;
     transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
   }
-  .cat-trigger:hover{border-color:var(--ink-faint);}
+  @media (hover:hover) and (pointer:fine){
+    .cat-trigger:hover{border-color:var(--ink-faint);}
+  }
   .cat-select.open .cat-trigger,
   .cat-trigger:focus-visible{
     outline:none; border-color:var(--accent-2);
@@ -584,10 +658,14 @@
     font-size:.875rem; font-weight:500; font-family:var(--font-body); text-align:left;
     transition:background .12s ease, color .12s ease;
   }
-  .cat-option:hover{background:var(--surface-hover); color:var(--ink);}
+  @media (hover:hover) and (pointer:fine){
+    .cat-option:hover{background:var(--surface-hover); color:var(--ink);}
+  }
   .cat-option .cat-icon{width:18px;height:18px; flex:none; color:var(--ink-faint);}
-  .cat-option:hover .cat-icon,
   .cat-option[aria-selected="true"] .cat-icon{color:var(--ink-dim);}
+  @media (hover:hover) and (pointer:fine){
+    .cat-option:hover .cat-icon{color:var(--ink-dim);}
+  }
   .cat-option-label{flex:1 1 auto;}
   .cat-check{width:16px;height:16px;flex:none; color:var(--accent-2); opacity:0;}
   .cat-option[aria-selected="true"]{color:var(--ink); font-weight:600;}
@@ -615,7 +693,9 @@
   }
   .refresh-pill[hidden]{display:none;}
   .refresh-pill svg{width:14px; height:14px; color:var(--accent-2);}
-  .refresh-pill:hover{background:color-mix(in srgb, var(--accent-2) 26%, var(--surface-1));}
+  @media (hover:hover) and (pointer:fine){
+    .refresh-pill:hover{background:color-mix(in srgb, var(--accent-2) 26%, var(--surface-1));}
+  }
   .refresh-pill:active{transform:scale(.97);}
   .refresh-pill:disabled{cursor:default; opacity:.75;}
   .refresh-pill.busy svg{animation:spin .9s linear infinite;}
@@ -634,7 +714,9 @@
     transition:background .15s ease, color .15s ease;
   }
   .view-btn svg{width:16px; height:16px;}
-  .view-btn:hover{color:var(--ink);}
+  @media (hover:hover) and (pointer:fine){
+    .view-btn:hover{color:var(--ink);}
+  }
   .view-btn[aria-pressed="true"]{background:color-mix(in srgb, var(--accent-2) 22%, var(--surface-1)); color:var(--ink);}
 
   /* ---------------- Data list / table ---------------- */
@@ -678,7 +760,9 @@
     font-family:var(--font-display); text-transform:uppercase; letter-spacing:.07em;
     font-size:.68rem; color:var(--ink-dim); font-weight:700;
   }
-  .row.body:hover{background:var(--surface-hover);}
+  @media (hover:hover) and (pointer:fine){
+    .row.body:hover{background:var(--surface-hover);}
+  }
   .sortbtn{
     display:inline-flex; align-items:center; gap:.3rem; background:none; border:none;
     color:inherit; font:inherit; text-transform:inherit; letter-spacing:inherit; cursor:pointer; padding:0;
@@ -698,12 +782,17 @@
   /* Artwork and text both open the sheet, so the cell lights up as one block
      rather than per-element — colour, never an underline. Keyed on .show-cell,
      which excludes the play button in .row-actions. */
-  .show-cell:hover .show-title,
   .show-open:focus-visible .show-title{ color:var(--accent-2); }
-  .show-cell:hover .more-link,
-  .more-link:hover{ color:color-mix(in srgb, var(--accent-2) 70%, var(--ink)); }
+  @media (hover:hover) and (pointer:fine){
+    .show-cell:hover .show-title{color:var(--accent-2);}
+  }
+  @media (hover:hover) and (pointer:fine){
+    .show-cell:hover .more-link,.more-link:hover{color:color-mix(in srgb, var(--accent-2) 70%, var(--ink));}
+  }
   .show-thumb{ transition:box-shadow .15s ease; }
-  .show-cell:hover .show-thumb{ box-shadow:inset 0 0 0 1px var(--outline-strong), var(--elev-1); }
+  @media (hover:hover) and (pointer:fine){
+    .show-cell:hover .show-thumb{box-shadow:inset 0 0 0 1px var(--outline-strong), var(--elev-1);}
+  }
   .show-thumb:focus-visible{ outline:2px solid var(--accent-2); outline-offset:2px; }
 
   /* plain text link under the title, the visible cue for what the block does */
@@ -762,7 +851,9 @@
     background:var(--surface-2); color:var(--ink); display:flex; align-items:center; justify-content:center;
     cursor:pointer; transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
-  .play-btn:hover{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+  @media (hover:hover) and (pointer:fine){
+    .play-btn:hover{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+  }
   .play-btn.loading{background:var(--surface-2); border-color:var(--outline-strong); cursor:default;}
   .play-btn svg{width:14px;height:14px;}
   .play-glyph{display:inline-flex; align-items:center; justify-content:center;}
@@ -807,7 +898,9 @@
     color:var(--ink); cursor:pointer;
     transition:background .15s ease, border-color .15s ease;
   }
-  .menu-btn:hover{ background:color-mix(in srgb, var(--ink) 6%, var(--surface-3)); border-color:var(--accent-2); }
+  @media (hover:hover) and (pointer:fine){
+    .menu-btn:hover{background:color-mix(in srgb, var(--ink) 6%, var(--surface-3)); border-color:var(--accent-2);}
+  }
   /* wider, slightly heavier bars — the gap stays at 4px. Line pitch is
      height + gap (2.5 + 4), and the close-X translate below must equal it. */
   .menu-btn-lines{ display:flex; flex-direction:column; gap:4px; width:24px; }
@@ -830,6 +923,7 @@
   .menu-panel{
     position:fixed; top:0; right:0; z-index:160;
     height:100dvh; width:min(400px, 92vw);
+    padding-right:env(safe-area-inset-right, 0px);   /* landscape notch */
     display:flex; flex-direction:column;
     background:var(--surface-1); border-left:1px solid var(--outline);
     box-shadow:-24px 0 60px rgba(0,0,0,.45);
@@ -842,6 +936,11 @@
     .menu-scrim, .menu-panel{ transition-duration:0s; }
   }
   body.menu-open{ overflow:hidden; }
+  /* The lightbox and the donate modal are full-screen overlays that had no
+     scroll lock at all — a vertical drag on either scrolled the listing
+     behind them. The donate one is worse: it wraps an iframe, so the drag
+     could move the page, the iframe, or neither. */
+  body.lightbox-open, body.donate-open{ overflow:hidden; }
 
   .menu-head{
     flex:none; display:flex; align-items:center; justify-content:space-between; gap:1rem;
@@ -854,11 +953,14 @@
     display:flex; align-items:center; justify-content:center; cursor:pointer;
     transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
-  .menu-close:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  @media (hover:hover) and (pointer:fine){
+    .menu-close:hover{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+  }
   .menu-close svg{ width:16px; height:16px; }
 
   .menu-body{
     flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;   /* don't chain the bounce to the page */
     padding:1.4rem 1.3rem 2rem; display:flex; flex-direction:column; gap:1.7rem;
   }
   .menu-brand{ display:flex; flex-direction:column; gap:.9rem; }
@@ -875,7 +977,9 @@
     color:var(--ink); text-decoration:none; font-size:.92rem;
     transition:background .15s ease, color .15s ease;
   }
-  .menu-group a:hover{ background:var(--surface-hover); color:var(--accent-2); }
+  @media (hover:hover) and (pointer:fine){
+    .menu-group a:hover{background:var(--surface-hover); color:var(--accent-2);}
+  }
 
   .social-row{display:flex; gap:.5rem; flex-wrap:wrap;}
   .social-btn{
@@ -883,7 +987,9 @@
     display:flex; align-items:center; justify-content:center; color:var(--ink-dim);
     text-decoration:none; transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
-  .social-btn:hover{background:var(--accent-2); border-color:var(--accent-2); color:var(--accent-2-ink);}
+  @media (hover:hover) and (pointer:fine){
+    .social-btn:hover{background:var(--accent-2); border-color:var(--accent-2); color:var(--accent-2-ink);}
+  }
   .social-btn svg{width:16px;height:16px;}
 
   .menu-foot{
@@ -934,11 +1040,14 @@
     display:flex; align-items:center; justify-content:center; cursor:pointer;
     transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
-  .sheet-close:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  @media (hover:hover) and (pointer:fine){
+    .sheet-close:hover{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+  }
   .sheet-close svg{ width:15px; height:15px; }
 
   .sheet-body{
     flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;   /* don't chain the bounce to the page */
     padding:1.4rem 1.6rem 1.2rem;
     display:flex; flex-direction:column; gap:1.05rem;
   }
@@ -975,8 +1084,10 @@
     transition:opacity .16s ease, transform .16s ease;
   }
   .sheet-art-zoom-badge svg{ width:15px; height:15px; }
-  .sheet-art-zoom:hover .sheet-art-zoom-badge,
   .sheet-art-zoom:focus-visible .sheet-art-zoom-badge{ opacity:1; transform:none; }
+  @media (hover:hover) and (pointer:fine){
+    .sheet-art-zoom:hover .sheet-art-zoom-badge{opacity:1; transform:none;}
+  }
   /* touch devices have no hover — keep the affordance visible there */
   @media (hover:none){ .sheet-art-zoom-badge{ opacity:1; transform:none; } }
 
@@ -1007,7 +1118,9 @@
     display:flex; align-items:center; justify-content:center; cursor:pointer;
     transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
-  .lightbox-close:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  @media (hover:hover) and (pointer:fine){
+    .lightbox-close:hover{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+  }
   .lightbox-close svg{ width:16px; height:16px; }
   @media (prefers-reduced-motion:reduce){ .lightbox{ transition-duration:0s; } }
 
@@ -1052,7 +1165,9 @@
     box-shadow:0 2px 10px rgba(0,0,0,.18);
     transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
   }
-  .donate-close:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  @media (hover:hover) and (pointer:fine){
+    .donate-close:hover{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+  }
   .donate-close:active{ transform:scale(.94); }
   .donate-close svg{ width:16px; height:16px; }
   @media (max-width:560px){
@@ -1092,7 +1207,9 @@
     font-size:.78rem; font-weight:700; color:var(--accent-2); cursor:pointer;
     transition:color .15s ease;
   }
-  .desc-toggle:hover{ color:color-mix(in srgb, var(--accent-2) 60%, var(--ink)); }
+  @media (hover:hover) and (pointer:fine){
+    .desc-toggle:hover{color:color-mix(in srgb, var(--accent-2) 60%, var(--ink));}
+  }
 
   /* facts — one wrapping row, so the sheet's height doesn't grow with them.
      Only entries with content are rendered at all. */
@@ -1123,7 +1240,9 @@
     font-size:.88rem; font-weight:700; box-shadow:var(--shadow);
     transition:background .15s ease, transform .12s ease;
   }
-  .sheet-play:hover{ background:color-mix(in srgb, var(--accent) 88%, black); }
+  @media (hover:hover) and (pointer:fine){
+    .sheet-play:hover{background:color-mix(in srgb, var(--accent) 88%, black);}
+  }
   .sheet-play:active{ transform:scale(.97); }
   .sheet-play svg{ width:15px; height:15px; }
   .sheet-link{
@@ -1132,7 +1251,9 @@
     color:var(--ink-dim); text-decoration:none; font-size:.75rem; font-weight:600;
     transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
-  .sheet-link:hover{ background:var(--surface-hover); color:var(--accent-2); border-color:var(--accent-2); }
+  @media (hover:hover) and (pointer:fine){
+    .sheet-link:hover{background:var(--surface-hover); color:var(--accent-2); border-color:var(--accent-2);}
+  }
   .sheet-link svg{ width:12px; height:12px; }
   /* sits beside Play, and only while that Play button reads "Resume …" */
   .sheet-restart{
@@ -1141,7 +1262,9 @@
     font-size:.84rem; font-weight:600; cursor:pointer;
     transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
-  .sheet-restart:hover{ background:var(--surface-hover); color:var(--ink); border-color:var(--accent-2); }
+  @media (hover:hover) and (pointer:fine){
+    .sheet-restart:hover{background:var(--surface-hover); color:var(--ink); border-color:var(--accent-2);}
+  }
   .sheet-restart[hidden]{ display:none; }
   /* carries .sheet-link, so it only needs the bits a <button> doesn't inherit */
   .sheet-share{ background:transparent; font-family:inherit; cursor:pointer; }
@@ -1161,7 +1284,9 @@
     display:flex; align-items:center; justify-content:center;
     transition:background .15s ease, color .15s ease;
   }
-  .link-notice-close:hover{ background:var(--surface-hover); color:var(--ink); }
+  @media (hover:hover) and (pointer:fine){
+    .link-notice-close:hover{background:var(--surface-hover); color:var(--ink);}
+  }
   .link-notice-close svg{ width:13px; height:13px; }
   @media (max-width:900px){
     .link-notice{ margin-inline:1rem; }
@@ -1239,7 +1364,9 @@
     display:flex; align-items:center; justify-content:center;
     transition:background .15s ease, color .15s ease, transform .12s ease;
   }
-  .player-skip:hover{background:var(--surface-hover); color:var(--ink);}
+  @media (hover:hover) and (pointer:fine){
+    .player-skip:hover{background:var(--surface-hover); color:var(--ink);}
+  }
   .player-skip:active{transform:scale(.92);}
   .player-skip:focus-visible{outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent);}
   .player-skip svg{width:21px; height:21px;}
@@ -1267,11 +1394,14 @@
   /* art + title double as the trigger for the info modal */
   .player-open{border:0; background:none; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer;}
   .player-art.player-open{ background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-3); transition:box-shadow .15s ease; }
-  .player-art.player-open:hover{ box-shadow:inset 0 0 0 1px var(--accent-2); }
+  @media (hover:hover) and (pointer:fine){
+    .player-art.player-open:hover{box-shadow:inset 0 0 0 1px var(--accent-2);}
+  }
   .player-info{display:flex; flex-direction:column; min-width:0; line-height:1.3;}
-  .player-info.player-open:hover .player-title,
-  .player-info.player-open:focus-visible .player-title,
-  .player-art.player-open:hover ~ .player-main .player-title{ color:var(--accent-2); }
+  .player-info.player-open:focus-visible .player-title{ color:var(--accent-2); }
+  @media (hover:hover) and (pointer:fine){
+    .player-info.player-open:hover .player-title,.player-art.player-open:hover ~ .player-main .player-title{color:var(--accent-2);}
+  }
   .player-title{ transition:color .15s ease; }
   .player-title{font-weight:700; font-size:.88rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .player-sub{font-size:.74rem; color:var(--ink-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -1308,7 +1438,9 @@
     width:12px; height:12px; border:none; border-radius:50%;
     background:var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.4);
   }
-  .player-range:hover::-webkit-slider-thumb{transform:scale(1.2);}
+  @media (hover:hover) and (pointer:fine){
+    .player-range:hover::-webkit-slider-thumb{transform:scale(1.2);}
+  }
   .player-range:focus-visible{outline:none;}
   .player-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);}
   .player-range:focus-visible::-moz-range-thumb{box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);}
@@ -1334,14 +1466,18 @@
     font-family:inherit; font-size:.78rem; font-weight:700; cursor:pointer;
     transition:background .15s ease, border-color .15s ease;
   }
-  .resume-restart:hover{background:var(--surface-hover); border-color:var(--accent-2);}
+  @media (hover:hover) and (pointer:fine){
+    .resume-restart:hover{background:var(--surface-hover); border-color:var(--accent-2);}
+  }
   .resume-dismiss{
     flex:none; width:26px; height:26px; border-radius:50%; border:none;
     background:transparent; color:var(--ink-faint); cursor:pointer;
     display:flex; align-items:center; justify-content:center;
     transition:background .15s ease, color .15s ease;
   }
-  .resume-dismiss:hover{background:var(--surface-hover); color:var(--ink);}
+  @media (hover:hover) and (pointer:fine){
+    .resume-dismiss:hover{background:var(--surface-hover); color:var(--ink);}
+  }
   .resume-dismiss svg{width:13px; height:13px;}
   @keyframes resume-rise{
     from{opacity:0; transform:translateY(6px);}
@@ -1381,7 +1517,9 @@
     margin-right:calc(-1 * max(0px, 50vw - 590px) - 8px);
     transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
   }
-  .player-close:hover{background:var(--surface-hover); color:var(--ink); border-color:var(--ink-faint);}
+  @media (hover:hover) and (pointer:fine){
+    .player-close:hover{background:var(--surface-hover); color:var(--ink); border-color:var(--ink-faint);}
+  }
   .player-close:active{transform:scale(.95);}
   .player-close:focus-visible{outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent);}
   .player-close svg{width:13px; height:13px; flex:none;}
@@ -1413,7 +1551,9 @@
 
   .play-btn.playing{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
   .row-link{color:inherit; text-decoration:none;}
-  .row-link:hover{text-decoration:underline;}
+  @media (hover:hover) and (pointer:fine){
+    .row-link:hover{text-decoration:underline;}
+  }
   .row-actions{display:flex; align-items:center; justify-content:flex-end; gap:.25rem;}
   @media (max-width:900px){
     .row-actions{grid-area:play;}
@@ -1441,8 +1581,9 @@
     color:color-mix(in srgb, var(--accent-2) 45%, white);
     text-shadow:0 1px 3px rgba(0,0,0,.7);
   }
-  .card-wrap:hover .card-more,
-  .card-more:hover{ color:#fff; }
+  @media (hover:hover) and (pointer:fine){
+    .card-wrap:hover .card-more,.card-more:hover{color:#fff;}
+  }
 
   /* The whole square is the play button; the image sits on top of the category
      placeholder, with the title, a play glyph, and a retention badge layered over
@@ -1457,12 +1598,11 @@
   }
   /* hover is tracked on the wrapper, so the card still lifts when the pointer is
      over the title block sitting on top of it */
-  .card.card-art.play-btn:hover,
-  .card-wrap:hover .card.card-art.play-btn{
-    background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
+  @media (hover:hover) and (pointer:fine){
+    .card.card-art.play-btn:hover,.card-wrap:hover .card.card-art.play-btn{background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
     border-color:var(--outline); color:var(--ink);
     transform:translateY(-2px);
-    box-shadow:inset 0 0 0 1px var(--outline-strong), 0 8px 22px rgba(0,0,0,.35);
+    box-shadow:inset 0 0 0 1px var(--outline-strong), 0 8px 22px rgba(0,0,0,.35);}
   }
   .card-art img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
   .card-art img.failed{display:none;}
@@ -1474,11 +1614,11 @@
     background:linear-gradient(to top, rgba(0,0,0,.86) 0%, rgba(0,0,0,.36) 38%, rgba(0,0,0,0) 62%);
     transition:background .18s ease;
   }
-  .card-wrap:hover .card-fade,
-  .card-art.play-btn:focus-visible .card-fade,
-  .card-art.play-btn.playing .card-fade,
-  .card-art.play-btn.loading .card-fade{
+  .card-art.play-btn:focus-visible .card-fade,.card-art.play-btn.playing .card-fade,.card-art.play-btn.loading .card-fade{
     background:linear-gradient(to top, rgba(0,0,0,.86) 0%, rgba(0,0,0,.5) 45%, rgba(0,0,0,.32) 100%);
+  }
+  @media (hover:hover) and (pointer:fine){
+    .card-wrap:hover .card-fade{background:linear-gradient(to top, rgba(0,0,0,.86) 0%, rgba(0,0,0,.5) 45%, rgba(0,0,0,.32) 100%);}
   }
 
   /* a sibling of the card button, laid over its lower half: clicking the words
@@ -1491,9 +1631,11 @@
     padding:.6rem .7rem 2rem;
   }
   /* over artwork the teal is mixed toward white so it stays legible */
-  .card-overlay:hover .card-title,
   .card-overlay:focus-visible .card-title{
     color:color-mix(in srgb, var(--accent-2) 55%, white);
+  }
+  @media (hover:hover) and (pointer:fine){
+    .card-overlay:hover .card-title{color:color-mix(in srgb, var(--accent-2) 55%, white);}
   }
   .card-title{ transition:color .15s ease; }
   /* The category is spelled out here in words, so the artwork carries no colour
@@ -1521,10 +1663,10 @@
     transition:opacity .18s ease, transform .18s ease, background .15s ease;
   }
   .card-play svg{width:19px; height:19px;}
-  .card-wrap:hover .card-play,
-  .card-art.play-btn:focus-visible .card-play,
-  .card-art.play-btn.playing .card-play,
-  .card-art.play-btn.loading .card-play{opacity:1; transform:translate(-50%,-50%) scale(1);}
+  .card-art.play-btn:focus-visible .card-play,.card-art.play-btn.playing .card-play,.card-art.play-btn.loading .card-play{opacity:1; transform:translate(-50%,-50%) scale(1);}
+  @media (hover:hover) and (pointer:fine){
+    .card-wrap:hover .card-play{opacity:1; transform:translate(-50%,-50%) scale(1);}
+  }
   .card-art.play-btn.loading .card-play{background:var(--surface-3);}
   .card-art.play-btn .btn-spin{border-top-color:#fff;}
   /* Desktop/laptop only: the orange circle is a hover affordance. On touch
@@ -1533,7 +1675,9 @@
      surface the circle when a card is actually playing. */
   @media (prefers-reduced-motion:reduce){
     .card-art.play-btn, .card-play, .card-fade{transition:opacity .18s ease;}
-    .card-art.play-btn:hover{transform:none;}
+    @media (hover:hover) and (pointer:fine){
+      .card-art.play-btn:hover{transform:none;}
+    }
   }
 
   /* bottom-right, sharing the row with the More link on the left. Raised above
@@ -1546,4 +1690,102 @@
     font-family:var(--font-mono); font-variant-numeric:tabular-nums;
     font-size:.7rem; font-weight:600; color:#fff;
     box-shadow:0 1px 4px rgba(0,0,0,.4);
+  }
+
+  /* ================= Touch overrides (coarse pointers) =================
+     Last in the file on purpose — see the note in the touch base layer. */
+  @media (pointer: coarse){
+    /* Overlays move focus to their close control (good a11y). Safari has
+       historically painted a ring for that programmatic focus even after a tap;
+       the keyboard ring (:focus-visible) is untouched. */
+    :focus:not(:focus-visible){ outline: none; }
+    /* Mobile Safari zooms the viewport on focus of any input under 16px and
+       leaves it zoomed, which misaligns both sticky bars. */
+    #q, .search-field input{ font-size: 16px; }
+  }
+
+  /* Removing the tap highlight removes the only press feedback touch had, so it
+     is replaced here rather than simply deleted. */
+  @media (hover: none){
+    button:active, a:active, [role="button"]:active{
+      transform: scale(.96);
+      transition: transform .06s ease;
+    }
+    /* the bottom bar and its transport are already small; don't shrink further */
+    .player-bar:active, .player-info:active, .player-art:active{ transform: none; }
+  }
+  @media (hover: none) and (prefers-reduced-motion: reduce){
+    button:active, a:active, [role="button"]:active{ transform: none; opacity: .7; }
+  }
+
+  /* ---- Hit targets, coarse pointers only ----
+     44x44 is the Apple HIG floor and WCAG 2.5.8. Two techniques, chosen per
+     control rather than applied uniformly:
+
+       * Controls that stand alone grow via a transparent ::before, so the
+         *ink* is untouched and desktop layout cannot shift.
+       * Controls that sit shoulder to shoulder grow their real box instead —
+         overlapping invisible pseudo-elements would steal each other's taps,
+         and the later sibling always wins the hit test.
+
+     .more-link is deliberately NOT expanded: it is tabindex="-1" and fires the
+     same handler as .show-open / .card-overlay (app.js), which already wrap it
+     in a target the size of the whole row or card. */
+  @media (pointer: coarse){
+    .play-btn:not(.card-art),
+    .sheet-close, .menu-close, .lightbox-close, .donate-close,
+    .link-notice-close, .lp-alert-dismiss, .resume-dismiss,
+    .social-btn, .player-close{ position: relative; }
+
+    .play-btn:not(.card-art)::before,
+    .sheet-close::before, .menu-close::before, .lightbox-close::before,
+    .donate-close::before, .link-notice-close::before,
+    .lp-alert-dismiss::before, .resume-dismiss::before,
+    .social-btn::before, .player-close::before{
+      content: ""; position: absolute;
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 100%; height: 100%;
+      min-width: 44px; min-height: 44px;
+    }
+
+    /* side by side — grow the box */
+    .menu-btn{ width: 44px; height: 44px; }
+    .view-toggle{ gap: 4px; }
+    /* the pill grows to ~50px tall on touch; that is the cost of a real target
+       for the two most-mistapped buttons in the toolbar */
+    .view-btn{ width: 44px; height: 44px; }
+    .player-transport{ gap: .5rem; }
+    .player-skip{ width: 44px; height: 44px; }
+    .player-toggle{ width: 48px; height: 48px; }
+    .player-toggle svg{ width: 20px; height: 20px; }
+
+    /* pills and text buttons — give them a real vertical target */
+    .on-air-btn, .appbar-actions .btn-donate, .refresh-pill, .lp-alert-btn,
+    .sheet-play, .sheet-link, .sheet-restart{ min-height: 44px; }
+    .resume-restart, .desc-toggle{
+      min-height: 44px; display: inline-flex; align-items: center;
+    }
+
+    /* Sliders are dragged, not tapped, so they get the most help — but the two
+       are in very different places and must not be treated the same.
+
+       The scrubber lives in the FIXED bottom bar. A plain height:44px there
+       measured 88px of bar = 10.4% of a 390x844 phone, permanently, while
+       playing (Spotify and Apple Music mini-players sit around 64px). So the
+       hit band is grown with negative margins instead: 30px to press, 16px of
+       layout, bar back to ~60px. The margins eat only dead space — the 6px gap
+       above and the bar's own bottom padding — never .player-info above it,
+       which is a button that opens the info sheet.
+
+       This works because a range input only needs the tall band for the INITIAL
+       press: once the drag starts it tracks horizontally no matter where the
+       finger wanders vertically. */
+    .player-range{ height: 30px; margin-top: -6px; margin-bottom: -8px; }
+    /* the volume slider is inside a centred modal with room to spare, so it
+       gets the full target with no layout cost to pay for it */
+    .lp-volume-range{ height: 44px; }
+    .player-range::-webkit-slider-thumb{ width: 20px; height: 20px; margin-top: -8px; }
+    .player-range::-moz-range-thumb{ width: 20px; height: 20px; }
+    .lp-volume-range::-webkit-slider-thumb{ width: 18px; height: 18px; margin-top: -7px; }
+    .lp-volume-range::-moz-range-thumb{ width: 18px; height: 18px; }
   }

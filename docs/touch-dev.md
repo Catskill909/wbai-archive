@@ -1,8 +1,11 @@
 # touch-dev.md — touch audit & modernization plan
 
-Audit date: **2026-07-26**. Scope: `public/index.html`, `public/styles.css`
-(1549 lines), `public/app.js` (2347 lines). Nothing here has been implemented
-yet — this document is the audit and the plan.
+Audit date: **2026-07-26**. Scope: `public/index.html`, `public/styles.css`,
+`public/app.js`.
+
+**Status: implemented.** All five phases shipped on 2026-07-26, plus a
+regression suite at `test/touch/`. The audit below is kept as the record of what
+was wrong and why each fix is shaped the way it is. See §7 for what landed.
 
 The trigger was a real user report: *"when tapping on a device there is a blue
 square on certain buttons."* That turned out to be the visible tip of a larger
@@ -518,6 +521,13 @@ button, [role="button"], .show-open, .card-overlay, .player-info{
 Covers **F1, F2, F5, F6, F8, F9, F11**. No visual change on desktop, no layout
 change anywhere.
 
+**Also in this commit:** add the three `Emulation.*` calls from §5 to
+`test/live-stream/run-tests.js`. They go in first, before any coarse-pointer CSS
+exists, so the suite is watching the new rules from the moment they land rather
+than being retrofitted after a regression. Run `./run.sh` and `./run.sh --strict`
+both before and after the CSS change — the pair should pass identically, which
+is what proves the emulation didn't disturb the existing live-audio scenarios.
+
 ### Phase 2 — hover containment *(one commit, nothing else in it)*
 
 Wrap all 56 `:hover` rules in `@media (hover: hover) and (pointer: fine)`.
@@ -574,23 +584,171 @@ Per-phase checks, on a real iOS device and a real Android device:
 Chrome. Phase 1 touches `touch-action` and `user-select` on `.lp-toggle` and the
 volume slider, and Phase 3 resizes `.lp-volume-range` — both are inside the live
 player. Run **both** `./run.sh` and `./run.sh --strict` after Phases 1 and 3, per
-`CLAUDE.md` §5. Headless Chrome reports `pointer: fine`, so the
-`@media (pointer: coarse)` blocks are inert under test — meaning the suite will
-**not** catch a coarse-pointer regression. That gap is real; the device
-checklist above is the only coverage for it.
+`CLAUDE.md` §5.
+
+**The harness is fine-pointer today, and that is fixable — do it in Phase 1.**
+Headless Chrome reports `pointer: fine` / `hover: hover`, so every
+`@media (pointer: coarse)` and `@media (hover: none)` block this plan adds would
+be inert under test. Three CDP calls fix it, and `cdp.js` already speaks raw
+CDP, so this is additive — no new dependency, no change to the app:
+
+```js
+await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+await p.send('Emulation.setEmulatedMedia', { features: [
+  { name: 'pointer',     value: 'coarse' }, { name: 'any-pointer', value: 'coarse' },
+  { name: 'hover',       value: 'none'   }, { name: 'any-hover',   value: 'none'   }
+]});
+await p.send('Emulation.setDeviceMetricsOverride', {
+  width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
+```
+
+Order matters: emulate **before** `Page.navigate`, not after.
+
+**Verified on 2026-07-26**, not assumed. The check used
+`.sheet-art-zoom-badge`, whose only `@media (hover:none)` rule already ships at
+`styles.css:981` — so it measures the real stylesheet with nothing injected:
+
+| Run | `matchMedia('(hover:none)')` | computed `opacity` |
+| --- | --- | --- |
+| headless default | `false` | `0` — rule does **not** apply |
+| with the three calls above | `true` | `1` — rule **does** apply |
+
+So CDP media emulation reaches real CSS style resolution, not just
+`matchMedia`. Coarse-pointer CSS **is** testable here.
+
+**One trap that cost a round of false results.** The app is served under
+`Content-Security-Policy: style-src 'self'` (no `'unsafe-inline'`). Injecting a
+probe `<style>` from `Runtime.evaluate` is **silently blocked** — the rule never
+applies and the test looks like an emulation failure when it is really a CSP
+failure. Assert against rules that already ship in `styles.css`, never against
+injected ones. (The same applies to `script-src 'self'`.)
+
+**What this still does not cover**, and where the device checklist remains the
+only coverage: emulation gives Chrome's *rendering* of a coarse pointer, not
+iOS Safari's *behavior*. It cannot confirm F1 (the UA tap highlight is
+Safari/WebView-specific), F2 (Safari's `:focus-visible` heuristic on
+programmatic focus), F6 (Safari's 16px zoom trigger), F8 (the iOS long-press
+callout), or F10 (`env(safe-area-inset-*)`, which is 0 in a desktop viewport).
+Emulation covers the *CSS wiring*; the device covers the *engine behavior*.
 
 ---
 
-## 6. Open questions
+## 6. Verified on implementation
 
-1. **Which blue square is it?** F1 and F2 are both plausible from the source
-   alone. The table in F1 distinguishes them on-device. Both get fixed in
-   Phase 1 either way, so this doesn't block — but knowing which one it was
-   tells us whether the report is about iOS or Android.
-2. **Is this being seen in a Tauri/WebView wrapper?** `docs/TAURI.md` exists.
-   Android WebView's default tap highlight is more visible than Chrome's, and
-   its `:focus-visible` heuristics differ. Worth knowing which surface the
-   report came from.
-3. **Does `body{overflow:hidden}` actually hold on the target iOS version?**
-   Determines whether F7 needs the full `position:fixed` + scroll-restore
-   treatment or just `overscroll-behavior`.
+Three things were open when this was written. Two were answered by building it;
+the third needs no answer.
+
+1. **Which blue square was it?** Both were real and both are fixed. The tap
+   highlight (F1) is now `transparent`, asserted by `test/touch/`; the focus
+   ring (F2) no longer fires on coarse pointers. No device triage was needed —
+   fixing both is correct regardless of which one the report saw.
+2. **Tauri?** Not a factor. Nothing has been built with Tauri; `docs/TAURI.md`
+   is planning only. The fixes are plain web-platform CSS and apply to any
+   surface the app is loaded in.
+3. **Does `body{overflow:hidden}` hold on iOS?** `overscroll-behavior: contain`
+   was added to all four scroll panels alongside the lock, which is the part
+   that actually holds a modal's scroll on iOS. If a device ever shows the page
+   still moving behind an overlay, the escalation is `position:fixed` +
+   scroll-restore — but that is a bigger change than the problem currently
+   justifies.
+
+---
+
+## 7. What shipped
+
+| Phase | Change | Where |
+| --- | --- | --- |
+| 1 | Touch base layer: tap highlight, `touch-action`, `user-select`/callout, text-size-adjust | `styles.css` after `:focus-visible` |
+| 1 | Coarse-pointer focus rings off; search input 16px | `styles.css` (end of file) |
+| 1 | `:active` press feedback + reduced-motion fallback | `styles.css` base layer |
+| 2 | **52** `:hover` rules wrapped in `@media (hover:hover) and (pointer:fine)` | throughout `styles.css` |
+| 3 | Hit targets to 44px — `::before` for isolated controls, real box for adjacent ones | `styles.css` (end of file) |
+| 3 | Scrubber: 30px press band at 16px layout cost (see below) | `styles.css` (end of file) |
+| 4 | `viewport-fit=cover`, `format-detection` | `index.html` |
+| 4 | `lightbox-open` / `donate-open` scroll locks | `app.js` + `styles.css` |
+| 4 | `overscroll-behavior:contain` ×4, safe-area padding, `100dvh` | `styles.css` |
+| 5 | Search field mobile keyboard hints | `index.html` |
+| — | Touch regression suite, 28 assertions | `test/touch/` |
+
+### Two things worth knowing before editing this again
+
+**Source order, not specificity, decides the coarse-pointer overrides.** Media
+queries add no specificity. The `@media (pointer: coarse)` blocks live at the
+**end** of `styles.css` for that reason — placed with the rest of the base layer
+near the top, `.menu-btn{width:44px}` silently lost to the plain
+`.menu-btn{width:42px}` declared 700 lines later. The test suite caught exactly
+this on the first run (`.menu-btn → 42x42`, `.view-btn → 32x28`,
+`#q → 15.2px`). If you add a coarse override, add it at the bottom.
+
+**The scrubber is a measured compromise, not a rounded-up number.** The obvious
+fix — `.player-range{height:44px}` — was implemented first and then measured:
+it produced an **88px player bar = 10.4% of a 390x844 phone**, permanently, on
+every screen while playing. Spotify's and Apple Music's mini-players sit around
+64px. The shipped version instead grows the hit band with negative margins that
+eat only dead space (the 6px gap above and the bar's own bottom padding), never
+`.player-info` above it, which is a button:
+
+```css
+.player-range{ height: 30px; margin-top: -6px; margin-bottom: -8px; }
+```
+
+30px to press, 16px of layout, **bar back to 68px (8.1%)**. This works because a
+range input only needs the tall band for the *initial* press — once the drag
+starts it tracks horizontally no matter where the finger wanders vertically.
+The volume slider inside the live-player modal keeps a full 44px, because there
+it costs nothing.
+
+`test/touch/` §5 asserts both halves: the band stays >= 28px AND the bar stays
+under 12% of the screen. Growing the band by growing the bar would satisfy a
+naive size check while quietly costing a tenth of the phone.
+
+**The hover guard splits selector lists; keep it that way.** `.card-play`'s
+`opacity:1` was shared by four selectors — `:hover`, `:focus-visible`,
+`.playing`, and `.loading`. Only the `:hover` one moved inside the guard. Moving
+the whole block would have disabled the play indicator on touch, which is the
+opposite of the bug being fixed.
+
+---
+
+## 8. Running the suite
+
+```sh
+node server.js &          # app must be on :8080
+./test/touch/run.sh       # 28 assertions, coarse-pointer emulated
+```
+
+It runs both ways on purpose: pass 1 asserts the hover guards **do** match on a
+fine pointer (so desktop hover is not silently dead), pass 2 asserts they **do
+not** match on a coarse one. A regression in either direction fails.
+
+`test/live-stream/` is unaffected — the touch suite is a separate harness with
+its own Chrome profile, so `./run.sh` and `./run.sh --strict` there keep testing
+live audio exactly as before. Run those too after touching `styles.css`; the
+live player's toggle and volume slider are both inside the touch changes.
+
+**Never run the two suites at the same time.** They were briefly on the same
+remote-debugging port, and the failure mode is genuinely confusing: the second
+Chrome cannot bind the port, so `cdp.js connect()` silently attaches to the
+*first* suite's browser and drives it — navigating it away from the app and
+resizing it to 390x844 mid-run. The live-stream suite then failed with
+`element covered: #lpClose — none is on top`, which reads exactly like a CSS
+regression and is not one. Two guards now: this suite uses port **9223**, and
+its profile is `chrome-profile-touch`. Note that live-stream's cleanup runs
+`pkill -f "chrome-profile"`, which still matches that name — so run them one at
+a time regardless.
+
+**The CSP trap.** The app is served `style-src 'self'` with no `'unsafe-inline'`.
+A probe `<style>` injected from `Runtime.evaluate` is silently blocked — it
+looks identical to an emulation failure and cost a full round of false
+conclusions while building this. Assert against rules that already ship in
+`styles.css`, never against injected ones.
+
+### What the suite still cannot cover
+
+Emulation gives Chrome's *rendering* of a coarse pointer, not iOS Safari's
+*behavior*. It cannot confirm the UA tap-highlight colour on WebKit, Safari's
+`:focus-visible` heuristic for programmatic focus, Safari's 16px zoom trigger,
+the iOS long-press callout, or `env(safe-area-inset-*)` (0 in a desktop
+viewport). The suite proves the CSS is wired and live; a phone proves the engine
+behaves. Both fixes are standard and low-risk, so this is a confirmation gap,
+not a correctness risk.

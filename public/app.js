@@ -1800,6 +1800,7 @@
     lightboxImg.src = src;
     lightbox.classList.add('show');
     lightbox.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('lightbox-open');
     refreshBgInert();
     lightboxClose.focus();
   }
@@ -1807,6 +1808,7 @@
     if(!lightboxOpen()) return;
     lightbox.classList.remove('show');
     lightbox.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('lightbox-open');
     lightboxImg.removeAttribute('src');
     refreshBgInert();
     if(lightboxReturnFocus && lightboxReturnFocus.focus) lightboxReturnFocus.focus();
@@ -1839,6 +1841,7 @@
     donateScrim.classList.add('show');
     donateModal.classList.add('show');
     donateModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('donate-open');
     refreshBgInert();
     donateClose.focus();
     document.addEventListener('keydown', onDonateKey);
@@ -1848,6 +1851,7 @@
     donateScrim.classList.remove('show');
     donateModal.classList.remove('show');
     donateModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('donate-open');
     document.removeEventListener('keydown', onDonateKey);
     refreshBgInert();
     if(donateReturnFocus && donateReturnFocus.focus) donateReturnFocus.focus();
