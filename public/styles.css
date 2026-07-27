@@ -103,6 +103,28 @@
      right"). `clip` (not `hidden`) contains it WITHOUT making html/body a scroll
      container, so the sticky appbar and normal vertical scroll are unaffected. */
   html{overflow-x:clip;}
+
+  /* ---- Overlay scroll lock ----
+     TRAP, and the reason `body{overflow:hidden}` alone was silently dead here:
+     the viewport only inherits its overflow from <body> when the ROOT's overflow
+     computes to `visible`. The `overflow-x:clip` above makes it not-visible (and
+     per spec the other axis then computes from `visible` to `auto`), so <html>
+     is the scroll container and body's `hidden` clips nothing — body's height is
+     its content, so there is nothing to clip. Every overlay's "scroll lock" was
+     a no-op and the listing scrolled behind all six of them.
+
+     So lock the element that actually scrolls. `overflow:hidden` on the scroller
+     preserves scrollTop, so nothing jumps to the top on open/close, and
+     `overscroll-behavior:none` kills the chained rubber-band on iOS.
+
+     Toggled by refreshOverlayState() in app.js, which reads the real .show state
+     so nested overlays (lightbox over sheet, sheet handing off to the live
+     player) never release the lock early. */
+  html.scroll-lock{ overflow:hidden; overscroll-behavior:none; }
+  /* Classic (non-overlay) scrollbars would otherwise vanish with the lock and
+     shift the whole page ~15px sideways under the scrim. No-op on macOS/iOS. */
+  html{ scrollbar-gutter:stable; }
+
   body{
     background:var(--surface-0);
     color:var(--ink);
@@ -979,12 +1001,21 @@
   @media (prefers-reduced-motion:reduce){
     .menu-scrim, .menu-panel{ transition-duration:0s; }
   }
-  body.menu-open{ overflow:hidden; }
-  /* The lightbox and the donate modal are full-screen overlays that had no
-     scroll lock at all — a vertical drag on either scrolled the listing
-     behind them. The donate one is worse: it wraps an iframe, so the drag
-     could move the page, the iframe, or neither. */
-  body.lightbox-open, body.donate-open{ overflow:hidden; }
+  /* The real lock is `html.scroll-lock` up by the root rules — see the long
+     comment there for why these body rules can't do the job on their own. They
+     stay as the second line of defence: if `html{overflow-x:clip}` is ever
+     dropped, body's overflow starts propagating to the viewport again and these
+     become live. Harmless either way.
+     (A drag over the lightbox or the donate modal scrolled the listing behind
+     it; the donate one is worst, since it wraps an iframe and the drag could
+     move the page, the iframe, or neither.) */
+  body.menu-open, body.lightbox-open, body.donate-open{ overflow:hidden; }
+  /* Belt-and-braces for iOS, where a root scroll lock has historically leaked:
+     a backdrop has nothing to pan, so tell the compositor that up front. Not
+     `none` — that would also kill the pinch-zoom index.html deliberately keeps. */
+  .menu-scrim, .sheet-scrim, .donate-scrim, .live-scrim, .lp-alert-scrim{
+    touch-action:pinch-zoom;
+  }
 
   .menu-head{
     flex:none; display:flex; align-items:center; justify-content:space-between; gap:1rem;

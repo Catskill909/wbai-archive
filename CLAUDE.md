@@ -63,6 +63,42 @@ starting a new one (`EADDRINUSE` means one is up).
   deviated from what the archive player does (`pause()` / `play()`, `src` set
   once). Match the thing that already works.
 
+## 3a. ASSERT THE EFFECT, NOT THE DECLARATION
+
+Same disease as §1 — trusting something you never proved ran — but in test code,
+where it's worse, because a green suite actively argues you're fine.
+
+`test/touch` asserted `getComputedStyle(document.body).overflow === 'hidden'`
+and passed for months while the page scrolled behind **every** overlay. The
+style was set. It just never reached the viewport (`html{overflow-x:clip}` had
+quietly made `<html>` the scroll container — see `docs/touch-dev.md` F7). The
+declaration was present and the behaviour was absent, and only one of those was
+being measured.
+
+So:
+
+1. **Assert what the user experiences, not what the code declares.** "Is
+   `overflow` hidden?" is not the question. "Does the page move when you drag
+   it?" is. Prefer synthesized input (`Input.synthesizeScrollGesture`,
+   `Input.dispatchMouseEvent`) over reading styles or calling DOM APIs.
+2. **Beware APIs that bypass the thing you're testing.** Assigning `scrollTop`
+   moves a *correctly* locked page — `overflow:hidden` blocks input scrolling,
+   not programmatic scrolling. The obvious probe was as wrong as the one it
+   replaced, in the opposite direction.
+3. **One probe point is not a measurement.** Whether a drag reaches the document
+   depends on what's under the finger; a panel with `overscroll-behavior:contain`
+   swallows it. `pageScrolls()` in `test/live-stream/cdp.js` sweeps five points
+   for this reason — a single mid-screen probe called a real leak a pass.
+4. **Know what your harness does to the page.** `p.click()` calls
+   `scrollIntoView()` first. A test measuring scroll position around a click
+   measures the harness. Use `p.clickInPlace()`, which throws instead.
+5. **Make "not X" assertions prove they can still see X.** A suite full of "the
+   page did NOT move" passes perfectly once the probe goes blind. Section 4 of
+   `touch-tests.js` strips the lock mid-run and *requires* the probe to notice.
+   Any assertion of absence deserves that self-test.
+
+A test that has never failed has never been shown to work.
+
 ## 4. PROD IS NOT YOUR LAPTOP — read its state, don't infer it
 
 Local runs write `data/` straight to disk and keep it forever. Containers don't:

@@ -242,17 +242,28 @@
   var countEl = document.getElementById('resultCount');
   var clockEl = document.getElementById('clock');
 
-  // ---------------- Overlay background inert ----------------
-  // Focus is already Tab-trapped inside each modal, but a screen-reader virtual
-  // cursor (VoiceOver swipe / NVDA browse) can still wander into the listing
-  // behind an open overlay. Marking the appbar + main `inert` removes them from
-  // both the focus order and the a11y tree while any overlay is up. We read the
-  // real .show state rather than counting opens, so nested cases stay correct:
-  // the lightbox over the sheet, or the sheet handing off to the live player,
-  // never prematurely un-inert the background. Call after toggling .show — and
-  // in close handlers, BEFORE returning focus, so a trigger in the (now un-inert)
-  // header is focusable again.
-  function refreshBgInert(){
+  // ---------------- Overlay background state ----------------
+  // Two things must be true of the page behind an open overlay: it is not
+  // reachable, and it does not move.
+  //
+  // NOT REACHABLE. Focus is already Tab-trapped inside each modal, but a
+  // screen-reader virtual cursor (VoiceOver swipe / NVDA browse) can still
+  // wander into the listing behind it. Marking the appbar + main `inert`
+  // removes them from both the focus order and the a11y tree.
+  //
+  // DOES NOT MOVE. Each overlay sets its own body.*-open class, and those were
+  // believed to lock scroll — they don't, and never did. The lock has to sit on
+  // <html>, which is what actually scrolls here; see the `html.scroll-lock`
+  // comment in styles.css for the full trap. Driving it from this one function
+  // (rather than per-overlay, like the body classes) is what keeps it honest.
+  //
+  // Both read the real .show state rather than counting opens, so nested cases
+  // stay correct: the lightbox over the sheet, or the sheet handing off to the
+  // live player, never prematurely un-inert or unlock the background.
+  //
+  // Call after toggling .show — and in close handlers, BEFORE returning focus,
+  // so a trigger in the (now un-inert) header is focusable again.
+  function refreshOverlayState(){
     var anyOpen = document.querySelector(
       '.menu-panel.show, .sheet.show, .lightbox.show, .live-player.show, .donate-modal.show'
     );
@@ -262,6 +273,7 @@
       if(anyOpen) el.setAttribute('inert', '');
       else el.removeAttribute('inert');
     });
+    document.documentElement.classList.toggle('scroll-lock', !!anyOpen);
   }
 
   // ---------------- Infinite scroll ----------------
@@ -1412,7 +1424,7 @@
     livePlayer.setAttribute('aria-hidden', 'false');
     onAirBtn.setAttribute('aria-expanded', 'true');
     document.body.classList.add('sheet-open');
-    refreshBgInert();
+    refreshOverlayState();
     lpToggle.focus();
     document.addEventListener('keydown', onLivePlayerKey);
     paintLiveAlert();      // a failure that happened while this was closed
@@ -1472,7 +1484,7 @@
     onAirBtn.setAttribute('aria-expanded', 'false');
     document.body.classList.remove('sheet-open');
     document.removeEventListener('keydown', onLivePlayerKey);
-    refreshBgInert();
+    refreshOverlayState();
     if(livePlayerReturnFocus && livePlayerReturnFocus.focus) livePlayerReturnFocus.focus();
     livePlayerReturnFocus = null;
   }
@@ -1881,7 +1893,7 @@
     lightbox.classList.add('show');
     lightbox.setAttribute('aria-hidden', 'false');
     document.body.classList.add('lightbox-open');
-    refreshBgInert();
+    refreshOverlayState();
     lightboxClose.focus();
   }
   function closeLightbox(){
@@ -1890,7 +1902,7 @@
     lightbox.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('lightbox-open');
     lightboxImg.removeAttribute('src');
-    refreshBgInert();
+    refreshOverlayState();
     if(lightboxReturnFocus && lightboxReturnFocus.focus) lightboxReturnFocus.focus();
     lightboxReturnFocus = null;
   }
@@ -1922,7 +1934,7 @@
     donateModal.classList.add('show');
     donateModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('donate-open');
-    refreshBgInert();
+    refreshOverlayState();
     donateClose.focus();
     document.addEventListener('keydown', onDonateKey);
   }
@@ -1933,7 +1945,7 @@
     donateModal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('donate-open');
     document.removeEventListener('keydown', onDonateKey);
-    refreshBgInert();
+    refreshOverlayState();
     if(donateReturnFocus && donateReturnFocus.focus) donateReturnFocus.focus();
     donateReturnFocus = null;
   }
@@ -2294,7 +2306,7 @@
     sheetScrim.classList.add('show');
     sheet.setAttribute('aria-hidden', 'false');
     document.body.classList.add('sheet-open');
-    refreshBgInert();
+    refreshOverlayState();
     sheetClose.focus();
     document.addEventListener('keydown', onSheetKey);
 
@@ -2328,7 +2340,7 @@
     sheet.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('sheet-open');
     document.removeEventListener('keydown', onSheetKey);
-    refreshBgInert();
+    refreshOverlayState();
     if(sheetReturnFocus && sheetReturnFocus.focus) sheetReturnFocus.focus();
     sheetReturnFocus = null;
     sheetRowId = null;
@@ -2411,7 +2423,7 @@
       panel.setAttribute('aria-hidden', 'false');
       btn.setAttribute('aria-expanded', 'true');
       document.body.classList.add('menu-open');
-      refreshBgInert();
+      refreshOverlayState();
       closeBtn.focus();
       document.addEventListener('keydown', onKey);
     }
@@ -2422,7 +2434,7 @@
       btn.setAttribute('aria-expanded', 'false');
       document.body.classList.remove('menu-open');
       document.removeEventListener('keydown', onKey);
-      refreshBgInert();
+      refreshOverlayState();
       if(lastFocus && lastFocus.focus) lastFocus.focus();
     }
     function onKey(e){

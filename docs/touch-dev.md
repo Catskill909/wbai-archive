@@ -24,7 +24,7 @@ touch-specific CSS property exists anywhere in it**.
 | `:hover` rules | **56**, of which **0** are guarded by `@media (hover:hover)` |
 | `@media (hover:none)` blocks | **1** (`styles.css:981`, the sheet-art zoom badge) |
 | Interactive controls below the 44×44 CSS px floor | **~20** |
-| Overlays that lock background scroll | **3 of 6** |
+| Overlays that lock background scroll | **3 of 6** (really **0 of 6** — see F7) |
 | Text inputs at ≥16px (iOS zoom floor) | **0 of 1** |
 
 The reported blue square is **Finding 1**. Everything else was found while
@@ -342,6 +342,65 @@ body.lightbox-open, body.donate-open{ overflow: hidden; }
 
 …plus the matching `classList.add/remove` in `openLightbox`/`closeLightbox` and
 `openDonate`/`closeDonate`.
+
+#### ⚠️ Correction (2026-07-27): that fix was a no-op. All six leaked.
+
+The premise above — that `body.menu-open` and `body.sheet-open` were "the only
+two scroll locks", i.e. two that worked — was wrong. **None** of them worked,
+including the two that predate this audit, and the two added by this fix joined
+them. Measured with a real touch scroll gesture through the compositor: the page
+scrolled behind the sheet, the lightbox, the donate modal, the menu drawer and
+the live player alike.
+
+**Why.** The viewport takes its overflow from `<body>` *only* when the root's
+overflow computes to `visible`. F-something-else in this very audit added
+`html{overflow-x:clip}` to contain the off-canvas drawer — which makes it
+not-visible, so `<html>` became the scroll container and every
+`body{overflow:hidden}` stopped propagating. Body's height is its content, so
+there was nothing for it to clip either. Two correct-looking declarations,
+zero effect.
+
+**Actual fix.** `html.scroll-lock{ overflow:hidden; overscroll-behavior:none; }`,
+toggled on `document.documentElement` by `refreshOverlayState()` in `app.js` —
+the same function that manages background `inert`, so one place owns "is any
+overlay up?" and nested overlays can't unlock early. The body classes stay as
+dead-but-harmless second line of defence. Scrims also get
+`touch-action:pinch-zoom` (not `none` — pinch-zoom is deliberately preserved).
+
+**How it hid for so long.** `test/touch` asserted
+`getComputedStyle(document.body).overflow === 'hidden'`. That was true the whole
+time. The suite now uses `p.pageScrolls()` (`test/live-stream/cdp.js`), which
+synthesizes a real touch scroll gesture. Three further traps were found while
+making that probe trustworthy, all recorded in `CLAUDE.md` §3a:
+
+- Assigning `scrollTop` *does* move a correctly locked page — `overflow:hidden`
+  blocks input scrolling, not programmatic scrolling. The obvious replacement
+  probe was as wrong as the one it replaced.
+- **One probe point is not a measurement.** Whether a drag reaches the document
+  depends on what is under the finger. Measured with the info sheet deliberately
+  unlocked: a gesture at (195,500) lands on `.sheet-body`
+  (`overscroll-behavior:contain`) and does *not* move the page, while (195,800)
+  lands on the footer and moves it 300px. A single mid-screen probe would have
+  passed a wide-open leak. `pageScrolls()` now sweeps five points.
+- `p.click()` calls `scrollIntoView()` first, so any test measuring scroll
+  position around a click measures the harness. `p.clickInPlace()` throws
+  instead. This cost real time chasing a phantom "500 → 163 jump on sheet open"
+  that the app had nothing to do with.
+
+**Coverage limit, stated plainly.** At the 390px viewport this suite emulates,
+`.donate-modal` is `100vw × 100dvh` with the cross-origin iframe filling it, so
+every gesture lands on the iframe and can never reach the parent document —
+verified: the gesture half reports "held" there even with no lock at all. That
+one assertion is carried by the marker-class check, not by behaviour. Its
+behavioural half only bites at desktop widths, where the modal is a 940px card
+with scrim around it. Of the five overlays the suite drives, the gesture sweep
+independently catches the regression on four.
+
+**And the suite now proves it can still fail.** Every assertion here is of the
+form "the page did NOT move", which passes perfectly once the probe goes blind —
+exactly how the computed-style version survived. So section 4 strips the lock
+mid-run, with the sheet still open, and requires the probe to notice. If that
+self-test fails, every other PASS in the section is worthless.
 
 ---
 

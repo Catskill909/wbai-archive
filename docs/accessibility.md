@@ -58,10 +58,12 @@ specific, known gaps — not a rebuild.
 Roughly ordered by impact ÷ effort.
 
 ### 1. Background not made inert when an overlay is open  ·  High impact  ·  ✅ DONE (2026-07-25)
-**Implemented.** A shared `refreshBgInert()` helper (`app.js`, near the DOM
-refs) toggles the `inert` attribute on `.appbar` + `main#top` whenever any
-overlay carries `.show`. Wired into all four open/close pairs (menu, sheet,
-lightbox, live player). Reads real `.show` state rather than counting, so nested
+**Implemented.** A shared `refreshOverlayState()` helper (`app.js`, near the DOM
+refs — named `refreshBgInert()` until 2026-07-27) toggles the `inert` attribute
+on `.appbar` + `main#top` whenever any overlay carries `.show`, and since
+2026-07-27 also owns the background scroll lock (`html.scroll-lock`; see
+`touch-dev.md` F7). Wired into all open/close pairs (menu, sheet, lightbox,
+donate, live player). Reads real `.show` state rather than counting, so nested
 cases (lightbox over sheet, sheet→live handoff) stay correct. Still needs a
 screen-reader pass to confirm the background is truly unreachable by the virtual
 cursor. Original notes below.

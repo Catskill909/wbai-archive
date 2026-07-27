@@ -158,36 +158,149 @@ async function emulateTouch(p) {
   }
 
   console.log('\n4. overlay scroll locks');
+  // This section used to assert `getComputedStyle(document.body).overflow` and
+  // passed green while the page scrolled behind ALL SIX overlays. The honest
+  // probe is p.pageScrolls() — a real touch gesture through the compositor;
+  // cdp.js documents why the two obvious alternatives both lie.
+  //
+  // `locked` deliberately requires BOTH the behaviour and the marker class: the
+  // behaviour is what the user feels, the class localises a failure to the JS
+  // (never toggled) vs the CSS (toggled, no effect).
+  const locked = async () =>
+    !(await p.pageScrolls()) &&
+    await p.eval(`return document.documentElement.classList.contains('scroll-lock');`);
+
+  // The page must be scrollable to begin with, or "locked" proves nothing.
+  check('page scrolls with no overlay open', await p.pageScrolls());
+
   await p.click('.show-thumb');
   await sleep(700);
-  check('info sheet locks the page', await p.eval(
-    `return document.body.classList.contains('sheet-open')
-        && getComputedStyle(document.body).overflow === 'hidden';`));
+  check('info sheet locks the page',
+        await p.eval(`return document.body.classList.contains('sheet-open');`) && await locked());
+
+  // SELF-TEST — the guard against this whole section going quietly blind again.
+  //
+  // Every assertion here is of the form "the page did NOT move", and a probe
+  // that can no longer move the page passes all of them for the wrong reason.
+  // That is exactly how the computed-style version stayed green over six broken
+  // overlays. So mutate the app out from under the probe — strip the lock while
+  // the sheet is still open — and require the probe to NOTICE. If this fails,
+  // every other PASS in section 4 is worthless, whatever it says.
+  await p.eval(`document.documentElement.classList.remove('scroll-lock'); return 1;`);
+  await sleep(200);
+  const noticedUnlock = await p.pageScrolls();
+  await p.eval(`document.documentElement.classList.add('scroll-lock'); return 1;`);
+  await sleep(200);
+  check('SELF-TEST: probe detects an UNLOCKED page in this same state',
+        noticedUnlock, noticedUnlock ? 'section 4 has teeth'
+                                     : 'section 4 is blind — ignore its other PASSes');
+
   const hasArt = await p.eval(`return !!document.querySelector('.sheet-art-zoom');`);
   if (hasArt) {
     await p.click('.sheet-art-zoom');
     await sleep(600);
-    check('lightbox locks the page', await p.eval(
-      `return document.body.classList.contains('lightbox-open')
-          && getComputedStyle(document.body).overflow === 'hidden';`));
+    check('lightbox locks the page',
+          await p.eval(`return document.body.classList.contains('lightbox-open');`) && await locked());
     await p.click('.lightbox-close');
     await sleep(500);
-    check('lightbox releases the lock on close', await p.eval(
-      `return !document.body.classList.contains('lightbox-open');`));
+    // Nested: closing the lightbox must NOT unlock — the sheet is still up.
+    check('lightbox close keeps the lock (sheet still open)',
+          !await p.eval(`return document.body.classList.contains('lightbox-open');`) && await locked());
   } else {
     console.log('   SKIP  lightbox — this show has no artwork to zoom');
   }
   await p.eval(`document.getElementById('sheetClose').click(); return 1;`);
   await sleep(600);
+  check('sheet releases the lock on close', await p.pageScrolls());
+
+  // HONEST LIMITATION, so nobody reads more into this PASS than it carries: at
+  // this 390px viewport `.donate-modal` is 100vw x 100dvh and the cross-origin
+  // iframe fills it edge to edge, so EVERY sweep point lands on the iframe and a
+  // drag can never reach the parent document. Verified against the unfixed code:
+  // the gesture half reports "held" here even with no lock at all. It is the
+  // marker-class half of `locked` that actually guards this one. The behavioural
+  // half only bites on desktop widths, where the modal is a 940px card with
+  // scrim around it — a viewport this suite doesn't emulate.
   await p.click('#donateBtn');
   await sleep(1200);
-  check('donate modal locks the page', await p.eval(
-    `return document.body.classList.contains('donate-open')
-        && getComputedStyle(document.body).overflow === 'hidden';`));
+  check('donate modal locks the page',
+        await p.eval(`return document.body.classList.contains('donate-open');`) && await locked());
   await p.eval(`document.getElementById('donateClose').click(); return 1;`);
   await sleep(500);
-  check('donate modal releases the lock on close', await p.eval(
-    `return !document.body.classList.contains('donate-open');`));
+  check('donate modal releases the lock on close', await p.pageScrolls());
+
+  await p.click('#menuBtn');
+  await sleep(700);
+  check('menu drawer locks the page',
+        await p.eval(`return document.body.classList.contains('menu-open');`) && await locked());
+  await p.eval(`document.getElementById('menuClose').click(); return 1;`);
+  await sleep(500);
+  check('menu drawer releases the lock on close', await p.pageScrolls());
+
+  await p.click('#onAirBtn');
+  await sleep(1400);
+  check('live player locks the page',
+        await p.eval(`return !!document.querySelector('.live-player.show');`) && await locked());
+  await p.eval(`document.getElementById('lpClose').click(); return 1;`);
+  await sleep(800);
+  check('live player releases the lock on close', await p.pageScrolls());
+
+  // The lock must not cost the reader their place in a 500-show listing.
+  //
+  // Twice: the mechanism alone, then the real path through the UI. Both, because
+  // the isolated one can't be corrupted by anything else the app does, and the
+  // real one is what a listener actually experiences.
+  const keptPlace = await p.eval(`
+    var se = document.scrollingElement, root = document.documentElement;
+    se.scrollTop = 500;
+    var before = se.scrollTop;
+    root.classList.add('scroll-lock');
+    var locked = se.scrollTop;
+    root.classList.remove('scroll-lock');
+    var after = se.scrollTop;
+    se.scrollTop = 0;
+    return { before: before, locked: locked, after: after };`);
+  check('lock preserves scroll position — mechanism',
+        keptPlace.before > 0 && keptPlace.locked === keptPlace.before
+          && keptPlace.after === keptPlace.before,
+        `${keptPlace.before} -> ${keptPlace.locked} -> ${keptPlace.after}`);
+
+  // Same question, driven through the real UI. This needs clickInPlace(): plain
+  // click() scrollIntoView()s its target, which would move the page itself and
+  // then "prove" the position changed. Mark a row that is already on screen and
+  // click that one — clickInPlace throws rather than scrolling if it isn't.
+  const marked = await p.eval(`
+    var se = document.scrollingElement;
+    se.scrollTop = 500;
+    var thumbs = document.querySelectorAll('.show-thumb');
+    var hit = null;
+    for (var i = 0; i < thumbs.length; i++){
+      var r = thumbs[i].getBoundingClientRect();
+      if (r.top < 0 || r.bottom > innerHeight) continue;
+      // In-view is not enough: the sticky search bar overlays the top of the
+      // list, and a click there lands on INPUT#q instead. Require this row to
+      // be the topmost element at its own centre.
+      var top = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+      if (top && (top === thumbs[i] || thumbs[i].contains(top))) { hit = thumbs[i]; break; }
+    }
+    if (hit) hit.setAttribute('data-test-target', '1');
+    return { ok: !!hit, top: se.scrollTop };`);
+  if (marked.ok && marked.top > 0) {
+    await p.clickInPlace('[data-test-target]');
+    await sleep(800);
+    const onOpen = await p.eval(`return document.scrollingElement.scrollTop;`);
+    await p.eval(`document.getElementById('sheetClose').click(); return 1;`);
+    await sleep(700);
+    const onClose = await p.eval(`return document.scrollingElement.scrollTop;`);
+    await p.eval(`var t=document.querySelector('[data-test-target]');
+      if(t) t.removeAttribute('data-test-target'); return 1;`);
+    check('lock preserves scroll position — real sheet open/close',
+          onOpen === marked.top && onClose === marked.top,
+          `${marked.top} -> ${onOpen} -> ${onClose}`);
+  } else {
+    check('lock preserves scroll position — real sheet open/close', false,
+          'setup failed: no on-screen row at scrollTop 500');
+  }
 
   // The scrubber is a deliberately tuned compromise, so it gets its own
   // assertions: a big press band WITHOUT a fat fixed bar eating the phone.
