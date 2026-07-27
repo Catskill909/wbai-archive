@@ -288,9 +288,21 @@
     transform:translate(-50%, -50%) scale(1); opacity:1; visibility:visible;
     transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
   }
+  /* Minimize: closing while the stream is running does not stop it, it hands it
+     to the docked player bar. So the card collapses *toward* the bar instead of
+     fading in place — the eye follows the audio to where it now lives. app.js
+     measures the gap between the two centres into --lp-min-dy before adding the
+     class, and strips the class once the run is over. Must sit after .show so it
+     wins at equal specificity while both classes are briefly on the element. */
+  .live-player.minimizing{
+    transform:translate(-50%, calc(-50% + var(--lp-min-dy, 40vh))) scale(.28);
+    opacity:0; visibility:visible; pointer-events:none;   /* in flight, not a target */
+    transition:transform .34s cubic-bezier(.4,0,.75,.4), opacity .28s ease .06s;
+  }
   @media (prefers-reduced-motion:reduce){
     .live-scrim, .live-player{ transition-duration:0s; }
     .live-player{ transform:translate(-50%,-50%) scale(1); }
+    .live-player.minimizing{ transition-duration:0s; }
   }
 
   .lp-badge{
@@ -483,6 +495,9 @@
       transform:translate(0, 100%) scale(1);
     }
     .live-player.show{ transform:translate(0, 0) scale(1); }
+    /* Already a bottom sheet: it slides down onto the bar, which *is* the
+       collapse. Scaling toward a measured point would fight the dock. */
+    .live-player.minimizing{ transform:translate(0, 100%) scale(1); }
   }
   /* Short / landscape: art beside the metadata so the controls stay above the fold. */
   @media (max-height:560px) and (min-width:561px){
@@ -1047,6 +1062,12 @@
   }
   .sheet-close svg{ width:15px; height:15px; }
 
+  /* Live player close button: ✕ at rest, chevron-down while the stream is
+     running (closing minimizes rather than stops). Only one is ever rendered. */
+  .lp-close .lp-close-min{ display:none; width:17px; height:17px; }
+  .lp-close.minimize .lp-close-x{ display:none; }
+  .lp-close.minimize .lp-close-min{ display:block; }
+
   .sheet-body{
     flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
     overscroll-behavior:contain;   /* don't chain the bounce to the page */
@@ -1359,6 +1380,17 @@
     padding:.6rem 1rem calc(.6rem + env(safe-area-inset-bottom,0px));
   }
   .player-bar[hidden]{display:none;}
+  /* The other half of the minimize gesture: the card collapses toward the bar,
+     and the bar lights up as it lands so the handoff reads as one movement
+     rather than a disappearance. Added by app.js for the length of the run. */
+  .player-bar.arrived{ animation:player-bar-arrive .6s ease-out; }
+  @keyframes player-bar-arrive{
+    0%   { border-top-color:var(--outline-strong); box-shadow:0 -6px 24px rgba(0,0,0,.35); }
+    30%  { border-top-color:var(--accent);
+           box-shadow:0 -6px 24px rgba(0,0,0,.35), 0 -2px 22px -4px color-mix(in srgb, var(--accent) 70%, transparent); }
+    100% { border-top-color:var(--outline-strong); box-shadow:0 -6px 24px rgba(0,0,0,.35); }
+  }
+  @media (prefers-reduced-motion:reduce){ .player-bar.arrived{ animation:none; } }
   .player-transport{display:flex; align-items:center; gap:.35rem; flex:none;}
   .player-skip{
     width:34px; height:34px; border-radius:50%; border:none; flex:none;

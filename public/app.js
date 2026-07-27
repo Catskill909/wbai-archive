@@ -929,9 +929,30 @@
     // playing it reads "On Air", matching the animated equaliser.
     var onAirLabel = onAirBtn.querySelector('.on-air-label');
     if(onAirLabel) onAirLabel.textContent = playing ? 'On Air' : 'Listen Live';
+    paintLiveCloseBtn();
   }
 
   function setLiveLoading(on){ lpToggle.classList.toggle('loading', on); }
+
+  // ---- What the close button promises. Closing the modal has never stopped the
+  // stream — it hands it to the docked bar — but an ✕ says "this ends", and
+  // listeners had to discover on their own that the audio was still running. So
+  // the control tells the truth: chevron-down + "keeps playing" whenever closing
+  // hands something over, plain ✕ when it really does leave nothing behind.
+  //
+  // The test is `liveWanted`, i.e. user intent, not whether audio is audible yet
+  // — closing mid-connect hands over just the same, and the bar arrives a moment
+  // later. (The collapse *animation* has a stricter condition: it has to measure
+  // the bar, so it needs the bar on screen. See closeLivePlayer.)
+  function liveWillMinimize(){ return liveWanted; }
+  function paintLiveCloseBtn(){
+    var min = liveWillMinimize();
+    lpClose.classList.toggle('minimize', min);
+    lpClose.setAttribute('aria-label', min
+      ? 'Minimize the live player — the stream keeps playing in the bar below'
+      : 'Close live player');
+    lpClose.setAttribute('title', min ? 'Minimize — keeps playing' : 'Close');
+  }
 
   lpArt.addEventListener('load', function(){ lpArt.classList.add('loaded'); });
   lpArt.addEventListener('error', function(){ lpArt.classList.remove('loaded'); lpArt.removeAttribute('src'); });
@@ -1225,6 +1246,7 @@
     setLiveLoading(true);
     setLiveNote('Connecting…');
     if(barMode === 'live'){ refreshToggleIcon(); setStatus('Connecting…'); }
+    paintLiveCloseBtn();          // connecting counts: closing now still hands over
     var el = liveAudio = newLiveEl();
     el.src = liveSrc();
     armLiveWatchdog();
@@ -1379,6 +1401,8 @@
     // opening the player is "I'm back" — the moment to check for a stale connection
     resyncLive();
     livePlayerReturnFocus = document.activeElement;
+    endLiveMinimize();     // re-opened mid-collapse: drop the transform, it wins
+    paintLiveCloseBtn();
     livePlayer.classList.add('show');
     livePlayerScrim.classList.add('show');
     livePlayer.setAttribute('aria-hidden', 'false');
@@ -1389,8 +1413,46 @@
     document.addEventListener('keydown', onLivePlayerKey);
     paintLiveAlert();      // a failure that happened while this was closed
   }
+  // ---- Collapse the card toward the player bar on close-while-playing, so the
+  // handoff is something the listener watches happen instead of something they
+  // find out about later. Pure decoration over the existing close: if the timer
+  // never fires, or motion is reduced, the modal is already closed and correct.
+  var LIVE_MINIMIZE_MS = 360;
+  var liveMinimizeTimer = null;
+  function endLiveMinimize(){
+    clearTimeout(liveMinimizeTimer);
+    liveMinimizeTimer = null;
+    livePlayer.classList.remove('minimizing');
+    livePlayer.style.removeProperty('--lp-min-dy');
+    playerBar.classList.remove('arrived');
+  }
+  function runLiveMinimize(){
+    endLiveMinimize();                      // a close during a previous run
+    // How far the card's centre has to travel to reach the bar's. Measured
+    // rather than guessed: the card's height depends on which metadata rows the
+    // feed gave us, and the bar sits above the safe-area inset on phones.
+    var card = livePlayer.getBoundingClientRect();
+    var bar = playerBar.getBoundingClientRect();
+    var dy = (bar.top + bar.height / 2) - (card.top + card.height / 2);
+    livePlayer.style.setProperty('--lp-min-dy', dy + 'px');
+    livePlayer.classList.add('minimizing');
+    // Land the bar's flash at the end of the travel, not the start of it.
+    liveMinimizeTimer = setTimeout(function(){
+      livePlayer.classList.remove('minimizing');
+      livePlayer.style.removeProperty('--lp-min-dy');
+      playerBar.classList.add('arrived');
+      liveMinimizeTimer = setTimeout(function(){
+        playerBar.classList.remove('arrived');
+        liveMinimizeTimer = null;
+      }, 600);
+    }, LIVE_MINIMIZE_MS);
+  }
+
   function closeLivePlayer(){
     if(!livePlayer.classList.contains('show')) return;
+    // The card can only collapse toward a bar that is on screen to be measured;
+    // closing mid-connect (bar not docked yet) just closes.
+    if(liveWillMinimize() && !playerBar.hidden) runLiveMinimize();
     livePlayer.classList.remove('show');
     paintLiveAlert();      // the dialog goes with it; liveAlertKind is remembered
     livePlayerScrim.classList.remove('show');
