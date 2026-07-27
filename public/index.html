@@ -216,8 +216,13 @@
      harvested show record; empty fields are left out entirely. -->
 <div class="sheet-scrim" id="sheetScrim"></div>
 <div class="sheet" id="showSheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" aria-hidden="true">
-  <button class="sheet-close" id="sheetClose" type="button" aria-label="Close show info">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  <!-- Same two-glyph close as the live player: ✕ when closing really does leave
+       nothing behind, chevron-down while the docked bar is holding this episode,
+       because then closing hands it over rather than ending it. app.js swaps the
+       .minimize class — see paintSheetCloseBtn(). -->
+  <button class="sheet-close" id="sheetClose" type="button" aria-label="Close show info" title="Close">
+    <svg class="close-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    <svg class="close-min" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
   </button>
   <!-- head/description/meta scroll; the controls stay pinned in the footer -->
   <div class="sheet-body" id="sheetBody"></div>
@@ -260,8 +265,8 @@
        swaps the .minimize class — see paintLiveCloseBtn(). -->
   <button class="sheet-close lp-close" id="lpClose" type="button"
           aria-label="Close live player" title="Close">
-    <svg class="lp-close-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-    <svg class="lp-close-min" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    <svg class="close-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    <svg class="close-min" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
   </button>
   <div class="lp-badge" id="lpBadge"><span class="on-air-dot" aria-hidden="true"></span>On Air · WBAI 99.5 FM</div>
 

@@ -28,6 +28,12 @@
     --font-display: 'Arial Narrow', 'Helvetica Neue Condensed', 'Roboto Condensed', sans-serif;
     --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace;
+    /* How far below the top edge the phone dialogs stop, and the corner radius
+       that goes with it. Shared by the info sheet and the live player so the two
+       sit at exactly the same height — they swap places often enough that any
+       difference reads as a jump. Not theme-dependent, so declared once. */
+    --phone-sheet-gap: 2.25rem;
+    --phone-sheet-radius: 20px;
   }
 
   @media (prefers-color-scheme: light){
@@ -291,11 +297,12 @@
   /* Minimize: closing while the stream is running does not stop it, it hands it
      to the docked player bar. So the card collapses *toward* the bar instead of
      fading in place — the eye follows the audio to where it now lives. app.js
-     measures the gap between the two centres into --lp-min-dy before adding the
+     measures the gap between the two centres into --min-dy before adding the
      class, and strips the class once the run is over. Must sit after .show so it
-     wins at equal specificity while both classes are briefly on the element. */
+     wins at equal specificity while both classes are briefly on the element.
+     The info sheet reuses the same run — see .sheet.minimizing. */
   .live-player.minimizing{
-    transform:translate(-50%, calc(-50% + var(--lp-min-dy, 40vh))) scale(.28);
+    transform:translate(-50%, calc(-50% + var(--min-dy, 40vh))) scale(.28);
     opacity:0; visibility:visible; pointer-events:none;   /* in flight, not a target */
     transition:transform .34s cubic-bezier(.4,0,.75,.4), opacity .28s ease .06s;
   }
@@ -486,15 +493,22 @@
     .lp-alert-btn:active{transform:none;}
   }
 
-  /* Phones: take the whole screen, sliding up from the bottom edge. A 92dvh
-     sheet on a 360x640 handset left the art, transport and status text fighting
-     over one cramped box; edge to edge, the same stack gets room to breathe. */
+  /* Phones: a tall sheet from the bottom edge, stopping short of the top. It
+     used to be a 92dvh box that left the art, transport and status text
+     fighting over one cramped space; this keeps nearly all of that reclaimed
+     height while --phone-sheet-gap holds back a strip of blurred scrim at the
+     top. That strip is the whole point: an edge-to-edge panel reads as a *page*
+     you navigated to, and a page has no reason to be sent downward. Showing the
+     listing still there behind it says "this is on top of something", which is
+     what makes the chevron's downward gesture mean anything. */
   @media (max-width:560px){
     .live-player{
-      left:0; top:0; bottom:auto; width:100%;
-      height:100dvh; max-height:100dvh;
-      border-radius:0; border:none;
-      padding:calc(1.8rem + env(safe-area-inset-top,0px)) 1.4rem calc(1.5rem + env(safe-area-inset-bottom,0px));
+      left:0; bottom:0; width:100%;
+      top:max(var(--phone-sheet-gap), env(safe-area-inset-top,0px));
+      height:auto; max-height:none;
+      border-radius:var(--phone-sheet-radius) var(--phone-sheet-radius) 0 0;
+      border-bottom:none;
+      padding:1.8rem 1.4rem calc(1.5rem + env(safe-area-inset-bottom,0px));
       transform:translate(0, 100%) scale(1);
       /* Centre the stack in the taller box. `safe` matters because this is also
          a scroll container: plain `center` would push the top of an overflowing
@@ -503,17 +517,11 @@
       justify-content:safe center;
     }
     .live-player.show{ transform:translate(0, 0) scale(1); }
-    /* Full-screen: it slides straight back down onto the bar, which *is* the
-       collapse. Scaling toward a measured point would fight the dock. */
+    /* Already a bottom sheet: it slides straight back down onto the bar, which
+       *is* the collapse. Scaling toward a measured point would fight the dock. */
     .live-player.minimizing{ transform:translate(0, 100%) scale(1); }
-    /* Bigger ink on a full-screen dialog: at 36px it read as a detail rather
-       than the way out. The 44px touch target around it is unchanged. */
-    .lp-close{
-      top:calc(.9rem + env(safe-area-inset-top,0px)); right:.9rem;
-      width:42px; height:42px;
-    }
-    .lp-close .lp-close-x{ width:17px; height:17px; }
-    .lp-close .lp-close-min{ width:19px; height:19px; }
+    /* .lp-close carries .sheet-close, so its full-screen sizing comes from the
+       shared close-button block up in the sheet section. */
     /* The square art is what pushes the transport off a short screen, so cap it
        against the viewport height as well as its width. */
     .lp-art{ width:min(300px, 64vw, 34dvh); }
@@ -1061,9 +1069,18 @@
     transform:translate(-50%, -50%) scale(1); opacity:1; visibility:visible;
     transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
   }
+  /* Closing the sheet while the bar holds this episode is a handoff, not a stop,
+     so the card collapses toward the bar exactly as the live player does. Same
+     --min-dy, same run in app.js (runMinimize). After .show for the same reason. */
+  .sheet.minimizing{
+    transform:translate(-50%, calc(-50% + var(--min-dy, 40vh))) scale(.28);
+    opacity:0; visibility:visible; pointer-events:none;
+    transition:transform .34s cubic-bezier(.4,0,.75,.4), opacity .28s ease .06s;
+  }
   @media (prefers-reduced-motion:reduce){
     .sheet-scrim, .sheet{ transition-duration:0s; }
     .sheet{ transform:translate(-50%,-50%) scale(1); }
+    .sheet.minimizing{ transition-duration:0s; }
   }
   body.sheet-open{ overflow:hidden; }
   /* leave room for the docked player bar so the card never sits on top of it */
@@ -1087,11 +1104,27 @@
   }
   .sheet-close svg{ width:15px; height:15px; }
 
-  /* Live player close button: ✕ at rest, chevron-down while the stream is
-     running (closing minimizes rather than stops). Only one is ever rendered. */
-  .lp-close .lp-close-min{ display:none; width:17px; height:17px; }
-  .lp-close.minimize .lp-close-x{ display:none; }
-  .lp-close.minimize .lp-close-min{ display:block; }
+  /* Two glyphs, one button: ✕ at rest, chevron-down whenever closing hands the
+     audio to the docked bar instead of ending it. Shared by the live player and
+     the show info sheet — both close onto that same bar. Only one is ever shown.
+     Keyed off .sheet-close, which .lp-close also carries. */
+  .sheet-close .close-min{ display:none; width:17px; height:17px; }
+  .sheet-close.minimize .close-x{ display:none; }
+  .sheet-close.minimize .close-min{ display:block; }
+
+  /* Phones: both dialogs are full-screen, so the only way out of one needs more
+     presence than a 36px chip. The 44px touch target around it is unchanged. */
+  @media (max-width:560px){
+    /* No safe-area term here: the dialogs already start below it (their `top` is
+       max(--phone-sheet-gap, safe-area-inset-top)), so adding it again would
+       double-count and push the button into the middle of the header. */
+    .sheet-close{
+      top:.9rem; right:.9rem;
+      width:42px; height:42px;
+    }
+    .sheet-close svg{ width:17px; height:17px; }
+    .sheet-close .close-min{ width:19px; height:19px; }
+  }
 
   .sheet-body{
     flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
@@ -1340,26 +1373,27 @@
     .link-notice{ margin-inline:1rem; }
   }
 
-  /* Phones: take the whole screen, sliding up from the bottom edge. As a docked
-     sheet this was capped at 90dvh — and at 76dvh whenever the player bar was
-     up, which on a 360x640 handset is ~430px for art, title, description and
-     controls. Full screen is the only size that fits them without squashing. */
+  /* Phones: same tall bottom sheet as the live player — see the note there for
+     why it stops short of the top. Previously capped at 90dvh, and at 76dvh
+     whenever the player bar was up, which on a 360x640 handset left ~430px for
+     art, title, description and controls; the gap costs a fraction of what that
+     did. Both dialogs share --phone-sheet-gap so they sit at the same height. */
   @media (max-width:560px){
     .sheet{
-      left:0; top:0; bottom:auto; width:100%;
-      height:100dvh; max-height:100dvh;
-      border-radius:0; border:none;
+      left:0; bottom:0; width:100%;
+      top:max(var(--phone-sheet-gap), env(safe-area-inset-top,0px));
+      height:auto; max-height:none;
+      border-radius:var(--phone-sheet-radius) var(--phone-sheet-radius) 0 0;
+      border-bottom:none;
       transform:translate(0, 100%) scale(1);
     }
     .sheet.show{ transform:translate(0, 0) scale(1); }
-    /* Full screen already covers the docked bar, so don't reserve room for it. */
-    body.has-player .sheet{ height:100dvh; max-height:100dvh; }
-    .sheet-close{
-      top:calc(.9rem + env(safe-area-inset-top,0px)); right:.9rem;
-      width:42px; height:42px;
-    }
-    .sheet-close svg{ width:17px; height:17px; }
-    .sheet-body{ padding:calc(1.3rem + env(safe-area-inset-top,0px)) 1.1rem 1.1rem; }
+    /* Already a bottom sheet: it slides straight back down onto the bar, which
+       *is* the collapse. Scaling toward a measured point would fight the dock. */
+    .sheet.minimizing{ transform:translate(0, 100%) scale(1); }
+    /* It covers the docked bar, so don't also reserve room for it. */
+    body.has-player .sheet{ max-height:none; }
+    .sheet-body{ padding:1.3rem 1.1rem 1.1rem; }
     .sheet-foot{ padding:.9rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom,0px)); border-radius:0; }
     .sheet-head{ flex-direction:column; align-items:center; text-align:center; padding-right:0; gap:1rem; }
     .sheet-art{ width:min(220px, 60vw); height:min(220px, 60vw); }
@@ -1574,10 +1608,17 @@
   .player-live-dot{width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse 1.8s infinite;}
   @media (prefers-reduced-motion:reduce){ .player-live-dot{animation:none;} }
   .player-close{
-    flex:none; cursor:pointer; border:1px solid var(--outline-strong);
+    /* Deliberately an ✕ and not the modals' chevron-down: this one really does
+       end playback and drop the bar (app.js), and the bar is already the
+       minimized state — there is nothing below it to hand off to. Promising a
+       minimize here would be exactly the lie the chevron exists to remove.
+       It does share their contrast though: the chip is 1.09:1 against the bar,
+       so the glyph and the edge are the only things that say "button". */
+    flex:none; cursor:pointer;
+    border:1px solid color-mix(in srgb, var(--ink) 26%, transparent);
     height:30px; border-radius:999px; padding:0 .7rem 0 .6rem;
     display:inline-flex; align-items:center; gap:.35rem;
-    background:var(--surface-3); color:var(--ink-dim);
+    background:var(--surface-3); color:color-mix(in srgb, var(--ink) 88%, transparent);
     font-family:var(--font-display); text-transform:uppercase; letter-spacing:.06em;
     font-size:.68rem; font-weight:700; line-height:1;
     /* hard-right: cancel the 1180-column inset (measured in vw, since % here is the
@@ -1593,9 +1634,16 @@
   .player-close:active{transform:scale(.95);}
   .player-close:focus-visible{outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent);}
   .player-close svg{width:13px; height:13px; flex:none;}
+  /* Phones: the word "Close" is dropped, so the glyph carries the whole meaning
+     on its own — full ink and a little more of it. Still shorter than the art
+     beside it, so the bar's height is unchanged. */
   @media (max-width:420px){
     .player-close-label{display:none;}
-    .player-close{padding:0; width:30px; justify-content:center;}
+    .player-close{
+      padding:0; width:34px; height:34px; justify-content:center;
+      color:var(--ink);
+    }
+    .player-close svg{ width:15px; height:15px; }
   }
   @media (max-width:700px){
     .player-status{display:none;}

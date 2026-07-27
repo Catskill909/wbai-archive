@@ -659,6 +659,7 @@
     refreshToggleIcon();
     syncSheetScrub();
     syncSheetRestart();
+    paintSheetCloseBtn();   // what closing the sheet now means changed with it
   }
 
   // `fromStart` is the sheet's "Start over" asking for an episode that isn't the
@@ -952,6 +953,9 @@
       ? 'Minimize the live player — the stream keeps playing in the bar below'
       : 'Close live player');
     lpClose.setAttribute('title', min ? 'Minimize — keeps playing' : 'Close');
+    // A live takeover changes barMode without touching archive playback, so the
+    // sheet's close button can start or stop meaning "minimize" from right here.
+    paintSheetCloseBtn();
   }
 
   lpArt.addEventListener('load', function(){ lpArt.classList.add('loaded'); });
@@ -1401,7 +1405,7 @@
     // opening the player is "I'm back" — the moment to check for a stale connection
     resyncLive();
     livePlayerReturnFocus = document.activeElement;
-    endLiveMinimize();     // re-opened mid-collapse: drop the transform, it wins
+    endMinimize();         // re-opened mid-collapse: drop the transform, it wins
     paintLiveCloseBtn();
     livePlayer.classList.add('show');
     livePlayerScrim.classList.add('show');
@@ -1417,42 +1421,50 @@
   // handoff is something the listener watches happen instead of something they
   // find out about later. Pure decoration over the existing close: if the timer
   // never fires, or motion is reduced, the modal is already closed and correct.
-  var LIVE_MINIMIZE_MS = 360;
-  var liveMinimizeTimer = null;
-  function endLiveMinimize(){
-    clearTimeout(liveMinimizeTimer);
-    liveMinimizeTimer = null;
-    livePlayer.classList.remove('minimizing');
-    livePlayer.style.removeProperty('--lp-min-dy');
+  // Shared by both dialogs that close onto the bar: the live player and the show
+  // info sheet. Only one of them can be open at a time, so one timer is enough.
+  var MINIMIZE_MS = 360;
+  var minimizeTimer = null;
+  var minimizingPanel = null;
+  function endMinimize(){
+    clearTimeout(minimizeTimer);
+    minimizeTimer = null;
+    if(minimizingPanel){
+      minimizingPanel.classList.remove('minimizing');
+      minimizingPanel.style.removeProperty('--min-dy');
+      minimizingPanel = null;
+    }
     playerBar.classList.remove('arrived');
   }
-  function runLiveMinimize(){
-    endLiveMinimize();                      // a close during a previous run
+  function runMinimize(panel){
+    endMinimize();                          // a close during a previous run
     // How far the card's centre has to travel to reach the bar's. Measured
     // rather than guessed: the card's height depends on which metadata rows the
     // feed gave us, and the bar sits above the safe-area inset on phones.
-    var card = livePlayer.getBoundingClientRect();
+    var card = panel.getBoundingClientRect();
     var bar = playerBar.getBoundingClientRect();
     var dy = (bar.top + bar.height / 2) - (card.top + card.height / 2);
-    livePlayer.style.setProperty('--lp-min-dy', dy + 'px');
-    livePlayer.classList.add('minimizing');
+    panel.style.setProperty('--min-dy', dy + 'px');
+    panel.classList.add('minimizing');
+    minimizingPanel = panel;
     // Land the bar's flash at the end of the travel, not the start of it.
-    liveMinimizeTimer = setTimeout(function(){
-      livePlayer.classList.remove('minimizing');
-      livePlayer.style.removeProperty('--lp-min-dy');
+    minimizeTimer = setTimeout(function(){
+      panel.classList.remove('minimizing');
+      panel.style.removeProperty('--min-dy');
+      minimizingPanel = null;
       playerBar.classList.add('arrived');
-      liveMinimizeTimer = setTimeout(function(){
+      minimizeTimer = setTimeout(function(){
         playerBar.classList.remove('arrived');
-        liveMinimizeTimer = null;
+        minimizeTimer = null;
       }, 600);
-    }, LIVE_MINIMIZE_MS);
+    }, MINIMIZE_MS);
   }
 
   function closeLivePlayer(){
     if(!livePlayer.classList.contains('show')) return;
     // The card can only collapse toward a bar that is on screen to be measured;
     // closing mid-connect (bar not docked yet) just closes.
-    if(liveWillMinimize() && !playerBar.hidden) runLiveMinimize();
+    if(liveWillMinimize() && !playerBar.hidden) runMinimize(livePlayer);
     livePlayer.classList.remove('show');
     paintLiveAlert();      // the dialog goes with it; liveAlertKind is remembered
     livePlayerScrim.classList.remove('show');
@@ -2195,6 +2207,30 @@
     btn.hidden = !(sheetMp3 && resumeFor(sheetMp3) > 0);
   }
 
+  // ---- The sheet's close button makes the same promise the live player's does
+  // (see paintLiveCloseBtn): closing has never stopped archive audio either, so
+  // whenever the docked bar is holding *this* episode the control says
+  // chevron-down instead of ✕.
+  //
+  // "This episode", not "anything is playing": the sheet can be open on show A
+  // while show B plays, and closing it really does leave A behind — an ✕ is the
+  // truth there. barMode is checked because a live takeover can leave a paused
+  // archive track in nowPlaying while the bar shows the stream.
+  function sheetWillMinimize(){
+    if(!sheetMp3) return false;
+    if(sheetMp3 === loadingMp3) return true;      // connecting hands over just the same
+    return barMode === 'archive' && !playerBar.hidden && sheetMp3 === nowPlaying.mp3;
+  }
+  function paintSheetCloseBtn(){
+    if(!sheetClose) return;        // called from updatePlayButtons() before wiring
+    var min = sheetWillMinimize();
+    sheetClose.classList.toggle('minimize', min);
+    sheetClose.setAttribute('aria-label', min
+      ? 'Minimize — this episode stays in the player below'
+      : 'Close show info');
+    sheetClose.setAttribute('title', min ? 'Minimize' : 'Close');
+  }
+
   // Reads the sheet's own Play button rather than the archive row: the sheet
   // merges in a host from the on-air feed or the directory, so its data-sub is
   // the richer line, and this keeps the two controls describing one track.
@@ -2234,6 +2270,7 @@
     bindRange(document.getElementById('sheetRange'));
     syncSheetScrub();
     syncSheetRestart();
+    paintSheetCloseBtn();   // sheetMp3 just changed, so the promise may have too
   }
 
   // `fromHistory` marks an open that a popstate is already accounting for, so it
@@ -2252,6 +2289,7 @@
       } catch(e){}
     }
     sheetReturnFocus = trigger || document.activeElement;
+    endMinimize();     // re-opened mid-collapse: drop the transform, it wins
     sheet.classList.add('show');
     sheetScrim.classList.add('show');
     sheet.setAttribute('aria-hidden', 'false');
@@ -2282,6 +2320,8 @@
 
   function dismissSheet(){
     if(!sheet.classList.contains('show')) return;
+    // The card can only collapse toward a bar that is on screen to be measured.
+    if(sheetWillMinimize() && !playerBar.hidden) runMinimize(sheet);
     closeLightbox();   // never leave the artwork overlay stranded over a closed sheet
     sheet.classList.remove('show');
     sheetScrim.classList.remove('show');
