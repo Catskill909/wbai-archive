@@ -761,6 +761,13 @@ function securityHeaders() {
       "script-src 'self'",
       "style-src 'self'",
       "connect-src 'self'",
+      // The Donate button embeds WBAI's real donate page in an iframe. Without
+      // this it falls under `default-src 'self'` and the browser refuses the
+      // frame outright ("Refused to load ... neither the frame-src directive
+      // nor the default-src directive"), leaving the modal blank. The child
+      // document's own subresources (its fonts, etc.) are governed by its
+      // origin, not ours — CSP does not inherit across a cross-origin frame.
+      "frame-src https://docs.pacifica.org",
       "frame-ancestors 'self'",
       "base-uri 'self'",
     ].join('; '),
