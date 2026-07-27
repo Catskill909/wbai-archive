@@ -42,8 +42,14 @@
 
   var latestDt = 0;
 
-  var savedView = 'list';
-  try { savedView = localStorage.getItem('wbai-view') === 'grid' ? 'grid' : 'list'; } catch(e){}
+  // Gallery is the default: the artwork is the fastest way to recognise a show,
+  // and first-time visitors arrive with no saved preference. Anyone who picks
+  // list keeps it — only an unset/garbage value falls back to 'grid'.
+  var savedView = 'grid';
+  try {
+    var storedView = localStorage.getItem('wbai-view');
+    if(storedView==='list' || storedView==='grid') savedView = storedView;
+  } catch(e){}
   var state = { query:'', cat:'all', sortKey:'date', sortDir:'desc', view:savedView };
 
   // ---------------- URL state ----------------

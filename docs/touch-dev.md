@@ -238,6 +238,14 @@ coarse pointers only*:
 Note the `.view-toggle` pair needs spacing as well as size — WCAG 2.5.8 counts
 adjacent targets, and 2px between two 32px buttons will produce mis-taps.
 
+**Superseded (2026-07-27).** Widening the gap was the wrong lever: the gap is a
+dead strip owned by neither button, and taps aimed at the seam landed on
+`.view-toggle` itself, where the click handler's `closest('.view-btn')` returns
+null and the tap is silently dropped. Shipped instead: `gap: 0` with wider
+segments — `46x32` on desktop, `58x44` on coarse pointers. WCAG 2.5.8 is
+satisfied by size alone once a target clears 24x24, so zero spacing is
+conformant here.
+
 ---
 
 ### 🟠 F5 — No press feedback on most controls (blocks F1)

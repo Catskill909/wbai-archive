@@ -107,6 +107,10 @@ async function emulateTouch(p) {
   check('guards MATCH on a fine pointer (desktop hover still works)', g0.anyMatch === true);
   const b0 = await p.eval(BASE);
   check('search input is left alone on desktop', b0.inputFont !== '16px', b0.inputFont);
+  // The Chrome profile is reused between runs, so a saved view preference from
+  // the last run would survive and mask a regression in the default. Clear it
+  // here; the step-2 navigate below then boots the app as a first-time visitor.
+  await p.eval(`try{ localStorage.removeItem('wbai-view'); }catch(e){} return 1;`);
 
   // ---- 2. coarse pointer: emulate BEFORE navigating
   console.log('\n2. touch device (pointer: coarse, hover: none)');
@@ -129,6 +133,22 @@ async function emulateTouch(p) {
   const g = await p.eval(GUARDS);
   check('hover rules are INERT on touch (no stuck hover states)',
         g.anyMatch === false, g.count + ' guarded blocks, none matching');
+
+  check('gallery is the default view for a first-time visitor', await p.eval(
+    `return document.body.classList.contains('view-grid')
+        && document.querySelector('.view-btn[data-view="grid"]')
+             .getAttribute('aria-pressed') === 'true';`));
+
+  // Gallery is the app's default view, but `.play-btn:not(.card-art)` and
+  // `.show-thumb` below are list-row controls — in gallery view they simply do
+  // not exist and every assertion about them reads "element not found". So
+  // switch to list the way a listener would, through the real toggle. That also
+  // exercises the toggle itself under coarse-pointer emulation.
+  await p.click('.view-btn[data-view="list"]');
+  await sleep(500);
+  check('list view toggle works on touch', await p.eval(
+    `return !document.body.classList.contains('view-grid')
+        && !!document.querySelector('.show-thumb');`));
 
   console.log('\n3. tap targets >= ' + MIN + 'px');
   for (const t of await p.eval(SIZES)) {

@@ -706,14 +706,16 @@
   }
 
   /* Segmented list / gallery view switch */
-  .view-toggle{display:inline-flex; gap:2px; padding:2px; border:1px solid var(--outline-strong); border-radius:999px; background:var(--surface-1); flex:none;}
+  /* gap:0 on purpose — a gap between two adjacent segments is a dead strip that
+     belongs to neither button, and it was swallowing taps aimed at the seam. */
+  .view-toggle{display:inline-flex; gap:0; padding:3px; border:1px solid var(--outline-strong); border-radius:999px; background:var(--surface-1); flex:none;}
   .view-btn{
-    width:32px; height:28px; padding:0; border:none; border-radius:999px;
+    width:46px; height:32px; padding:0; border:none; border-radius:999px;
     background:transparent; color:var(--ink-faint); cursor:pointer;
     display:inline-flex; align-items:center; justify-content:center;
     transition:background .15s ease, color .15s ease;
   }
-  .view-btn svg{width:16px; height:16px;}
+  .view-btn svg{width:17px; height:17px;}
   @media (hover:hover) and (pointer:fine){
     .view-btn:hover{color:var(--ink);}
   }
@@ -1750,10 +1752,11 @@
 
     /* side by side — grow the box */
     .menu-btn{ width: 44px; height: 44px; }
-    .view-toggle{ gap: 4px; }
-    /* the pill grows to ~50px tall on touch; that is the cost of a real target
-       for the two most-mistapped buttons in the toolbar */
-    .view-btn{ width: 44px; height: 44px; }
+    /* the pill grows to ~52px tall on touch; that is the cost of a real target
+       for the two most-mistapped buttons in the toolbar. Wider than tall so the
+       two segments span a comfortable thumb width with no seam between them. */
+    .view-btn{ width: 58px; height: 44px; }
+    .view-btn svg{ width: 20px; height: 20px; }
     .player-transport{ gap: .5rem; }
     .player-skip{ width: 44px; height: 44px; }
     .player-toggle{ width: 48px; height: 48px; }
