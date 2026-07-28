@@ -1926,6 +1926,27 @@
   @media (max-width:700px){
     .player-status{display:none;}
   }
+  /* Phones: the scrubber runs the full width of the bar.
+     Close already sat top-right (align-self:flex-start, pulled 8px past the
+     padding), on the same line as the title — but as a flex item it also
+     reserved that width down the WHOLE height of the bar, so the timeline
+     underneath stopped short of it for no reason. Taking it out of flow leaves
+     it visually where it was and hands .player-main the full width, so the
+     track and the duration end flush with the bar's right edge. The title,
+     which really does share that line, gets the reserved space back as padding
+     (close + its 8px overhang + the flex gap). Live mode has no scrubber, so
+     there is nothing to gain there and the ✕ stays in flow. */
+  @media (max-width:700px){
+    .player-bar:not(.live) .player-close{
+      position:absolute; right:8px; top:calc(.6rem - 3px); margin:0;
+    }
+    /* still the full "✕ Close" pill at this width */
+    .player-bar:not(.live) .player-info{ padding-right:6rem; }
+  }
+  @media (max-width:420px){
+    /* glyph only — 34px square */
+    .player-bar:not(.live) .player-info{ padding-right:2.6rem; }
+  }
   /* Tablet and up: the bar chrome still spans the viewport, but its controls sit in
      the same centered 1180px column as the listing instead of sprawling edge to edge. */
   @media (min-width:700px){
