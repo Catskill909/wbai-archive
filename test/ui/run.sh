@@ -1,8 +1,8 @@
 #!/bin/sh
 # Runs the UI-behaviour suites against the app on :8080.
 #
-#   ./run.sh              all three
-#   ./run.sh ui           just one (ui | scroll | clock)
+#   ./run.sh              all four
+#   ./run.sh ui           just one (ui | scroll | clock | rowtap)
 #
 # Like test/touch, this needs no fake station — it asserts rendered geometry and
 # DOM behaviour, not audio. What it covers:
@@ -12,6 +12,8 @@
 #   scroll-tests.js  filtering/sorting sends the list back to its first row
 #   clock-tests.js   the freshness label, driven against an intercepted
 #                    /api/archive with controlled timestamps
+#   row-tap-tests.js every dead zone in a list row opens the info sheet, and
+#                    the play column still doesn't
 #
 # House rule these follow (CLAUDE.md §3a): assert the EFFECT, not the
 # declaration. Where a suite asserts an absence ("the page did not move", "the
@@ -67,8 +69,9 @@ case "${1:-all}" in
   ui)     SUITES="ui-tests.js" ;;
   scroll) SUITES="scroll-tests.js" ;;
   clock)  SUITES="clock-tests.js" ;;
-  all)    SUITES="ui-tests.js scroll-tests.js clock-tests.js" ;;
-  *)      echo "unknown suite: $1 (use ui | scroll | clock)"; exit 2 ;;
+  rowtap) SUITES="row-tap-tests.js" ;;
+  all)    SUITES="ui-tests.js scroll-tests.js clock-tests.js row-tap-tests.js" ;;
+  *)      echo "unknown suite: $1 (use ui | scroll | clock | rowtap)"; exit 2 ;;
 esac
 
 # Each suite exits non-zero on failure. Run them all before reporting, so one

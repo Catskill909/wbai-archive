@@ -195,12 +195,19 @@
   /* manipulation = keep pan and pinch-zoom, drop double-tap-to-zoom. Two fast
      taps on ±15s or play/pause used to zoom the page instead of firing twice. */
   button, a, [role="button"], summary, label{ touch-action: manipulation; }
+  /* The list row is a control too — the whole thing opens the info sheet (see
+     the rows click handler in app.js) — so it needs the same double-tap-to-zoom
+     suppression its buttons get, or two quick taps on the date line zoom. */
+  .row.body{ touch-action: manipulation; }
   /* Sliders are dragged, so the page must not steal the gesture to pan. */
   .player-range, .lp-volume-range{ touch-action: none; }
 
   /* Long-press on a control should activate it, not start a text selection or
      pop the iOS callout. Scoped to controls — sheet copy stays selectable. */
-  button, [role="button"], .show-open, .card-overlay, .player-info{
+  button, [role="button"], .show-open, .card-overlay, .player-info,
+  /* .row.body for the same reason: its date line and retention pill are now
+     part of the tap target, and a long-press there was selecting the date. */
+  .row.body{
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
   }
@@ -1004,8 +1011,16 @@
     font-family:var(--font-display); text-transform:uppercase; letter-spacing:.07em;
     font-size:.68rem; color:var(--ink-dim); font-weight:700;
   }
+  /* The whole row (minus the play column) opens the info sheet — see the rows
+     click handler in app.js. The cursor is what tells a mouse that, and the
+     press tint is what tells a finger. */
+  .row.body{cursor:pointer;}
+  .row.body .row-actions{cursor:default;}
   @media (hover:hover) and (pointer:fine){
     .row.body:hover{background:var(--surface-hover);}
+  }
+  @media (hover:none){
+    .row.body:active{background:var(--surface-hover);}
   }
   .sortbtn{
     display:inline-flex; align-items:center; gap:.3rem; background:none; border:none;
@@ -1023,19 +1038,22 @@
     border:0; padding:0; margin:0; background:none; color:inherit; font:inherit;
     cursor:pointer;
   }
-  /* Artwork and text both open the sheet, so the cell lights up as one block
-     rather than per-element — colour, never an underline. Keyed on .show-cell,
-     which excludes the play button in .row-actions. */
+  /* Artwork, text, date and retention all open the sheet, so the row lights up
+     as one block rather than per-element — colour, never an underline. Keyed on
+     .row.body:hover so the cue matches the real target; the play column is the
+     only part of the row that doesn't open the sheet, and it has its own hover.
+     (.show-cell is kept as a second selector so the gallery card, which has no
+     .row wrapper, still highlights.) */
   .show-open:focus-visible .show-title{ color:var(--accent-2); }
   @media (hover:hover) and (pointer:fine){
-    .show-cell:hover .show-title{color:var(--accent-2);}
+    .row.body:hover .show-title,.show-cell:hover .show-title{color:var(--accent-2);}
   }
   @media (hover:hover) and (pointer:fine){
-    .show-cell:hover .more-link,.more-link:hover{color:color-mix(in srgb, var(--accent-2) 70%, var(--ink));}
+    .row.body:hover .more-link,.show-cell:hover .more-link,.more-link:hover{color:color-mix(in srgb, var(--accent-2) 70%, var(--ink));}
   }
   .show-thumb{ transition:box-shadow .15s ease; }
   @media (hover:hover) and (pointer:fine){
-    .show-cell:hover .show-thumb{box-shadow:inset 0 0 0 1px var(--outline-strong), var(--elev-1);}
+    .row.body:hover .show-thumb,.show-cell:hover .show-thumb{box-shadow:inset 0 0 0 1px var(--outline-strong), var(--elev-1);}
   }
   .show-thumb:focus-visible{ outline:2px solid var(--accent-2); outline-offset:2px; }
 
@@ -2160,8 +2178,10 @@
          and the later sibling always wins the hit test.
 
      .more-link is deliberately NOT expanded: it is tabindex="-1" and fires the
-     same handler as .show-open / .card-overlay (app.js), which already wrap it
-     in a target the size of the whole row or card. */
+     same handler as the row itself / .card-overlay (app.js), which already wrap
+     it in a target the size of the whole row or card. In list view that is
+     literal — the rows click handler treats everything left of .row-actions as
+     one target, so .more-link is a label for the row, not the only way in. */
   @media (pointer: coarse){
     /* Deliberately WITHOUT .sheet-close / .lightbox-close / .donate-close.
        Those are already position:absolute, pinned to a corner of their dialog,

@@ -431,7 +431,7 @@
       var subLine = c.label + (r.host ? ' · with '+r.host : '');
       var photo = r.photo || '';
       return (
-      '<div class="row body" role="row">'+
+      '<div class="row body" role="row" data-id="'+esc(r.id)+'">'+
         '<div class="show-cell">'+
           // The artwork opens the sheet too. Like the player bar's art it is
           // aria-hidden with tabindex=-1: a second tab stop to the same place,
@@ -838,6 +838,21 @@
         return;
       }
       togglePlayFrom(btn);
+      return;
+    }
+
+    // Everything else in a list row opens the sheet — not just the title block.
+    // On a phone the row is ~100px tall and the only live targets in it were a
+    // one-line title and a 15px "More", so most of the row read as tappable and
+    // wasn't. Excluded: .row-actions (the play column owns its own taps, and a
+    // near-miss there should do nothing rather than something else) and
+    // .rss-badge, which navigates.
+    var row = e.target.closest('.row.body[data-id]');
+    if(row && !e.target.closest('.row-actions, .rss-badge')){
+      // A drag that selected text ends in a click too; that isn't a tap.
+      var sel = window.getSelection && window.getSelection();
+      if(sel && sel.toString() && !sel.isCollapsed) return;
+      openSheetById(row.dataset.id, row.querySelector('.show-text .show-open'));
     }
   });
 
