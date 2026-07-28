@@ -824,6 +824,80 @@ function stampAssets(html) {
     .replace('src="/theme-boot.js"', `src="/theme-boot.js?v=${fileVer('/theme-boot.js')}"`);
 }
 
+// ------------------------------------------------- link previews (OpenGraph)
+// The share sheet's thumbnail is not something navigator.share() can supply: iOS
+// (and Messages, Mail, Slack, WhatsApp…) builds the card by fetching the shared
+// URL and reading its <head>. A `?show=<id>` link therefore has to arrive with
+// that episode's artwork already in the HTML — no client-side code runs in a
+// preview fetch, so nothing app.js does can add it afterwards.
+const OG_RE = /<!-- og:start -->[\s\S]*?<!-- og:end -->/;
+const OG_DEFAULT_TITLE = 'WBAI 99.5 FM Archive';
+const OG_DEFAULT_DESC = "Search, stream, and browse WBAI 99.5 FM's on-demand broadcast archive — Free Speech Radio, Pacifica Radio in New York City.";
+
+function htmlAttr(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Crawlers want absolute URLs, and we are behind a proxy in production, so the
+// origin has to come from the request rather than a hardcoded host.
+function originFor(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || 'http';
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  return /^[A-Za-z0-9.\-:[\]]+$/.test(host) ? `${proto}://${host}` : '';
+}
+
+function ogTags(req, reqUrl) {
+  const origin = originFor(req);
+  const abs = (p) => (/^https?:/i.test(p) ? p : origin + p);
+  let title = OG_DEFAULT_TITLE;
+  let desc = OG_DEFAULT_DESC;
+  let image = abs('/assets/icon-512.png');
+  let pageUrl = origin + '/';
+
+  const q = reqUrl.indexOf('?');
+  const id = q === -1 ? '' : new URLSearchParams(reqUrl.slice(q + 1)).get('show');
+  if (id) {
+    // Read-only on whatever the archive cache already holds; the request handler
+    // warms it before we get here, and a cold miss just falls back to the
+    // station card rather than blocking a preview fetch on an upstream scrape.
+    const data = archiveCache.get() || archiveCache.stale();
+    const row = data && data.shows.find((r) => r.id === id);
+    if (row) {
+      const info = showInfo[row.sho] || {};
+      const photo = row.photo || info.photo || '';
+      title = row.title;
+      // Same precedence as the info sheet's artwork, so the card matches the
+      // page the recipient lands on.
+      if (photo) image = abs(photo);
+      desc = (info.desc || info.shortdesc || '').replace(/\s+/g, ' ').trim();
+      if (desc.length > 300) desc = desc.slice(0, 297).trimEnd() + '…';
+      if (!desc) desc = (row.dateText ? row.dateText + ' · ' : '') + OG_DEFAULT_TITLE;
+      pageUrl = origin + '/?show=' + encodeURIComponent(id);
+    }
+  }
+
+  // summary, not summary_large_image: WBAI's artwork is square (400×400), and a
+  // wide card would letterbox it into a sliver.
+  return [
+    '<meta property="og:type" content="website">',
+    `<meta property="og:site_name" content="${htmlAttr(OG_DEFAULT_TITLE)}">`,
+    `<meta property="og:title" content="${htmlAttr(title)}">`,
+    `<meta property="og:description" content="${htmlAttr(desc)}">`,
+    `<meta property="og:image" content="${htmlAttr(image)}">`,
+    `<meta property="og:image:alt" content="${htmlAttr(title)}">`,
+    `<meta property="og:url" content="${htmlAttr(pageUrl)}">`,
+    '<meta name="twitter:card" content="summary">',
+    `<meta name="twitter:title" content="${htmlAttr(title)}">`,
+    `<meta name="twitter:description" content="${htmlAttr(desc)}">`,
+    `<meta name="twitter:image" content="${htmlAttr(image)}">`,
+  ].join('\n');
+}
+
+function injectOg(html, req, reqUrl) {
+  return OG_RE.test(html) ? html.replace(OG_RE, () => ogTags(req, reqUrl)) : html;
+}
+
 function sendFile(req, res, filePath, ext) {
   fs.stat(filePath, (err, st) => {
     if (err || !st.isFile()) return notFound(req, res, filePath);
@@ -832,7 +906,7 @@ function sendFile(req, res, filePath, ext) {
     if (ext === '.html') {
       fs.readFile(filePath, 'utf8', (e2, html) => {
         if (e2) return notFound(req, res, filePath);
-        const body = Buffer.from(stampAssets(html), 'utf8');
+        const body = Buffer.from(injectOg(stampAssets(html), req, req.url || '/'), 'utf8');
         res.writeHead(200, {
           'Content-Type': MIME['.html'],
           'Content-Length': body.length,
@@ -965,6 +1039,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.startsWith('/pix/')) {
       return proxyPix(url.slice('/pix/'.length).split('?')[0], res);
+    }
+    // A `?show=` link is usually first fetched by a link-preview crawler, which
+    // reads the OG tags once and caches the card. If the archive cache is cold
+    // (fresh boot / fresh deploy) that one shot would get the generic station
+    // image forever, so warm it first. Failures fall through to the defaults.
+    if (url.includes('?') && new URLSearchParams(url.slice(url.indexOf('?') + 1)).has('show')) {
+      await getArchive().catch(() => {});
     }
     return serveStatic(req, url, res);
   } catch (err) {

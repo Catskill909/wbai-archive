@@ -149,6 +149,33 @@ data, and is treated as sensitive: never read, never forwarded, never logged.
   (SSRF) for arbitrary URLs.
 - The image bytes are streamed back with a 1-day cache header.
 
+### `GET /` — Open Graph tags for shared links
+
+The info sheet's Share button hands the OS a bare `?show=<id>` link. Everything
+the share sheet, iMessage, Slack or Mail then displays — thumbnail, title,
+blurb — is built by *their* crawler fetching that URL and reading `<head>`. No
+JavaScript runs in a preview fetch, so the front end cannot contribute to it.
+
+So `sendFile()` rewrites the block between the `<!-- og:start -->` /
+`<!-- og:end -->` markers in `index.html` on every HTML response (`ogTags()`):
+
+- The origin comes from `X-Forwarded-Proto` / `X-Forwarded-Host` (falling back
+  to `Host`), because crawlers need absolute URLs and prod sits behind a proxy.
+  A host that isn't hostname-shaped is dropped rather than interpolated.
+- With `?show=<id>`, the episode is looked up in the archive cache and the card
+  becomes that show's title, its `/pix` artwork, and its description from the
+  show-info cache — the same precedence the info sheet uses, so the card matches
+  the page the recipient lands on. Unknown ids fall back to the station card.
+- The request handler awaits `getArchive()` before serving a `?show=` URL. A
+  crawler fetches once and caches the result, so a cold cache on a fresh deploy
+  would otherwise freeze the generic station image into every preview.
+- `twitter:card` is `summary`, not `summary_large_image`: WBAI artwork is square.
+
+`test/share/run.sh` covers this without a browser (neither does a crawler). It
+fetches the URL named in `og:image` and checks the bytes are a real image, since
+a card pointing at something unfetchable looks identical to no card at all.
+`BASE=https://<host> ./run.sh` runs the same suite against production.
+
 ## Caching & resilience
 
 Each proxied resource has a small in-memory TTL cache. On an upstream failure the
