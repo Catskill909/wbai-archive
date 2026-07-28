@@ -900,6 +900,28 @@
      always written by setClock(), so neither can go stale behind the other. */
   .clock-short{display:none;}
 
+  /* The freshness label is a button: it holds two facts (newest broadcast, and
+     when the server last checked) and a tap swaps them. It used to keep the
+     second one in `title` alone, which a phone can never show — there is no
+     hover to trigger it.
+     Styled as text, because it sits in a quiet meta strip and a real button
+     would shout. The dotted underline is the whole affordance — without it the
+     second fact is undiscoverable, which is the state we are fixing. */
+  .clock-btn{
+    border:0; background:none; padding:0; text-align:left; cursor:pointer;
+    text-decoration:underline dotted;
+    text-decoration-color:color-mix(in srgb, var(--ink-faint) 55%, transparent);
+    text-underline-offset:4px;
+    transition:color .15s ease;
+  }
+  /* No second fact to swap to (the shipped fallback snapshot has no timestamp),
+     so it drops back to being plain text rather than a dead control. */
+  .clock-btn:disabled{cursor:default; text-decoration:none; color:var(--ink-faint);}
+  @media (hover:hover) and (pointer:fine){
+    .clock-btn:not(:disabled):hover{color:var(--accent-2);}
+  }
+  .clock-btn:focus-visible{outline:2px solid var(--accent-2); outline-offset:3px; border-radius:3px;}
+
   /* "New shows" pill — hidden until a freshness poll finds upstream has moved */
   .refresh-pill{
     display:inline-flex; align-items:center; gap:.4rem; flex:none;
@@ -1615,9 +1637,38 @@
     .cell-duration.inline-meta{display:none;}
   }
   @media (max-width:560px){
-    .brand-logo{height:20px;}
     .appbar .brand-name{display:none;}
     .row.body{padding:.75rem .85rem;}
+  }
+
+  /* 480px, not 560px, and the difference is visible: the split below spreads
+     the row to both edges, and the gap it opens grows with the viewport —
+     ~26px at 320px, ~118px at 412px, but ~255px at 560px, where the bar stops
+     reading as two groups and starts reading as two strays. 480px is the top
+     of phone-portrait; above it the wordmark comes back and the old
+     right-aligned cluster is the better answer anyway. */
+  @media (max-width:480px){
+    /* ---- Phones: drop the appbar wordmark ----
+       It is the one genuinely redundant thing in the header here: the hero
+       repeats the identical logo four times the size, ~40px lower, above the
+       fold on every load. Removing it returns ~74px to a row that was being
+       shaved from five directions to fit — so the gaps, the pill padding and
+       the appbar's own gutter all go back to their comfortable values below,
+       and "Listen Live" stops wrapping to two lines even at 320px.
+
+       NOTE the rule that used to live here — a bare `.brand-logo{height:20px}`.
+       .brand-logo is worn by BOTH the appbar wordmark and the drawer's, and at
+       equal specificity this sat ~440 lines after `.menu-logo{height:22px}` and
+       quietly won, so the drawer logo has been shrinking on phones for reasons
+       nobody intended. With the appbar copy gone the rule had no legitimate
+       target left, so it is deleted rather than scoped. */
+    .appbar .brand{display:none;}
+    /* Nothing on the left any more, so the row spans the bar and splits into
+       its two natural halves — the station's actions at the leading edge, the
+       utility chips at the trailing one. Right-aligning the lot instead would
+       leave ~70px of dead space where the wordmark used to be. */
+    .appbar-actions{margin-left:0; flex:1 1 auto; gap:.55rem;}
+    .appbar-actions .theme-btn{margin-left:auto;}
   }
 
   /* ---- Phones: give the meta strip back to the listing ----
@@ -1647,58 +1698,23 @@
     .controls{padding-top:.4rem; padding-bottom:.55rem;}
   }
 
-  /* Phones: brand left, On Air + Donate + menu right, all on one row. */
+  /* Phones: brand left, On Air + Donate + menu right, all on one row.
+     The side padding tracks --page-gutter so the hamburger's right edge lines
+     up with the search field, the view toggle and the listing below it — the
+     app bar was the last thing still sitting on its own margin. */
   @media (max-width:760px){
-    .appbar-inner{padding:.6rem .8rem;}
+    .appbar-inner{padding:.6rem var(--page-gutter);}
     .brand{order:1;}
     .appbar-actions{order:2; margin-left:auto; gap:.55rem;}
   }
 
-  /* ---- Narrow phones: reclaiming the width the theme switch costs ----
-     MEASURED, not guessed. At 360px (Galaxy J7 / a 720px panel at DPR 2 — the
-     narrowest thing we actually get visitors on) the action row came to 366px
-     against 347px of usable width once the toggle was added, and the hamburger
-     went off the right edge. It did NOT look broken, which is the trap:
-     `html{overflow-x:clip}` (see the top of this file) silently clipped the
-     overflow instead of producing a scrollbar, so the button was simply gone.
-
-     So the whole row gives up a few pixels each rather than one control paying
-     for all of it: tighter gutters and gaps, a slightly smaller wordmark, a
-     slightly smaller toggle, and less air inside the two pills. Nothing is
-     hidden and nothing moves. Budget at 360px afterwards: ~335px used of 350.
-
-     "Listen Live" still wraps to two lines here — it did before this change
-     too, at every width below ~390px, because the label's condensed font is
-     absent on Android and the fallback is wider. That is the designed
-     fallback, not new damage. Freeing enough width to stop it means dropping
-     the appbar wordmark on phones (the hero repeats it 40px lower), which is a
-     bigger call than this one. ---- */
-  @media (max-width:480px){
-    .appbar-inner{padding:.6rem .7rem;}
-    /* .3rem, not .4rem: the theme chip used to be shrunk to 38px to buy this
-       width back, but it now sits directly beside the hamburger, where two
-       chips at different sizes read as a bug. So the pair stays square and
-       equal and the row pays for it out of the gaps instead. */
-    .appbar-actions{gap:.3rem;}
-    .brand-logo{height:18px;}
-    .on-air-btn{padding:.38rem .6rem;}
-    .appbar-actions .btn-donate{padding:.38rem .65rem;}
-  }
-
-  /* Below 360px (iPhone SE 1st gen and the last 320px Androids) the row cannot
-     be shaved into place — Listen Live is already at its min-content width, so
-     the remaining ~30px has to come from somewhere real. It comes from the
-     appbar wordmark, which at this width is the one genuinely redundant thing
-     in the header: the hero repeats the same logo, four times the size, about
-     40px below it and above the fold on every load.
-
-     Measured baseline first, because "my change broke 320px" and "320px was
-     already broken" are different bugs: the row overflowed its gutter by ~9px
-     here BEFORE the theme switch existed, so the hamburger was already being
-     clipped by html{overflow-x:clip}. This tier is what actually fixes it. */
-  @media (max-width:359px){
-    .appbar .brand{display:none;}
-  }
+  /* The header used to be squeezed from five directions here — tighter gutter,
+     .3rem gaps, an 18px wordmark, less padding inside both pills — purely to
+     fit the theme switch at 360px. Dropping the appbar wordmark (see the 560px
+     block above) returned ~74px, which is far more than all of that bought, so
+     every one of those overrides is gone and the row runs at its natural size.
+     Kept deliberately: `.on-air-btn{padding:.38rem .7rem}` and the smaller
+     .on-air-label further up this file, which predate all of it. */
 
   /* ---------------- Player bar ---------------- */
   body.has-player .listing{padding-bottom:11rem;}
@@ -2148,6 +2164,13 @@
       width: 100%; height: 100%;
       min-width: 44px; min-height: 44px;
     }
+
+    /* The freshness label is a ~15px line of text; as a button it needs a real
+       target. min-height rather than a ::before, because it has an inline
+       neighbour it must not reach over, and rather than padding, because the
+       strip it sits in is already 52px tall (the view toggle sets that) — so
+       44px centres inside the existing row and costs no vertical space at all. */
+    .clock-btn{ min-height: 44px; display: inline-flex; align-items: center; }
 
     /* side by side — grow the box.
        The theme chip is here rather than in the ::before list above precisely

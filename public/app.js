@@ -1789,42 +1789,117 @@
 
   var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  // Whole calendar days between a timestamp and today — NOT elapsed/86400.
-  // Shows carry a broadcast date, so a programme aired at 23:00 last night is
-  // "yesterday" at 01:00 today, which 2 hours of elapsed time would call "0".
-  function daysBefore(ts){
-    var d = new Date(ts*1000); d.setHours(0,0,0,0);
-    var now = new Date(); now.setHours(0,0,0,0);
-    return Math.round((now - d) / 86400000);
+  // Elapsed time, in the largest unit that still says something. "today" was
+  // throwing away real precision: rows carry a full timestamp, not a date —
+  // 21:00, 18:30, 17:42:48 — and on a station that airs a couple of dozen
+  // programmes a day, "2h ago" and "today" are very different answers to "is
+  // there anything new for me".
+  //
+  // Clamped at zero because both inputs are compared against the *browser's*
+  // clock: `updated` is stamped by the server, and a device a few minutes fast
+  // would otherwise render "in 3 minutes".
+  function relTime(ts){
+    var secs = Math.max(0, Math.round(Date.now()/1000 - ts));
+    if(secs < 60)      return 'just now';
+    var mins = Math.round(secs/60);
+    if(mins < 60)      return mins + 'm ago';
+    var hrs = Math.round(mins/60);
+    if(hrs < 24)       return hrs + 'h ago';
+    var days = Math.round(hrs/24);
+    if(days < 7)       return days === 1 ? 'yesterday' : days + 'd ago';
+    var d = new Date(ts*1000);
+    return MONTHS[d.getMonth()] + ' ' + d.getDate();
   }
 
-  // Both spans are written every time; styles.css picks which one shows. The
-  // long form is the original wording, kept verbatim for wide screens.
+  function timeOfDay(d){
+    var h = d.getHours(), m = d.getMinutes();
+    var ampm = h < 12 ? 'AM' : 'PM';
+    h = h % 12; if(h === 0) h = 12;
+    return h + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
+  }
+
+  // When the SERVER last read upstream. Set from /api/archive on load and from
+  // every /api/archive/head poll, both of which already carry it — the client
+  // was fetching this and throwing it away. Note it is the scrape time, not the
+  // poll time: if the server is serving a stale cache this correctly reports
+  // the older figure rather than flattering itself.
+  var archiveUpdated = 0;
+
+  // Which of the two facts the strip is currently showing. The other one used
+  // to live only in the `title`, which is unreachable on a phone — there is no
+  // hover — so the label is a button and a tap swaps them. Same control on
+  // desktop, where the tooltip still carries both at once.
+  var clockMode = 'show';   // 'show' | 'checked'
+
+  // Both spans are written every time; styles.css picks which one shows.
   function setClock(){
     var longEl = clockEl.querySelector('.clock-long');
     var shortEl = clockEl.querySelector('.clock-short');
     if(!longEl || !shortEl) return;
-    if(!latestDt){ longEl.textContent = shortEl.textContent = ''; clockEl.removeAttribute('title'); return; }
+    if(!latestDt){
+      longEl.textContent = shortEl.textContent = '';
+      clockEl.removeAttribute('title');
+      clockEl.disabled = true;
+      return;
+    }
 
     var d = new Date(latestDt * 1000);
-    var stamp = MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
-    longEl.textContent = 'Synced through ' + stamp;
+    var stamp = MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + timeOfDay(d);
 
-    // Phones get the same fact in a form that fits one line. Beyond a week the
-    // relative form stops being informative ("31 days ago") and the date reads
-    // better, so it falls back to the stamp.
-    var n = daysBefore(latestDt);
-    var rel = n <= 0 ? 'today'
-            : n === 1 ? 'yesterday'
-            : n < 7   ? n + ' days ago'
-            : MONTHS[d.getMonth()] + ' ' + d.getDate();
-    shortEl.textContent = 'Latest show · ' + rel;
-    // the exact date stays reachable on the short form
-    clockEl.title = 'Synced through ' + stamp;
+    // Nothing to swap to if the server never told us when it last looked (the
+    // shipped fallback snapshot carries no timestamp), so don't offer a toggle
+    // that would do nothing.
+    var canSwap = !!archiveUpdated;
+    clockEl.disabled = !canSwap;
+    if(!canSwap) clockMode = 'show';
+
+    if(clockMode === 'checked'){
+      longEl.textContent = 'Archive checked ' + relTime(archiveUpdated/1000);
+      shortEl.textContent = 'Checked · ' + relTime(archiveUpdated/1000);
+    } else {
+      // Wide screens get the wall-clock time of the newest broadcast; phones get
+      // the same fact as an interval, which is both shorter and the thing you
+      // actually want to know.
+      longEl.textContent = 'Latest show ' + stamp;
+      shortEl.textContent = 'Latest show · ' + relTime(latestDt);
+    }
+
+    // Deliberately two separate facts — the newest show and when we last looked
+    // are not the same thing, and collapsing them into one "updated" figure is
+    // how you end up claiming a quiet night means a broken feed.
+    var tip = 'Newest broadcast: ' + stamp + ', ' + relTime(latestDt);
+    if(canSwap){
+      tip += '\nArchive checked ' + relTime(archiveUpdated/1000);
+      tip += '\n(tap to swap)';
+    }
+    clockEl.title = tip;
   }
 
-  function ingest(list){
+  clockEl.addEventListener('click', function(){
+    if(clockEl.disabled) return;
+    clockMode = clockMode === 'show' ? 'checked' : 'show';
+    setClock();
+  });
+
+  // Keeps "2h ago" honest on a tab left open. Cheap: two textContent writes a
+  // minute, and only when the rendered string would actually change — which is
+  // why the guard tracks BOTH facts, not just the one currently on screen.
+  var clockTick = '';
+  setInterval(function(){
+    if(!latestDt) return;
+    var next = relTime(latestDt) + '|' + (archiveUpdated ? relTime(archiveUpdated/1000) : '');
+    if(next === clockTick) return;
+    clockTick = next;
+    setClock();
+  }, 60000);
+
+  // `updated` is the server's scrape timestamp, carried by both /api/archive and
+  // /api/archive/head. Optional — the shipped fallback snapshot has no such
+  // thing, and a missing value must leave the last known one alone rather than
+  // zeroing it.
+  function ingest(list, updated){
     rows = list;
+    if(updated) archiveUpdated = updated;
     latestDt = rows.reduce(function(max,r){ return Math.max(max, r.dt); }, 0);
     archiveSig = rows.length + ':' + latestDt;
     render();
@@ -1856,12 +1931,12 @@
     setCount('Loading shows…', false);
     fetch('/api/archive', {cache:'no-store'})
       .then(function(r){ if(!r.ok) throw new Error('archive '+r.status); return r.json(); })
-      .then(function(data){ ingest(data.shows || []); })
+      .then(function(data){ ingest(data.shows || [], data.updated); })
       .catch(function(){
         // fall back to the shipped snapshot if the live scrape is unavailable
         fetch('/data/shows-fallback.json', {cache:'no-store'})
           .then(function(r){ return r.json(); })
-          .then(function(data){ ingest(data.shows || []); })
+          .then(function(data){ ingest(data.shows || [], data.updated); })
           .catch(function(){ loadingEl.hidden = true; setCount('Could not load the archive.', false); emptyEl.hidden = false; });
       });
   }
@@ -1909,6 +1984,12 @@
       .then(function(r){ if(!r.ok) throw new Error('head '+r.status); return r.json(); })
       .then(function(d){
         if(!d || !d.count) return;
+        // Record how fresh the SERVER's copy is even when nothing changed — that
+        // is the poll's other, quieter answer, and it costs nothing to keep.
+        // NB d.latest is UPSTREAM's newest show, not ours: it must never feed
+        // the "Latest show" label, which has to describe the list actually on
+        // screen. The pill is what offers the newer one.
+        if(d.updated){ archiveUpdated = d.updated; setClock(); }
         var sig = d.count + ':' + d.latest;
         if(sig !== archiveSig) showRefreshPill(sig, d.count);
       })
@@ -1928,7 +2009,7 @@
     fetch('/api/archive', {cache:'no-store'})
       .then(function(r){ if(!r.ok) throw new Error('archive '+r.status); return r.json(); })
       .then(function(data){
-        ingest(data.shows || []);
+        ingest(data.shows || [], data.updated);
         while(shown < keepShown && shown < filtered.length) showMore();
         window.scrollTo(0, Math.min(keepScroll, Math.max(0, document.body.scrollHeight - window.innerHeight)));
         hideRefreshPill();
