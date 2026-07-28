@@ -114,9 +114,13 @@
   }
 
   /* Phones only — tablet and desktop keep the full 1rem, where the generous
-     gutter is what makes the layout feel considered rather than cramped. */
+     gutter is what makes the layout feel considered rather than cramped.
+     ONE phone value, not a second tier under 400px: that tier was worth 6.4px
+     against this 8.8px, and 2.4px of card width is not worth content sitting
+     that close to the bezel. The narrow-phone tightening that does earn its
+     keep is on the card grid's own padding and gap — see body.view-grid #rows
+     near the end of this file. */
   @media (max-width:560px){ :root{ --page-gutter:.55rem; } }
-  @media (max-width:400px){ :root{ --page-gutter:.4rem; } }
 
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -1633,6 +1637,14 @@
        date to the right edge */
     .result-meta-right{flex:1 1 auto; justify-content:flex-end;}
     #clock{margin-right:auto;}
+
+    /* With the tally gone this strip is one 44px control and a short date, and
+       it was carrying 30px of vertical padding around them — .85rem/1rem sized
+       for the two-line block it used to be. The row keeps its own height from
+       the toggle's tap target, which is untouched; only the air around it goes.
+       Slightly more below than above so the strip reads as belonging to the
+       listing it labels rather than floating between the two. */
+    .controls{padding-top:.4rem; padding-bottom:.55rem;}
   }
 
   /* Phones: brand left, On Air + Donate + menu right, all on one row. */
