@@ -183,6 +183,44 @@
     else if(e.key === 'End'){ e.preventDefault(); focusCatOption(els.length - 1); }
   }
 
+  // ---------------- Send the list back to its first row ----------------
+  // Changing the filter rebuilds the list underneath you, but the browser keeps
+  // your scroll offset. Forty rows deep in Music, switch to News, and you land
+  // in the middle of a different list — or, because render() also resets paging
+  // to the first 40, in the empty space past the end of it.
+  //
+  // NOT window.scrollTo(0, 0): that drags the hero back into view too, so every
+  // filter change would cost a swipe to get back to the results. The target is
+  // the exact offset at which .controls-row reaches its sticky position, so the
+  // search + filter bar does not appear to move at all and only the rows below
+  // it reset.
+  //
+  // ⚠️ The obvious way to find that offset — `controlsRow.offsetTop - 57` — is
+  // WRONG, and wrong in the silent direction. offsetTop reports the *used*
+  // position, which for a stuck sticky element tracks the scroll: measured here
+  // at 245 while at rest and 3057 after scrolling to 3000. The subtraction then
+  // yields the offset you are already at, and the whole function becomes a
+  // no-op precisely when it is needed. So the offset is derived from .hero,
+  // which is static and therefore honest, plus its own height — .controls-row
+  // is its next sibling in <main> with no margin between them.
+  function listTopOffset(){
+    var row = document.querySelector('.controls-row');
+    var hero = document.querySelector('.hero');
+    if(!row || !hero) return 0;
+    var stickTop = parseFloat(getComputedStyle(row).top) || 0;
+    var heroTop = hero.getBoundingClientRect().top + window.scrollY;
+    return Math.max(0, heroTop + hero.offsetHeight - stickTop);
+  }
+  // Only ever scrolls UP. Someone filtering from the top of the page should not
+  // be yanked downwards — and this is what makes it safe to call on every
+  // keystroke of a search: the first one moves you, the rest find nothing to do.
+  // Jumps rather than smooth-scrolls: the content has been replaced wholesale,
+  // and animating 3000px of a list that no longer exists reads as a glitch.
+  function resetListScroll(){
+    var target = listTopOffset();
+    if(window.scrollY > target + 1) window.scrollTo(0, target);
+  }
+
   catTrigger.addEventListener('click', function(){
     if(catMenu.hidden) openCatMenu(); else closeCatMenu();
   });
@@ -197,6 +235,7 @@
     closeCatMenu();
     renderCatTrigger();
     render();
+    resetListScroll();
     syncUrl();
     catTrigger.focus();
   });
@@ -205,6 +244,7 @@
   searchEl.addEventListener('input', function(e){
     state.query = e.target.value.trim().toLowerCase();
     render();
+    resetListScroll();
     syncUrl();
   });
 
@@ -215,6 +255,7 @@
       else { state.sortKey = key; state.sortDir = key==='title' ? 'asc':'desc'; }
       document.querySelectorAll('.sortbtn').forEach(function(b){ b.dataset.active = (b===btn); });
       render();
+      resetListScroll();
     });
   });
 
@@ -233,6 +274,7 @@
     try { localStorage.setItem('wbai-view', state.view); } catch(err){}
     applyView();
     render();
+    resetListScroll();
   });
   applyView();
 
@@ -241,6 +283,23 @@
   var loadingEl = document.getElementById('loadingState');
   var countEl = document.getElementById('resultCount');
   var clockEl = document.getElementById('clock');
+
+  // #resultCount carries two very different kinds of message: the running tally
+  // ("533 shows found") and one-off status ("Loading shows…", "Could not load
+  // the archive."). Phones hide the tally to buy back a line — but hiding the
+  // element outright would take the error message with it, which is exactly
+  // when you most need to see something. So the tally is marked, and only the
+  // marked state is hidden.
+  //
+  // .is-count uses .visually-hidden's clip technique, NOT display:none: the
+  // element is role="status" aria-live="polite", and display:none would stop it
+  // announcing "69 shows found" after a search — the one moment the count is
+  // genuinely useful to a screen-reader user. It stays spoken, it just stops
+  // taking space.
+  function setCount(text, isTally){
+    countEl.textContent = text;
+    countEl.classList.toggle('is-count', !!isTally);
+  }
 
   // ---------------- Overlay background state ----------------
   // Two things must be true of the page behind an open overlay: it is not
@@ -335,7 +394,7 @@
     });
 
     loadingEl.hidden = true;
-    countEl.textContent = list.length + (list.length===1 ? ' show':' shows') + ' found';
+    setCount(list.length + (list.length===1 ? ' show':' shows') + ' found', true);
     emptyEl.hidden = list.length!==0;
 
     // reset paging: show the first page, append the rest on scroll
@@ -1729,10 +1788,39 @@
   setInterval(fetchNowPlaying, 15000);
 
   var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Whole calendar days between a timestamp and today — NOT elapsed/86400.
+  // Shows carry a broadcast date, so a programme aired at 23:00 last night is
+  // "yesterday" at 01:00 today, which 2 hours of elapsed time would call "0".
+  function daysBefore(ts){
+    var d = new Date(ts*1000); d.setHours(0,0,0,0);
+    var now = new Date(); now.setHours(0,0,0,0);
+    return Math.round((now - d) / 86400000);
+  }
+
+  // Both spans are written every time; styles.css picks which one shows. The
+  // long form is the original wording, kept verbatim for wide screens.
   function setClock(){
-    if(!latestDt){ clockEl.textContent = ''; return; }
-    var d = new Date(latestDt*1000);
-    clockEl.textContent = 'Synced through ' + MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+    var longEl = clockEl.querySelector('.clock-long');
+    var shortEl = clockEl.querySelector('.clock-short');
+    if(!longEl || !shortEl) return;
+    if(!latestDt){ longEl.textContent = shortEl.textContent = ''; clockEl.removeAttribute('title'); return; }
+
+    var d = new Date(latestDt * 1000);
+    var stamp = MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+    longEl.textContent = 'Synced through ' + stamp;
+
+    // Phones get the same fact in a form that fits one line. Beyond a week the
+    // relative form stops being informative ("31 days ago") and the date reads
+    // better, so it falls back to the stamp.
+    var n = daysBefore(latestDt);
+    var rel = n <= 0 ? 'today'
+            : n === 1 ? 'yesterday'
+            : n < 7   ? n + ' days ago'
+            : MONTHS[d.getMonth()] + ' ' + d.getDate();
+    shortEl.textContent = 'Latest show · ' + rel;
+    // the exact date stays reachable on the short form
+    clockEl.title = 'Synced through ' + stamp;
   }
 
   function ingest(list){
@@ -1765,7 +1853,7 @@
   }
 
   function loadArchive(){
-    countEl.textContent = 'Loading shows…';
+    setCount('Loading shows…', false);
     fetch('/api/archive', {cache:'no-store'})
       .then(function(r){ if(!r.ok) throw new Error('archive '+r.status); return r.json(); })
       .then(function(data){ ingest(data.shows || []); })
@@ -1774,7 +1862,7 @@
         fetch('/data/shows-fallback.json', {cache:'no-store'})
           .then(function(r){ return r.json(); })
           .then(function(data){ ingest(data.shows || []); })
-          .catch(function(){ loadingEl.hidden = true; countEl.textContent = 'Could not load the archive.'; emptyEl.hidden = false; });
+          .catch(function(){ loadingEl.hidden = true; setCount('Could not load the archive.', false); emptyEl.hidden = false; });
       });
   }
 
@@ -2451,6 +2539,60 @@
     btn.addEventListener('click', openMenu);
     closeBtn.addEventListener('click', closeMenu);
     scrim.addEventListener('click', closeMenu);
+  })();
+
+  // ---------------- Hero copy: two lines on phones ----------------
+  // Deliberately thinner than setupDescClamp(): that one measures overflow
+  // because show descriptions vary from one line to a dozen paragraphs. This
+  // copy is fixed, so the clamp is a pure CSS media query and JS owns only the
+  // open/closed state. Nothing here runs on desktop except the listener.
+  (function(){
+    var wrap = document.getElementById('heroDescWrap');
+    var btn = document.getElementById('heroMore');
+    if(!wrap || !btn) return;
+    btn.addEventListener('click', function(){
+      var open = wrap.classList.toggle('expanded');
+      btn.textContent = open ? 'less' : 'more';
+      btn.setAttribute('aria-expanded', String(open));
+    });
+  })();
+
+  // ---------------- Theme switch ----------------
+  // The icon and the palette are pure CSS (see --sun in styles.css); everything
+  // this block owns is the *choice*. theme-boot.js has already applied any saved
+  // one before the first paint, so there is nothing to do on load but label the
+  // button.
+  (function(){
+    var btn = document.getElementById('themeBtn');
+    var T = window.WBAITheme;
+    if(!btn || !T) return;   // boot script blocked (CSP/adblock) — leave the system theme alone
+
+    var mq = window.matchMedia ? matchMedia('(prefers-color-scheme: light)') : null;
+
+    function label(){
+      // Name the ACTION, not the state. The icon shows where you are; a button
+      // announced as "Dark" while sitting in dark mode is the classic ambiguity.
+      var next = T.active() === 'dark' ? 'light' : 'dark';
+      btn.setAttribute('aria-label', 'Switch to ' + next + ' theme');
+      btn.title = 'Switch to ' + next + ' theme';
+    }
+
+    btn.addEventListener('click', function(){
+      var next = T.active() === 'dark' ? 'light' : 'dark';
+      // First tap commits to an explicit preference and stops following the OS.
+      // That is the intent — someone who reaches for this wants THIS device on
+      // THIS theme, not a setting that flips under them at sunset.
+      T.save(next);
+      T.apply(next);
+      label();
+    });
+
+    // Only relevant while still following the system, but harmless after: once a
+    // preference is stored, active() ignores the OS and the label doesn't move.
+    if(mq && mq.addEventListener) mq.addEventListener('change', label);
+    else if(mq && mq.addListener) mq.addListener(label);
+
+    label();
   })();
 
   document.getElementById('linkNoticeClose').addEventListener('click', function(){

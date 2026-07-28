@@ -29,7 +29,12 @@ function check(name, cond, detail) {
 // so the visible ink never changes.
 const TARGETS = [
   '.play-btn:not(.card-art)', '.menu-btn', '.view-btn', '.sheet-close',
-  '.menu-close', '.social-btn', '.player-toggle', '.player-close'
+  '.menu-close', '.social-btn', '.player-toggle', '.player-close',
+  // The theme switch sits directly beside the hamburger, so the two have to
+  // measure the same as well as look the same — this catches the pair drifting
+  // apart, which is easy to do because their width is set in three places
+  // (base, the 480px tightening, and the coarse-pointer block).
+  '.theme-btn'
 ];
 
 const SIZES = `

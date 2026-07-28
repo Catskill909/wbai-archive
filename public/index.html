@@ -28,6 +28,10 @@
 <link rel="apple-touch-icon" href="/assets/icon-256.png">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="stylesheet" href="/styles.css">
+<!-- Blocking on purpose, and last in <head> so the theme-color metas above are
+     already parsed when it runs. Applies a saved light/dark choice to <html>
+     before the first paint; see the file header for why it can't be inline. -->
+<script src="/theme-boot.js"></script>
 </head>
 <body>
 <a class="skip-link" href="#listing">Skip to show listing</a>
@@ -41,6 +45,10 @@
       </span>
     </a>
     <div class="appbar-actions">
+      <!-- Order is deliberate: Listen Live comes first, straight after the
+           wordmark, so the station's primary action leads the row. The two
+           utility chips (theme, menu) sit together at the far end, where they
+           balance each other instead of splitting the two CTAs apart. -->
       <button class="on-air-btn" id="onAirBtn" type="button"
               aria-haspopup="dialog" aria-controls="livePlayer" aria-expanded="false"
               aria-label="Open the live player — WBAI is on air now">
@@ -50,6 +58,32 @@
       </button>
       <button class="btn btn-filled btn-donate" id="donateBtn" type="button" aria-haspopup="dialog" aria-controls="donateModal">
         <span class="donate-label">Donate</span>
+      </button>
+      <!-- Sun/moon toggle. One shape does both: the disc is masked by an offset
+           circle that slides clear for the sun and bites in for the crescent,
+           and the rays scale out from the centre. The state is driven entirely
+           by the --sun token in styles.css, which is declared alongside the
+           colour tokens in all four theme blocks — so the icon is correct on
+           the first paint even before app.js has loaded, with no flash and no
+           JS-set class. The label is written by app.js. -->
+      <button class="theme-btn" id="themeBtn" type="button" aria-label="Switch theme">
+        <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <mask id="themeMoonMask">
+            <rect x="-4" y="-4" width="32" height="32" fill="#fff"/>
+            <circle class="theme-icon-bite" cx="18" cy="7" r="8" fill="#000"/>
+          </mask>
+          <circle class="theme-icon-orb" cx="12" cy="12" r="9" mask="url(#themeMoonMask)"/>
+          <g class="theme-icon-rays">
+            <line x1="12" y1="1"    x2="12"   y2="3"/>
+            <line x1="12" y1="21"   x2="12"   y2="23"/>
+            <line x1="1"  y1="12"   x2="3"    y2="12"/>
+            <line x1="21" y1="12"   x2="23"   y2="12"/>
+            <line x1="4.2"  y1="4.2"  x2="5.7"  y2="5.7"/>
+            <line x1="18.3" y1="18.3" x2="19.8" y2="19.8"/>
+            <line x1="4.2"  y1="19.8" x2="5.7"  y2="18.3"/>
+            <line x1="18.3" y1="5.7"  x2="19.8" y2="4.2"/>
+          </g>
+        </svg>
       </button>
       <button class="menu-btn" id="menuBtn" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="menuPanel">
         <span class="menu-btn-lines" aria-hidden="true"><span></span><span></span><span></span></span>
@@ -67,7 +101,18 @@
     <div class="hero-copy">
       <!-- heading kept for the document outline / screen readers, not shown -->
       <h1 class="visually-hidden">On‑demand archive</h1>
-      <p>Progressive &amp; independent news, arts &amp; music — Pacifica Radio in New York City. Every broadcast stays here for a limited window before it rotates out: spoken-word and public-affairs shows longer, music programs briefer under licensing terms. Search, filter by category, or sort the columns to find something to hear.</p>
+      <!-- Clamped to two lines below 720px to buy back the fold — the listing is
+           what people came for. The button is in the MARKUP rather than created
+           by JS after measuring overflow (which is how .sheet-desc does it),
+           because this paragraph is fixed copy: 330 characters cannot fit two
+           lines at any phone width, so there is nothing to measure. Static also
+           means rotating to landscape or resizing can't leave a clamped
+           paragraph with no way to open it. CSS alone decides whether the
+           button is visible; app.js only handles the click. -->
+      <div class="hero-desc-wrap" id="heroDescWrap">
+        <p class="hero-desc" id="heroDesc">Progressive &amp; independent news, arts &amp; music — Pacifica Radio in New York City. Every broadcast stays here for a limited window before it rotates out: spoken-word and public-affairs shows longer, music programs briefer under licensing terms. Search, filter by category, or sort the columns to find something to hear.</p>
+        <button class="hero-more" id="heroMore" type="button" aria-expanded="false" aria-controls="heroDesc">more</button>
+      </div>
     </div>
   </section>
 
@@ -92,7 +137,13 @@
     <div class="result-meta">
       <span class="result-count" id="resultCount" role="status" aria-live="polite"></span>
       <div class="result-meta-right">
-        <span class="result-count" id="clock"></span>
+        <!-- Two phrasings of the same fact, one rendered per breakpoint by CSS
+             rather than by measuring the viewport in JS (which would need a
+             resize listener to stay right). Both are written by setClock().
+             NB this reports the newest BROADCAST DATE in the archive, not when
+             we last fetched — "last updated" would be a different and untrue
+             claim, so the short form says "latest show". -->
+        <span class="result-count" id="clock"><span class="clock-long"></span><span class="clock-short"></span></span>
         <!-- Revealed by app.js only when a background freshness poll finds the
              upstream archive has changed. Clicking swaps the new listing in
              place: no page reload, so playback and scroll position survive. -->

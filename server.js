@@ -811,11 +811,17 @@ function fileVer(relFromPublic) {
 }
 // Combined stamp for the whole client bundle — exposed on /healthz and the
 // X-App-Version header so a deploy can be verified from the command line.
-function appVersion() { return `${fileVer('/app.js')}.${fileVer('/styles.css')}`; }
+function appVersion() {
+  return `${fileVer('/app.js')}.${fileVer('/styles.css')}.${fileVer('/theme-boot.js')}`;
+}
 function stampAssets(html) {
   return html
     .replace('href="/styles.css"', `href="/styles.css?v=${fileVer('/styles.css')}"`)
-    .replace('src="/app.js"', `src="/app.js?v=${fileVer('/app.js')}"`);
+    .replace('src="/app.js"', `src="/app.js?v=${fileVer('/app.js')}"`)
+    // theme-boot.js blocks the parser in <head>; a stale copy would mean the
+    // wrong theme on the first paint, which is exactly the class of bug the
+    // stamping exists to prevent.
+    .replace('src="/theme-boot.js"', `src="/theme-boot.js?v=${fileVer('/theme-boot.js')}"`);
 }
 
 function sendFile(req, res, filePath, ext) {

@@ -34,6 +34,22 @@
        difference reads as a jump. Not theme-dependent, so declared once. */
     --phone-sheet-gap: 2.25rem;
     --phone-sheet-radius: 20px;
+    /* The page's side gutter, shared by the hero, the sticky search bar, the
+       result strip and the listing so their left and right edges line up all
+       the way down. It is ONE token because the alignment is the whole point:
+       thinning the listing on its own (which is where the pressure is, since
+       the card grid pays this twice — once here, once in #rows) pushed the
+       bordered listing box 7px wider than the search field above it, and a
+       ragged edge is more noticeable than a wide one. */
+    --page-gutter: 1rem;
+    /* Which face the theme toggle is showing: 0 = moon (dark), 1 = sun (light).
+       It is declared in all four theme blocks below, next to the colours, for
+       one reason — the icon then resolves from the SAME cascade the palette
+       does, on the very first paint. Deriving it from a JS-set class instead
+       would mean the icon is briefly wrong on every load (app.js runs at the
+       end of <body>) and wrong forever if JS fails. Ratios, not pixels, so the
+       transforms below can interpolate straight off it. */
+    --sun: 0;
   }
 
   @media (prefers-color-scheme: light){
@@ -62,6 +78,7 @@
       --shadow: 0 1px 2px rgba(30,20,10,0.08), 0 6px 20px rgba(30,20,10,0.08);
       --elev-1: inset 0 1px 0 rgba(255,255,255,0.55), 0 1px 2px rgba(30,20,10,0.10), 0 6px 16px -4px rgba(30,20,10,0.16);
       --elev-2: inset 0 1px 0 rgba(255,255,255,0.65), 0 2px 4px rgba(30,20,10,0.12), 0 14px 30px -8px rgba(30,20,10,0.22);
+      --sun: 1;
     }
   }
   :root[data-theme="dark"]{
@@ -78,6 +95,7 @@
     /* raised-card elevation: top highlight rim + contact shadow + soft ambient */
     --elev-1: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.45), 0 6px 16px -4px rgba(0,0,0,0.55);
     --elev-2: inset 0 1px 0 rgba(255,255,255,0.07), 0 2px 4px rgba(0,0,0,0.45), 0 14px 30px -8px rgba(0,0,0,0.6);
+    --sun: 0;
   }
   :root[data-theme="light"]{
     color-scheme: light;
@@ -92,7 +110,13 @@
     --shadow: 0 1px 2px rgba(30,20,10,0.08), 0 6px 20px rgba(30,20,10,0.08);
       --elev-1: inset 0 1px 0 rgba(255,255,255,0.55), 0 1px 2px rgba(30,20,10,0.10), 0 6px 16px -4px rgba(30,20,10,0.16);
       --elev-2: inset 0 1px 0 rgba(255,255,255,0.65), 0 2px 4px rgba(30,20,10,0.12), 0 14px 30px -8px rgba(30,20,10,0.22);
+    --sun: 1;
   }
+
+  /* Phones only — tablet and desktop keep the full 1rem, where the generous
+     gutter is what makes the layout feel considered rather than cramped. */
+  @media (max-width:560px){ :root{ --page-gutter:.55rem; } }
+  @media (max-width:400px){ :root{ --page-gutter:.4rem; } }
 
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -228,6 +252,80 @@
 
   /* brand left, actions right — no more centred strip */
   .appbar-actions{display:flex; align-items:center; gap:.8rem; margin-left:auto;}
+
+  /* ---- Theme switch ----
+     Geometry AND surface are copied from .menu-btn deliberately: the two square
+     icon buttons sit directly next to each other at the end of the action row,
+     where any difference between them reads as a bug rather than a decision.
+     They are identical at rest, on hover and on press — the hover/active rule
+     below is shared by both, and the coarse-pointer block at the end of this
+     file sizes them together. Change one, change the other. ---- */
+  .theme-btn{
+    width:42px; height:42px; border-radius:12px; flex:none;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:var(--surface-3); border:1px solid var(--outline-strong);
+    color:var(--ink); cursor:pointer; -webkit-tap-highlight-color:transparent;
+    transition:background .15s ease, border-color .15s ease, color .15s ease,
+               box-shadow .18s ease, transform .18s ease;
+  }
+  /* Shared hover for both icon chips. Declared here, next to .theme-btn, even
+     though .menu-btn is defined ~700 lines down: they have to move together, and
+     splitting the rule is how they drift apart.
+
+     The effect is a colour SHIFT rather than the old brightness bump — the chip
+     and its glyph both pick up the tuning teal, and it lifts on the same -1px /
+     elev-2 the Listen Live and Donate pills use, so the whole action row
+     responds as one system instead of four unrelated buttons. */
+  @media (hover:hover) and (pointer:fine){
+    .theme-btn:hover, .menu-btn:hover{
+      background:color-mix(in srgb, var(--accent-2) 12%, var(--surface-3));
+      border-color:var(--accent-2);
+      color:var(--accent-2);
+      box-shadow:var(--elev-2);
+      transform:translateY(-1px);
+    }
+  }
+  /* translateY(0) is load-bearing, not redundant: :active fires while :hover is
+     still matching, so without it the lift stays applied and the press reads as
+     a shrink in mid-air rather than a button going down. Same reason
+     .on-air-btn:active spells it out. */
+  .theme-btn:active, .menu-btn:active{transform:translateY(0) scale(.94);}
+  .theme-btn:focus-visible{outline:2px solid var(--accent-2); outline-offset:2px;}
+  /* overflow:visible so the rays aren't clipped by the 24-unit box mid-animation */
+  .theme-icon{width:22px; height:22px; display:block; overflow:visible;}
+
+  /* The three moving parts, all interpolating off --sun (0 = moon, 1 = sun).
+     var() resolves at computed-value time, so `transform` genuinely transitions
+     when the token flips — the custom property itself is not what animates. */
+  .theme-icon-orb{
+    fill:currentColor;
+    transform-box:fill-box; transform-origin:center;
+    /* full disc for the moon, shrunk to a core for the sun so the rays have room */
+    transform:scale(calc(1 - var(--sun) * .4));
+    transition:transform .45s cubic-bezier(.34,1.4,.5,1);
+  }
+  /* the mask circle that carves the crescent — parked clear of the disc for the
+     sun (the disc spans x 3-21; +12 puts this one's left edge at 22) */
+  .theme-icon-bite{
+    transform:translateX(calc(var(--sun) * 12px));
+    transition:transform .45s cubic-bezier(.4,0,.2,1);
+  }
+  .theme-icon-rays{
+    stroke:currentColor; stroke-width:2; stroke-linecap:round; fill:none;
+    transform-box:fill-box; transform-origin:center;
+    transform:scale(var(--sun)) rotate(calc((1 - var(--sun)) * -50deg));
+    opacity:var(--sun);
+    transition:transform .45s cubic-bezier(.34,1.4,.5,1), opacity .3s ease;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .theme-btn, .menu-btn{transition:none;}
+    .theme-btn:active, .menu-btn:active{transform:none;}
+    @media (hover:hover) and (pointer:fine){
+      /* keep the colour shift, drop the lift */
+      .theme-btn:hover, .menu-btn:hover{transform:none;}
+    }
+    .theme-icon-orb, .theme-icon-bite, .theme-icon-rays{transition:none;}
+  }
 
   /* ---- On Air button: a compact live badge that opens the modal player.
      Built to sit as a peer of the Donate pill (same geometry + sheen), but in a
@@ -634,20 +732,71 @@
 
   /* ---------------- Hero ---------------- */
   .hero{
-    max-width:1180px; margin:0 auto; padding:1.6rem 1rem 1.8rem;
+    max-width:1180px; margin:0 auto; padding:1.6rem var(--page-gutter) 1.8rem;
     display:flex; align-items:center; gap:2rem;
   }
   .hero-lockup{flex:none;}
   .hero-copy{flex:1 1 auto; min-width:0;}
   .hero p{color:var(--ink-dim); margin:0; max-width:none; line-height:1.55; font-size:.95rem;}
+
+  /* ---- Hero copy: full on desktop, two lines on phones ----
+     Wide screens have the room, so nothing is hidden there and the button is
+     display:none — everything below lives inside the 720px query. The paragraph
+     is always fully present in the DOM either way, only visually clipped, so
+     screen readers get the whole thing regardless of the clamp. */
+  .hero-desc-wrap{position:relative;}
+  .hero-more{display:none;}
+
   /* stack the lockup above the copy on narrow screens */
   @media (max-width:720px){
     .hero{flex-direction:column; align-items:flex-start; gap:1rem; padding-bottom:1.4rem;}
+
+    .hero-desc-wrap:not(.expanded) .hero-desc{
+      display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
+    }
+    /* "more" sits ON the end of line two rather than under the paragraph, which
+       is the whole point — a button on its own line costs the line it saves.
+       Absolute + bottom:0 pins it to the last visible line; the gradient fades
+       the clipped text out beneath it so the join doesn't read as an overlap.
+       The fade is a flat --surface-0 because that IS the page behind the hero
+       (body's background, no gradient of its own) — it stays exact in both
+       themes for the same reason the rest of the palette does. */
+    .hero-desc-wrap:not(.expanded) .hero-more{
+      display:inline-block; position:absolute; right:0; bottom:0;
+      padding:0 0 0 3rem;
+      background:linear-gradient(to right, transparent 0, var(--surface-0) 2.2rem);
+    }
+    .hero-more{
+      border:0; font-family:inherit; cursor:pointer;
+      /* matched to .hero p so the label sits on the paragraph's own baseline */
+      font-size:.95rem; line-height:1.55;
+      font-weight:700; color:var(--accent-2);
+    }
+    /* expanded, it becomes an ordinary block under the text — there is no last
+       line to hang off any more, and overlaying it would cover real content */
+    .hero-desc-wrap.expanded .hero-more{
+      display:inline-block; position:static; background:none;
+      padding:0; margin-top:.45rem;
+    }
+    @media (hover:hover) and (pointer:fine){
+      .hero-more:hover{color:color-mix(in srgb, var(--accent-2) 60%, var(--ink));}
+    }
+    /* The global :focus-visible ring boxes the button's whole border-box — which
+       here includes the 3rem of transparent gradient padding, so it drew a wide
+       rectangle across the end of the paragraph and read as a rendering fault.
+       Ring the word instead: no padding to enclose, and it lands where the eye
+       already is. */
+    .hero-desc-wrap:not(.expanded) .hero-more:focus-visible{
+      outline:none;
+      text-decoration:underline; text-decoration-thickness:2px;
+      text-underline-offset:3px;
+      color:color-mix(in srgb, var(--accent-2) 70%, var(--ink));
+    }
   }
 
   /* ---------------- Controls ---------------- */
   .controls{
-    max-width:1180px; margin:0 auto; padding:.85rem 1rem 1rem;
+    max-width:1180px; margin:0 auto; padding:.85rem var(--page-gutter) 1rem;
     display:flex; flex-direction:column; gap:.75rem;
   }
   /* Sticky search + category bar. It's a direct child of <main> (a tall
@@ -656,7 +805,7 @@
      under the app bar; the table header (.row.head) sticks below it. */
   .controls-row{
     position:sticky; top:57px; z-index:40;
-    max-width:1180px; margin:0 auto; padding:.7rem 1rem;
+    max-width:1180px; margin:0 auto; padding:.7rem var(--page-gutter);
     background:var(--surface-0);
     border-bottom:1px solid var(--outline);
     display:flex; align-items:stretch; gap:.6rem;
@@ -743,6 +892,9 @@
   .result-meta{display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;}
   .result-meta-right{display:flex; align-items:center; gap:.85rem;}
   .result-count{font-size:.8rem; color:var(--ink-faint); font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
+  /* Wide screens show the full date; phones swap in the one-line form. Both are
+     always written by setClock(), so neither can go stale behind the other. */
+  .clock-short{display:none;}
 
   /* "New shows" pill — hidden until a freshness poll finds upstream has moved */
   .refresh-pill{
@@ -786,7 +938,7 @@
   .view-btn[aria-pressed="true"]{background:color-mix(in srgb, var(--accent-2) 22%, var(--surface-1)); color:var(--ink);}
 
   /* ---------------- Data list / table ---------------- */
-  .listing{max-width:1180px; margin:0 auto; padding:0 1rem 5rem;}
+  .listing{max-width:1180px; margin:0 auto; padding:0 var(--page-gutter) 5rem;}
   .grid{
     display:flex; flex-direction:column;
     /* clip (not hidden): hidden would make this a scroll container and strand
@@ -962,11 +1114,13 @@
     display:inline-flex; align-items:center; justify-content:center;
     background:var(--surface-3); border:1px solid var(--outline-strong);
     color:var(--ink); cursor:pointer;
-    transition:background .15s ease, border-color .15s ease;
+    transition:background .15s ease, border-color .15s ease, color .15s ease,
+               box-shadow .18s ease, transform .18s ease;
   }
-  @media (hover:hover) and (pointer:fine){
-    .menu-btn:hover{background:color-mix(in srgb, var(--ink) 6%, var(--surface-3)); border-color:var(--accent-2);}
-  }
+  /* :hover and :active live with .theme-btn near the top of this file — the two
+     icon chips share one rule so they cannot drift. Do not re-declare a
+     .menu-btn:hover here: it would sit ~800 lines later at equal specificity and
+     silently win, which is exactly how the pair came apart the first time. */
   /* wider, slightly heavier bars — the gap stays at 4px. Line pitch is
      height + gap (2.5 + 4), and the close-X translate below must equal it. */
   .menu-btn-lines{ display:flex; flex-direction:column; gap:4px; width:24px; }
@@ -1462,11 +1616,76 @@
     .row.body{padding:.75rem .85rem;}
   }
 
+  /* ---- Phones: give the meta strip back to the listing ----
+     The tally line costs a full row of vertical space to report a number the
+     listing itself is already showing. It goes clipped-but-spoken (see the
+     .is-count note in app.js — it is a live region, so display:none would
+     silence it too), the date collapses to its short form, and the two survivors
+     split the row: date hard left, layout toggle hard right. */
+  @media (max-width:720px){
+    .result-count.is-count{
+      position:absolute; width:1px; height:1px; margin:-1px; padding:0;
+      overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0;
+    }
+    .clock-long{display:none;}
+    .clock-short{display:inline;}
+    /* fill the row the hidden tally left behind, then push everything but the
+       date to the right edge */
+    .result-meta-right{flex:1 1 auto; justify-content:flex-end;}
+    #clock{margin-right:auto;}
+  }
+
   /* Phones: brand left, On Air + Donate + menu right, all on one row. */
   @media (max-width:760px){
     .appbar-inner{padding:.6rem .8rem;}
     .brand{order:1;}
     .appbar-actions{order:2; margin-left:auto; gap:.55rem;}
+  }
+
+  /* ---- Narrow phones: reclaiming the width the theme switch costs ----
+     MEASURED, not guessed. At 360px (Galaxy J7 / a 720px panel at DPR 2 — the
+     narrowest thing we actually get visitors on) the action row came to 366px
+     against 347px of usable width once the toggle was added, and the hamburger
+     went off the right edge. It did NOT look broken, which is the trap:
+     `html{overflow-x:clip}` (see the top of this file) silently clipped the
+     overflow instead of producing a scrollbar, so the button was simply gone.
+
+     So the whole row gives up a few pixels each rather than one control paying
+     for all of it: tighter gutters and gaps, a slightly smaller wordmark, a
+     slightly smaller toggle, and less air inside the two pills. Nothing is
+     hidden and nothing moves. Budget at 360px afterwards: ~335px used of 350.
+
+     "Listen Live" still wraps to two lines here — it did before this change
+     too, at every width below ~390px, because the label's condensed font is
+     absent on Android and the fallback is wider. That is the designed
+     fallback, not new damage. Freeing enough width to stop it means dropping
+     the appbar wordmark on phones (the hero repeats it 40px lower), which is a
+     bigger call than this one. ---- */
+  @media (max-width:480px){
+    .appbar-inner{padding:.6rem .7rem;}
+    /* .3rem, not .4rem: the theme chip used to be shrunk to 38px to buy this
+       width back, but it now sits directly beside the hamburger, where two
+       chips at different sizes read as a bug. So the pair stays square and
+       equal and the row pays for it out of the gaps instead. */
+    .appbar-actions{gap:.3rem;}
+    .brand-logo{height:18px;}
+    .on-air-btn{padding:.38rem .6rem;}
+    .appbar-actions .btn-donate{padding:.38rem .65rem;}
+  }
+
+  /* Below 360px (iPhone SE 1st gen and the last 320px Androids) the row cannot
+     be shaved into place — Listen Live is already at its min-content width, so
+     the remaining ~30px has to come from somewhere real. It comes from the
+     appbar wordmark, which at this width is the one genuinely redundant thing
+     in the header: the hero repeats the same logo, four times the size, about
+     40px below it and above the fold on every load.
+
+     Measured baseline first, because "my change broke 320px" and "320px was
+     already broken" are different bugs: the row overflowed its gutter by ~9px
+     here BEFORE the theme switch existed, so the hamburger was already being
+     clipped by html{overflow-x:clip}. This tier is what actually fixes it. */
+  @media (max-width:359px){
+    .appbar .brand{display:none;}
   }
 
   /* ---------------- Player bar ---------------- */
@@ -1720,7 +1939,21 @@
   }
   @media (max-width:1040px){ body.view-grid #rows{grid-template-columns:repeat(4, 1fr);} }
   @media (max-width:820px){ body.view-grid #rows{grid-template-columns:repeat(3, 1fr);} }
-  @media (max-width:560px){ body.view-grid #rows{grid-template-columns:repeat(2, 1fr); gap:1.1rem .9rem; padding:1rem;} }
+  /* ---- Phones: stop spending the screen on gutters ----
+     Three separate paddings stack up between a card and the screen edge, and
+     none of them is obviously the culprit on its own: .listing's 1rem side
+     padding, .grid's 1px border, and #rows' own 1rem. At 360px that is 66px of
+     the 360 — 18% of the display — before a single card is drawn, leaving two
+     columns of ~140px.
+
+     So the phone tiers thin all three together rather than one heavily. Tablet
+     and desktop are untouched: they have the room, and the generous gutter is
+     what makes the grid feel considered there. */
+  @media (max-width:560px){ body.view-grid #rows{grid-template-columns:repeat(2, 1fr); gap:1rem .7rem; padding:.7rem;} }
+  /* Very small phones have no gutter left to give — this is where two columns
+     were genuinely cramped. Still two columns: at 500+ shows, density is the
+     point, and one column would turn a scan into a scroll. */
+  @media (max-width:400px){ body.view-grid #rows{gap:.85rem .55rem; padding:.5rem;} }
 
   /* The card button can't contain another button, so the More link is a sibling
      inside this wrapper, sitting in the overlay just under the card title. */
@@ -1904,8 +2137,13 @@
       min-width: 44px; min-height: 44px;
     }
 
-    /* side by side — grow the box */
-    .menu-btn{ width: 44px; height: 44px; }
+    /* side by side — grow the box.
+       The theme chip is here rather than in the ::before list above precisely
+       BECAUSE it is now adjacent to the hamburger: two 44px pseudo-elements on
+       two 38px boxes would overhang 3px each into a 6.4px gap and very nearly
+       touch, which is the exact failure the note above warns about. Real boxes
+       cannot overlap, and it keeps the pair visually identical. */
+    .menu-btn, .theme-btn{ width: 44px; height: 44px; }
     /* the pill grows to ~52px tall on touch; that is the cost of a real target
        for the two most-mistapped buttons in the toolbar. Wider than tall so the
        two segments span a comfortable thumb width with no seam between them. */
