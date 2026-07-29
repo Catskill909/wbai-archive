@@ -30,7 +30,7 @@ Router**, so it discovers no cast/AirPlay devices, ever. A Cast button was built
 and removed in July 2026, and its suite passed all 30 assertions while the
 feature did nothing in desktop Chrome — the suite could only ever observe one
 branch of "is a device present", which means it never tested it. See
-`docs/casting-dev.md` §6a. The same trap applies to anything gated on hardware
+`docs/casting-dev.md` §4. The same trap applies to anything gated on hardware
 the headless browser doesn't have.
 
 ## The rule these follow
