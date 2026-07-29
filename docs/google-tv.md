@@ -5,8 +5,12 @@ committed to.** Same rules as [ROADMAP.md](ROADMAP.md).
 
 The question that started it: *how would we make this app Google TV compliant?*
 The short answer is that there is no path that reuses the web app, and the
-realistic one is a second codebase. What was built instead was
-[casting](casting-dev.md), which reaches the same TVs without any of this.
+realistic one is a second codebase.
+
+Casting was built as the cheap alternative and then **removed on UX grounds** —
+see [casting-dev.md](casting-dev.md). So as of today there is no way to play
+this app on a TV except the ones the platform already provides (Chrome's own
+"Cast tab" on desktop, AirPlay or screen mirroring on a phone).
 
 ---
 
@@ -104,13 +108,15 @@ project, a second UI to keep in sync, and Play Store release obligations
 forever. Much larger than the Tauri scaffold, which is honest about being just a
 window onto the server.
 
-**Recommendation: not now.** [Casting](casting-dev.md) was built instead and
-reaches the same TVs. Casting is also quality requirement **TV-CT** for a TV
-app, so it is a prerequisite rather than a detour.
+**Recommendation: not now.** The cost is a second codebase; the benefit is
+reaching an audience that mostly isn't asking for it yet.
 
-Reopen this if: casting proves insufficient on Android (see casting-dev.md §5),
-*or* there's a reason to want a Play Store listing for its own sake — discovery
-and legitimacy are real benefits this analysis doesn't price.
+Note that in-app casting — quality requirement **TV-CT** for a TV app — was
+built and then removed ([casting-dev.md](casting-dev.md)), so it is not a step
+already taken toward this.
+
+Reopen if there's a reason to want a Play Store listing for its own sake:
+discovery and legitimacy are real benefits this analysis doesn't price.
 
 ---
 

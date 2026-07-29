@@ -53,12 +53,6 @@ an archived broadcast.
 - **Keyboard and transport controls** — ±15s buttons in the player bar, plus
   Space for play/pause and ←/→ to skip, which stay out of the way while you're
   typing in the search field.
-- **Play it on a TV or speaker** — a Cast/AirPlay button appears in the player
-  bar when there's a device on the network, handing the audio to it. Built on
-  web standards (`HTMLMediaElement.remote` and Safari's AirPlay picker), so it
-  adds no SDK, no third-party script and no dependency. AirPlay is confirmed
-  working; support is uneven elsewhere — see
-  [docs/casting-dev.md](docs/casting-dev.md) § 5.
 - **Linkable views** — search, category and the open show live in the URL, so a
   view can be shared and the Back button closes the info sheet instead of
   leaving the app.
@@ -146,10 +140,10 @@ reload the page. `npm start` serves them directly.
   and ideas that were considered and rejected, with reasons.
 - **[docs/TAURI.md](docs/TAURI.md)** — step-by-step for the macOS and Windows
   desktop builds. Scaffolded and wired to CI, but not yet compiled.
-- **[docs/casting-dev.md](docs/casting-dev.md)** — playing to a TV or speaker
-  without an SDK: why the Google Cast Web Sender SDK was declined, how the
-  standards-only version works, which platforms it actually reaches, and the
-  blind spot that let a green test suite report a broken feature as working.
+- **[docs/casting-dev.md](docs/casting-dev.md)** — a Cast/AirPlay button, built
+  and then removed on the same day. Kept for three findings that outlive it: why
+  the Google Cast SDK is the wrong dependency here, what headless Chrome
+  structurally cannot test, and why the player bar couldn't afford the control.
 - **[docs/google-tv.md](docs/google-tv.md)** — what a Google TV / Android TV app
   would really cost: why the PWA can't be wrapped, which quality requirements we
   already meet, and why casting was built instead. Research only.
@@ -209,7 +203,7 @@ can't be verified in a desktop devtools viewport.
     ├── DEVELOPMENT.md            # code map, conventions, each built feature
     ├── ROADMAP.md                # what doesn't exist yet
     ├── TAURI.md                  # desktop build steps
-    ├── casting-dev.md            # Cast/AirPlay without an SDK, and its limits
+    ├── casting-dev.md            # Cast/AirPlay: built, removed, and why
     ├── google-tv.md              # what a native TV app would cost (research)
     └── DEPLOYMENT.md
 ```
