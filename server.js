@@ -469,6 +469,22 @@ function feedIndex() {
  * with NOTHING between 5 and 15 minutes. So 20 minutes sits in empty space: well
  * under anything WBAI schedules, well over the fragments (3m31s, 4m28s), and it
  * does not depend on when the recorder happened to start.
+ *
+ * KNOWN COST — split recordings. When the recorder fails mid-programme and
+ * resumes, one broadcast lands as two rows, and a short first half is
+ * indistinguishable by length from a fragment. Three such splits exist as of
+ * 2026-07-29:
+ *
+ *   Katie Halper   Jul 22  15:00 1044s + 15:17 2508s   <- first half dropped
+ *   Radio Free E.  Jun 14  11:00 1500s + 11:24 2096s   both kept
+ *   In Other News  Jun  5  03:00 1566s + 03:27 1958s   both kept
+ *
+ * So the floor currently costs exactly one segment: 17 minutes of Katie Halper.
+ * Accepted deliberately — the alternative is publishing 3-minute fragments as
+ * though they were episodes. If it ever costs more, the better fix is to detect
+ * the pattern rather than lower the number: two rows for the same `sho` on the
+ * same day, the second starting within a few minutes of where the first ended,
+ * is a split and both halves should be kept whatever their length.
  */
 const MIN_EPISODE_SEC = 20 * 60;
 
