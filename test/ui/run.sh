@@ -14,6 +14,10 @@
 #                    /api/archive with controlled timestamps
 #   row-tap-tests.js every dead zone in a list row opens the info sheet, and
 #                    the play column still doesn't
+#   cast-tests.js    the Cast/AirPlay button: removed outright where the browser
+#                    has no remote playback, weightless where there is no device,
+#                    and the player bar still fits with it in
+
 #
 # House rule these follow (CLAUDE.md §3a): assert the EFFECT, not the
 # declaration. Where a suite asserts an absence ("the page did not move", "the
@@ -71,8 +75,9 @@ case "${1:-all}" in
   clock)  SUITES="clock-tests.js" ;;
   rowtap) SUITES="row-tap-tests.js" ;;
   reload) SUITES="reload-tests.js" ;;
-  all)    SUITES="ui-tests.js scroll-tests.js clock-tests.js row-tap-tests.js reload-tests.js" ;;
-  *)      echo "unknown suite: $1 (use ui | scroll | clock | rowtap | reload)"; exit 2 ;;
+  cast)   SUITES="cast-tests.js" ;;
+  all)    SUITES="ui-tests.js scroll-tests.js clock-tests.js row-tap-tests.js reload-tests.js cast-tests.js" ;;
+  *)      echo "unknown suite: $1 (use ui | scroll | clock | rowtap | reload | cast)"; exit 2 ;;
 esac
 
 # Each suite exits non-zero on failure. Run them all before reporting, so one
