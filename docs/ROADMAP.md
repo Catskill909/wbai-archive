@@ -14,6 +14,7 @@ Ordered most valuable first. Each is independent; none blocks another.
 | 1 | Window Controls Overlay | M | `display_override: ["window-controls-overlay"]` lets the appbar draw into the desktop title bar. Costs a second layout keyed on `env(titlebar-area-*)`, maintained alongside the normal one. |
 | 2 | iOS launch images | M | Removes the white flash on launch, jarring for a dark app. Needs a matrix of exact per-device `apple-touch-startup-image` sizes — iOS ignores any that don't match. Worth it once the design settles. |
 | 3 | Desktop app — first real build | M | `desktop/` is scaffolded and its config validates, but nothing has been compiled. Needs a Rust toolchain locally for macOS, and a `WBAI_APP_URL` repo variable for the Windows CI job. See [TAURI.md](TAURI.md). |
+| 4 | Finish verifying casting | S | Shipped 2026-07-29 and **half proven**: AirPlay confirmed, desktop Chrome confirmed non-functional, **Chrome on Android untested** — and Android is the platform the Chromium half exists for. Also open: does a hand-off resume at the current position or restart from 0? Manual only; no CI can answer either. [casting-dev.md](casting-dev.md) §6b. |
 
 ## Won't do
 
@@ -32,6 +33,24 @@ These were considered and rejected. Reopen one only if its reason has changed.
   duration, enclosure URL and artwork for all 531 episodes across 112 shows, so
   a valid RSS 2.0 + iTunes feed is about 120 lines and no dependencies. Declined
   on policy, not difficulty. Revisit only if the content model changes.
+- **Google Cast Web Sender SDK.** The other way to build casting, and the one
+  that would restore desktop Chrome. Declined: it is a third-party script from
+  gstatic, needs a CSP hole, a registered receiver app ID and (for branding) a
+  $5 developer account, and adds a third playback destination to the subsystem
+  with the worst bug history in this repo. It also **cannot reach iOS at all**,
+  so it would be additive to the AirPlay branch rather than a replacement. The
+  standards-only version shipped instead — see [casting-dev.md](casting-dev.md)
+  §1 and §7. Reopen only if Android testing fails *and* desktop Chrome is worth
+  paying for.
+- **A native Google TV / Android TV app.** Researched in full
+  ([google-tv.md](google-tv.md)) and declined for now. The PWA cannot be
+  wrapped — TWA does not work on TV (no Chrome on the device) and a WebView
+  wrapper fails both the D-pad requirement and Play's minimum-functionality
+  policy. That leaves a Kotlin/Compose-for-TV front end: our `/api/*` backend
+  survives unchanged, but the entire UI is rebuilt for a 10-foot D-pad screen,
+  plus Gradle, a second codebase and permanent Play Store obligations. Casting
+  reaches the same TVs and is quality requirement **TV-CT** for the app anyway,
+  so nothing is wasted if this is reopened.
 - **Service worker** — the listing is a live view of a rotating archive; caching
   it offline would mostly serve shows that are already gone. The cost of not
   having one is that Chrome on Android won't fire its automatic install prompt.

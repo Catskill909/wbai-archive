@@ -7,12 +7,11 @@ timestamps).
 
 ```sh
 node server.js &          # must be running on :8080
-./run.sh                  # all three suites
-./run.sh ui               # one of: ui | scroll | clock
+./run.sh                  # every suite
+./run.sh ui               # one of: ui | scroll | clock | rowtap | reload | cast
 ```
 
-113 assertions. Port **9224** — `test/live-stream` owns 9222, `test/touch` owns
-9223.
+Port **9224** — `test/live-stream` owns 9222, `test/touch` owns 9223.
 
 ## What each suite covers
 
@@ -21,6 +20,21 @@ node server.js &          # must be running on :8080
 | `ui-tests.js` | theme switch (including the no-flash guarantee), hero copy clamp, the phone meta strip, page gutters, the app bar |
 | `scroll-tests.js` | changing a filter/sort/view sends the list back to its first row — and the refresh pill still doesn't |
 | `clock-tests.js` | the freshness label: every branch of the relative time, clock skew, and the tap-to-swap control |
+| `row-tap-tests.js` | every dead zone in a list row opens the info sheet, and the play column still doesn't |
+| `reload-tests.js` | state that has to survive a reload |
+| `cast-tests.js` | the Cast/AirPlay button — **read its header before trusting it**, see below |
+
+### ⚠️ `cast-tests.js` has a blind spot it cannot close
+
+Headless Chrome has **no Media Router**: it discovers no cast devices, ever. So
+that suite only ever observes one branch of "is a device present", which means
+it has not tested it — it cannot tell *correctly hidden* from *permanently
+invisible*.
+
+This is not theoretical. All 30 of its assertions passed while the button never
+appeared in desktop Chrome on a network full of cast devices. Nothing it
+measured was wrong; it simply could not see what was broken. Device behaviour
+needs a real browser on a real network — `docs/casting-dev.md` §6b.
 
 ## The rule these follow
 

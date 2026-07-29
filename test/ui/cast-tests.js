@@ -1,9 +1,19 @@
 // Remote-playback (Cast / AirPlay) button suite.
 //
-// What this CAN'T do, stated first so nobody mistakes a green run for proof the
-// feature works: headless Chrome discovers no Cast devices and there is no fake
-// receiver to point it at, so **no assertion here proves audio reached a TV**.
-// That is manual-only, and docs/casting-dev.md carries the checklist.
+// ⚠️ READ THIS BEFORE TRUSTING A GREEN RUN. **Headless Chrome has no Media
+// Router.** It discovers no cast devices, ever. So this suite cannot tell
+// "correctly hidden because no device is present" apart from "permanently
+// invisible because this browser never reports devices at all" — it only ever
+// observes one branch of that condition, which means it has not tested it.
+//
+// That is not hypothetical. On the day this shipped, all 30 assertions below
+// passed and were reported as "built and working" while the button never
+// appeared in desktop Chrome on a network full of cast devices (docs/
+// casting-dev.md §5, §6a). Nothing here was wrong about what it measured; it
+// simply could not see the thing that was broken.
+//
+// Anything device-dependent needs a real browser on a real network. No amount
+// of CI substitutes. docs/casting-dev.md §6b carries the manual checklist.
 //
 // What it does prove is the part that breaks silently and affects everyone:
 //

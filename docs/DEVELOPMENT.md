@@ -467,3 +467,53 @@ Verify player UI by asserting on state instead: that `.sheet-scrub` exists and
 un-hides, that `data-mp3` is on the button, that `updatePlayButtons()` swapped
 the glyph. Launch with `--mute-audio`, and kill the browser by its
 `--user-data-dir` when you're done.
+
+### Remote playback (Cast / AirPlay)
+
+**What it does:** a button in the player bar hands the current audio to a TV or
+speaker on the network — AirPlay in Safari, Cast in Chromium.
+
+**Built on web standards only.** `HTMLMediaElement.remote` (Chromium) and
+`webkitShowPlaybackTargetPicker()` (Safari). **No SDK, no third-party script, no
+CSP change, no `server.js` change, no registration.** The Google Cast Web Sender
+SDK was declined deliberately; [casting-dev.md](casting-dev.md) §1 has the
+comparison and §7 the way back.
+
+Three rules hold this together:
+
+1. **The module owns no element reference.** Remote playback is a property of a
+   *media element*, and there are two — the stable archive element and a live
+   element built and thrown away per play. So it asks who owns the bar right
+   now, `barMode` first, exactly as `togglePlayback()` does. The single seam is
+   `refreshCast()`, called from `playTrack()`, `showLiveBar()`, `stopLive()` and
+   both branches of `playerClose`. Hooking `showLiveBar()` rather than
+   `startLive()` is what makes a drift handover re-aim automatically, since it
+   runs from the live element's own `playing` handler.
+2. **Feature-detect, then availability-gate.** Where neither API exists the
+   button is **removed from the DOM**, not hidden — a browser that can't cast
+   never sees a dead control. Where the API exists but no device answers, it
+   stays hidden: an empty picker is worse than no button, and watching costs
+   battery, which is why only one element is ever watched.
+3. **The browser owns the remote transport.** Nothing here mirrors a remote
+   clock, so `barMode` is still the only answer to what the bar controls and no
+   live-audio rule changed. That was the main reason to prefer it over the SDK.
+
+**Platform support is uneven, and one branch does not work** — see
+[casting-dev.md](casting-dev.md) §5 before assuming anything:
+
+| | |
+| --- | --- |
+| Safari / AirPlay | ✅ confirmed working |
+| Desktop Chrome | ❌ reports no devices; button never appears |
+| Chrome on Android | ❓ untested |
+| Firefox | ➖ no support; button removed |
+
+#### Testing it
+
+`test/ui/cast-tests.js` (`cd test/ui && ./run.sh cast`) — 30 assertions.
+
+⚠️ **Headless Chrome has no Media Router**, so the suite can never see a cast
+device and cannot distinguish "correctly hidden" from "permanently invisible."
+All 30 passed while the feature did nothing in desktop Chrome. Device behaviour
+needs a real browser on a real network; the checklist is in
+[casting-dev.md](casting-dev.md) §6b.
