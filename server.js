@@ -366,21 +366,31 @@ function isScheduledStart(dt) {
 
 function applyFeeds(rows) {
   const byMp3 = feedIndex();
+  // Shows we actually hold a working feed for. NOT `row.hasRSS` — that is only
+  // archive2's *claim* that a feed exists, and on 2026-07-29 the claim went
+  // wrong: rows for `manrat` began rendering a podcast XML button while
+  // `/xml/manrat.xml` still answered 404, which let all 14 generated
+  // "A Mansion for the Rat" rows back into the listing. Trust the fetch, not the
+  // markup. `hasRSS` still decides which slugs are worth *asking* for.
+  const haveFeed = new Set(
+    Object.entries(feedStore)
+      .filter(([, rec]) => rec && rec.items && rec.items.length)
+      .map(([slug]) => slug)
+  );
+
   const kept = [];
   let droppedNoFeed = 0;
   let droppedFragment = 0;
 
   for (const r of rows) {
-    // The gate is per SHOW, not per episode. `hasRSS` means archive2 renders a
-    // podcast XML button on that row, and it has matched feed existence exactly
-    // on every measurement. A show without one is dropped entirely.
+    // The gate is per SHOW, not per episode.
     //
     // The distinction matters and got it wrong once: gating per *episode* also
     // deleted 89 older episodes of shows whose feeds are perfectly healthy,
     // purely because a feed publishes only its most recent 5. Those episodes are
     // real, listed, and playable — the 5 is a display setting on WBAI's side, not
     // a statement about what exists.
-    if (!r.hasRSS) { droppedNoFeed++; continue; }
+    if (!haveFeed.has(r.sho)) { droppedNoFeed++; continue; }
     if (!isScheduledStart(r.dt)) { droppedFragment++; continue; }
 
     const hit = byMp3.get(r.mp3);
