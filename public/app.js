@@ -2281,7 +2281,12 @@
     });
   }
   function sheetLink(href, icon, label){
-    return '<a class="sheet-link" href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">'+icon+esc(label)+'</a>';
+    return sheetLinkHtml(href, icon, esc(label));
+  }
+  // Same pill, but the caller supplies its own (already-escaped) label markup —
+  // used where a phone shows a shorter wording than the desktop sheet does.
+  function sheetLinkHtml(href, icon, labelHtml){
+    return '<a class="sheet-link" href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">'+icon+labelHtml+'</a>';
   }
 
   function sheetHtml(r){
@@ -2313,7 +2318,10 @@
     var links = '';
     if(showRss(r)) links += sheetLink(RSS_BASE+encodeURIComponent(r.sho), svgRss(), 'RSS feed');
     var site = safeUrl(info.url || prog.url);
-    if(site) links += sheetLink(site, svgLink(), 'Show website');
+    // Phones drop the verb: four pills have to share a narrow row, and "Website"
+    // is unambiguous next to a link glyph. CSS picks which span is shown.
+    if(site) links += sheetLinkHtml(site, svgLink(),
+      '<span class="link-wide">Show website</span><span class="link-narrow">Website</span>');
     var fb = safeUrl(info.facebook || prog.facebook);
     if(fb) links += sheetLink(fb, svgFacebook(), 'Facebook');
     var tw = safeUrl(prog.twitter);

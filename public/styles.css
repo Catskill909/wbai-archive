@@ -1565,6 +1565,8 @@
     .sheet-link:hover{background:var(--surface-hover); color:var(--accent-2); border-color:var(--accent-2);}
   }
   .sheet-link svg{ width:12px; height:12px; }
+  /* Two wordings for one pill; the phone block below swaps which one shows. */
+  .sheet-link .link-narrow{ display:none; }
   /* sits beside Play, and only while that Play button reads "Resume …" */
   .sheet-restart{
     border:1px solid var(--outline-strong); border-radius:999px; padding:.55rem 1rem;
@@ -1629,6 +1631,19 @@
     .sheet-titles{ align-items:center; }
     .sheet-actions{ justify-content:center; }
     .sheet-links{ justify-content:center; }
+    /* .sheet-titles is shrink-to-fit inside a centred column, so flex-start
+       parks the eyebrow against the title's left edge — visibly off-centre
+       above a centred heading. Centre it with the rest of the block. */
+    .sheet-eyebrow{ align-self:center; }
+    /* Two lines, then "Show more": the sheet has to fit Play above the fold on
+       a phone, and five clamped lines was most of the viewport. */
+    .sheet-desc{ -webkit-line-clamp:2; }
+    /* The toggle keeps its 44px touch box (see the pointer:coarse block); this
+       only pulls the visible word back up under the text it belongs to. */
+    .sheet-desc-wrap{ gap:0; }
+    .sheet-desc-wrap .desc-toggle{ margin-top:-.45rem; }
+    .sheet-link .link-wide{ display:none; }
+    .sheet-link .link-narrow{ display:inline; }
   }
 
   /* ================= Responsive ================= */
