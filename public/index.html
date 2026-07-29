@@ -260,7 +260,12 @@
       <div class="menu-group">
         <h2>Support &amp; contact</h2>
         <ul>
-          <li><a href="https://wbai.org/donate/" target="_blank" rel="noopener noreferrer">Donate</a></li>
+          <!-- Opens the framed donate modal in-app (app.js, drawer IIFE) rather
+               than leaving for a new tab. The href stays real: it is the
+               fallback if that listener never runs, and it keeps
+               open-in-new-tab / copy-link working from the context menu. -->
+          <li><a href="https://wbai.org/donate/" id="menuDonate" target="_blank" rel="noopener noreferrer"
+                 aria-haspopup="dialog" aria-controls="donateModal">Donate</a></li>
           <li><a href="https://wbai.org/volunteers-interns.php" target="_blank" rel="noopener noreferrer">Volunteer</a></li>
           <li><a href="https://wbai.org/contact.php" target="_blank" rel="noopener noreferrer">Contact</a></li>
           <li><a href="https://wbai.org" target="_blank" rel="noopener noreferrer">wbai.org</a></li>

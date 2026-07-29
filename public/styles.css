@@ -29,9 +29,10 @@
     --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace;
     /* How far below the top edge the phone dialogs stop, and the corner radius
-       that goes with it. Shared by the info sheet and the live player so the two
-       sit at exactly the same height — they swap places often enough that any
-       difference reads as a jump. Not theme-dependent, so declared once. */
+       that goes with it. Shared by the info sheet, the live player and the
+       donate modal so all three sit at exactly the same height — they swap
+       places often enough that any difference reads as a jump. Not
+       theme-dependent, so declared once. */
     --phone-sheet-gap: 2.25rem;
     --phone-sheet-radius: 20px;
     /* The page's side gutter, shared by the hero, the sticky search bar, the
@@ -1437,10 +1438,16 @@
   /* ---------------- Donate modal ---------------- */
   /* A framed embed of WBAI's real donate page. Tall + wide on desktop/tablet,
      near full-screen on phones, always with breathing room around the card. */
+  /* Scrim and motion are deliberately the info sheet's, to the value: same 62%
+     black, same 5px blur, same .22s cubic-bezier(.2,0,.2,1) rise from -46% at
+     scale .97. It used to be darker (74%) and blurrier (6px) on an `ease` curve,
+     which made the one dialog that frames someone else's page also the one
+     dialog that opened differently — two unrelated signals for "you are in a
+     layer", when the sheet already had a good one. Keep these in step. */
   .donate-scrim{
     position:fixed; inset:0; z-index:290;
-    background:color-mix(in srgb, #000 74%, transparent);
-    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    background:color-mix(in srgb, #000 62%, transparent);
+    -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
     opacity:0; visibility:hidden; pointer-events:none;
     transition:opacity .22s ease, visibility 0s linear .22s;
   }
@@ -1449,19 +1456,26 @@
     position:fixed; z-index:300;
     top:50%; left:50%;
     width:min(940px, 94vw);
-    height:min(860px, 90vh);
-    transform:translate(-50%, -46%) scale(.98);
+    /* `height`, not the sheet's `max-height`: the body is an iframe, and a
+       flex child with nothing but an intrinsic 150px to go on needs the box to
+       be definite or the donate page opens as a letterbox slot. Same 88dvh cap
+       as the sheet, so both stop short of the top edge by the same amount. */
+    height:min(88dvh, 860px);
+    transform:translate(-50%, -46%) scale(.97);
     display:flex; flex-direction:column;
     background:#fff; border-radius:18px; overflow:hidden;
-    box-shadow:0 40px 100px -24px rgba(0,0,0,.72);
+    box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
     opacity:0; visibility:hidden; pointer-events:none;
-    transition:opacity .22s ease, transform .22s ease, visibility 0s linear .22s;
+    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease, visibility 0s linear .22s;
   }
   .donate-modal.show{
     opacity:1; visibility:visible; pointer-events:auto;
     transform:translate(-50%, -50%) scale(1);
-    transition:opacity .22s ease, transform .22s ease;
+    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
   }
+  /* Leave room for the docked bar, exactly as the sheet does — donating while
+     the live stream plays is the fund-drive case, not an edge case. */
+  body.has-player .donate-modal{ height:min(76dvh, 800px); }
   .donate-frame{ flex:1 1 auto; width:100%; border:0; background:#fff; }
   /* Close control tuned for the white donate page: light chip, dark glyph. */
   .donate-close{
@@ -1480,13 +1494,32 @@
   }
   .donate-close:active{ transform:scale(.94); }
   .donate-close svg{ width:16px; height:16px; }
+  /* Phones: the same tall bottom sheet as the info sheet and the live player,
+     sharing --phone-sheet-gap so all three sit at exactly the same height. See
+     the long note on the live player for why that held-back strip of blurred
+     scrim matters — an edge-to-edge panel reads as a *page you navigated to*,
+     and this one wraps a real third-party page, so it was the worst offender:
+     100vw x 100dvh with square corners was indistinguishable from having left
+     the app entirely. The strip and the 20px top corners are what say "this is
+     on top of something you can get back to". */
   @media (max-width:560px){
     .donate-modal{
-      width:100vw; height:100dvh; max-height:100dvh;
-      top:0; left:0; transform:translate(0,0) scale(1);
-      border-radius:0;
+      left:0; bottom:0; width:100%;
+      top:max(var(--phone-sheet-gap), env(safe-area-inset-top,0px));
+      height:auto; max-height:none;
+      border-radius:var(--phone-sheet-radius) var(--phone-sheet-radius) 0 0;
+      transform:translate(0, 100%) scale(1);
     }
-    .donate-modal.show{ transform:translate(0,0) scale(1); }
+    .donate-modal.show{ transform:translate(0, 0) scale(1); }
+    /* It covers the docked bar, so don't also reserve room for it. Needed
+       explicitly: `body.has-player .donate-modal` outranks `.donate-modal` on
+       specificity, and a media query adds none — without this the desktop
+       76dvh cap would win here and strand the sheet mid-screen. */
+    body.has-player .donate-modal{ height:auto; }
+    /* Match the sheet's phone close chip: bigger presence, and clear of the
+       20px corner radius the 12px inset now sits inside. */
+    .donate-close{ top:.9rem; right:.9rem; width:42px; height:42px; }
+    .donate-close svg{ width:17px; height:17px; }
   }
   @media (prefers-reduced-motion:reduce){
     .donate-scrim, .donate-modal{ transition-duration:0s; }

@@ -2661,6 +2661,23 @@
     btn.addEventListener('click', openMenu);
     closeBtn.addEventListener('click', closeMenu);
     scrim.addEventListener('click', closeMenu);
+
+    // The drawer's Donate item opens the same framed modal as the appbar pill,
+    // so donating never leaves the app — the drawer slides out from under the
+    // card as it comes up (z-index 300 vs 160, so the overlap is fine).
+    //
+    // Order matters: closeMenu() must run BEFORE openDonate(). closeMenu()
+    // restores focus to the menu button, which would immediately steal it back
+    // from the dialog if it ran second. Running it first also means the
+    // activeElement openDonate() captures is that menu button, so closing the
+    // modal lands focus on a control that is still on screen.
+    var donateLink = document.getElementById('menuDonate');
+    if(donateLink) donateLink.addEventListener('click', function(e){
+      if(e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;  // let modified clicks use the href
+      e.preventDefault();
+      closeMenu();
+      openDonate();
+    });
   })();
 
   // ---------------- Hero copy: two lines on phones ----------------
