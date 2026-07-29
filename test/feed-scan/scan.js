@@ -94,6 +94,34 @@ function slugsFromRows(html) {
   return [...html.matchAll(/<tr name="show"[^>]*\ssho="([^"]*)"/g)].map((m) => m[1]).filter(Boolean);
 }
 
+/**
+ * slug -> does the listing render a podcast XML button on that show's rows?
+ *
+ * This is archive2's *claim* that a feed exists, which is a different thing from
+ * a feed existing, and the two came apart on 2026-07-29: 21 shows — `manrat`,
+ * `salsasho`, `kwave` and others, several of them music programmes that cannot
+ * be podcast at all for copyright reasons — began rendering the button while
+ * their `/xml/<slug>.xml` still answered 404. The server had been deciding what
+ * to publish from that claim, so a fortnight of invented "A Mansion for the Rat"
+ * rows walked back into the app.
+ *
+ * Tracking the claim next to the reality is what lets this scanner see that
+ * class of drift at all. It is the whole reason CLAIM_MISMATCH exists.
+ */
+function claimsFromRows(html) {
+  const starts = [...html.matchAll(/<tr name="show"[^>]*\ssho="([^"]*)"[^>]*>/g)];
+  const claims = new Map();
+  for (let i = 0; i < starts.length; i++) {
+    const body = html.slice(
+      starts[i].index,
+      i + 1 < starts.length ? starts[i + 1].index : starts[i].index + 3000
+    );
+    // A show's rows should agree; if any one advertises a feed, treat it as claimed.
+    if (!claims.get(starts[i][1])) claims.set(starts[i][1], /getrss\.php/.test(body));
+  }
+  return claims;
+}
+
 function slugsFromSchedule(html) {
   return [...html.matchAll(/pix\/([a-z0-9_]+)_med_\d+\.jpg/gi)].map((m) => m[1]);
 }
@@ -160,6 +188,16 @@ function diff(prevState, now) {
   const changes = [];
   const live = (r) => r.status === 200 && !r.empty && r.items > 0;
 
+  // The listing advertises a feed that isn't there. This is what shipped a
+  // regression on 2026-07-29 and it is the highest-value signal here: it fires
+  // while upstream is still only *claiming*, before anything downstream that
+  // trusts the claim can act on it.
+  const mismatch = (r) => !!r.claimed && !live(r);
+  // The mirror case, currently never seen: a working feed on a show the listing
+  // does not advertise. The server harvests from `hasRSS`, so it would never
+  // fetch this one — silent content loss rather than a visible error.
+  const unfetched = (r) => !r.claimed && live(r);
+
   for (const [slug, r] of Object.entries(now.feeds)) {
     const p = prev[slug];
 
@@ -167,7 +205,30 @@ function diff(prevState, now) {
       changes.push(live(r)
         ? { kind: 'NEW_FEED', slug, detail: `${r.items} items, newest ${r.newest}` }
         : { kind: 'NEW_SLUG', slug, detail: `no feed yet (HTTP ${r.status})` });
+      // A brand-new slug can arrive already mismatched; say so rather than
+      // waiting for a second run to notice.
+      if (mismatch(r)) {
+        changes.push({ kind: 'CLAIM_MISMATCH', slug, detail: `new slug already advertises a feed that 404s` });
+      }
       continue;
+    }
+
+    // Claim-vs-reality transitions, reported on the edge so a standing
+    // mismatch does not shout on every run.
+    if (mismatch(r) && !mismatch(p)) {
+      changes.push({
+        kind: 'CLAIM_MISMATCH', slug,
+        detail: `listing now advertises a podcast XML button but /xml/${slug}.xml is HTTP ${r.status}` +
+          ' — anything gating on hasRSS will publish this show',
+      });
+    } else if (!mismatch(r) && mismatch(p)) {
+      changes.push({ kind: 'CLAIM_RESOLVED', slug, detail: live(r) ? 'feed now exists' : 'listing stopped advertising it' });
+    }
+    if (unfetched(r) && !unfetched(p)) {
+      changes.push({
+        kind: 'FEED_UNFETCHED', slug,
+        detail: `${r.items} items, but the listing shows no XML button — the server harvests from hasRSS and will not fetch this`,
+      });
     }
 
     if (!live(p) && live(r)) {
@@ -238,6 +299,7 @@ if (require.main !== module) return;
   const fromDropdown = slugsFromDropdown(listing);
   const fromRows = slugsFromRows(listing);
   const fromSchedule = slugsFromSchedule(schedule);
+  const claims = claimsFromRows(listing);
   const remembered = prevState ? Object.keys(prevState.feeds || {}) : [];
 
   if (!fromDropdown.length && !fromRows.length) {
@@ -251,9 +313,14 @@ if (require.main !== module) return;
     probe(slug, prevState && prevState.feeds ? prevState.feeds[slug] : null));
 
   const feeds = {};
-  for (const r of results) feeds[r.slug] = r;
+  // The claim is recorded after probing, so a 304 (which carries the previous
+  // record forward wholesale) still gets today's claim rather than yesterday's.
+  for (const r of results) feeds[r.slug] = Object.assign({}, r, { claimed: claims.get(r.slug) === true });
 
   const liveFeeds = results.filter((r) => r.status === 200 && !r.empty && r.items > 0);
+  const isLive = (r) => r.status === 200 && !r.empty && r.items > 0;
+  const mismatched = Object.values(feeds).filter((r) => r.claimed && !isLive(r));
+  const unfetchable = Object.values(feeds).filter((r) => !r.claimed && isLive(r));
   const now = {
     scannedAt: new Date().toISOString(),
     sources: {
@@ -265,6 +332,9 @@ if (require.main !== module) return;
     },
     withFeed: liveFeeds.length,
     withoutFeed: results.length - liveFeeds.length,
+    claimed: Object.values(feeds).filter((r) => r.claimed).length,
+    mismatched: mismatched.length,
+    unfetchable: unfetchable.length,
     maxItems: liveFeeds.reduce((m, r) => Math.max(m, r.items), 0),
     notModified: results.filter((r) => r.notModified).length,
     feeds,
@@ -284,6 +354,12 @@ if (require.main !== module) return;
     }
     console.log(`  feeds live: ${now.withFeed}   no feed: ${now.withoutFeed}   ` +
       `max items/feed: ${now.maxItems}   304s: ${now.notModified}`);
+    console.log(`  listing claims a feed: ${now.claimed}   ` +
+      `claim without a feed: ${now.mismatched}   feed without a claim: ${now.unfetchable}`);
+    if (now.mismatched) {
+      console.log('  ! ' + now.mismatched + ' show(s) advertise a podcast XML button with no feed behind it.');
+      console.log('    Publishing off `hasRSS` would put them in the app. Gate on the fetch.');
+    }
 
     if (!prevState) {
       console.log('\n  first run — baseline written, nothing to diff against yet.');
@@ -291,7 +367,7 @@ if (require.main !== module) return;
       console.log('\n  no changes since ' + prevState.scannedAt);
     } else {
       console.log(`\n  ${changes.length} change(s) since ${prevState.scannedAt}:`);
-      const order = ['CAP_CHANGED', 'FEED_LOST', 'NEW_FEED', 'FEED_APPEARED', 'NEW_SLUG', 'SLUG_GONE', 'ITEM_COUNT', 'NEW_EPISODE'];
+      const order = ['CAP_CHANGED', 'CLAIM_MISMATCH', 'FEED_UNFETCHED', 'FEED_LOST', 'NEW_FEED', 'FEED_APPEARED', 'CLAIM_RESOLVED', 'NEW_SLUG', 'SLUG_GONE', 'ITEM_COUNT', 'NEW_EPISODE'];
       changes.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
       for (const c of changes) console.log(`    ${c.kind.padEnd(15)} ${c.slug.padEnd(24)} ${c.detail}`);
     }

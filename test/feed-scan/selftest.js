@@ -61,10 +61,13 @@ check('NEW_SLUG when an unseen slug arrives with no feed', () => {
   assert.deepStrictEqual(kinds(c), ['NEW_SLUG']);
 });
 
+// The claims matter to this one: a feed that appears *without* the listing
+// advertising it is a FEED_UNFETCHED as well, and rightly so. The plain
+// FEED_APPEARED is the case where the button arrives with the feed behind it.
 check('FEED_APPEARED when a known 404 slug starts serving', () => {
   const c = diff(
-    state({ lenlo: { slug: 'lenlo', status: 404 } }, 5),
-    { maxItems: 5, feeds: { lenlo: liveFeed({ slug: 'lenlo' }) } });
+    state({ lenlo: { slug: 'lenlo', status: 404, claimed: false } }, 5),
+    { maxItems: 5, feeds: { lenlo: liveFeed({ slug: 'lenlo', claimed: true }) } });
   assert.deepStrictEqual(kinds(c), ['FEED_APPEARED']);
 });
 
@@ -122,7 +125,61 @@ check('CAP_CHANGED when the archiver raises the episodes-per-feed cap', () => {
   assert.match(c.find((x) => x.kind === 'CAP_CHANGED').detail, /out of date/);
 });
 
+// The regression of 2026-07-29: archive2 began rendering a podcast XML button on
+// 21 shows whose feeds 404. Anything gating on that claim publishes them.
+check('CLAIM_MISMATCH when the listing advertises a feed that 404s', () => {
+  const c = diff(
+    state({ manrat: { slug: 'manrat', status: 404, claimed: false } }, 5),
+    { maxItems: 5, feeds: { manrat: { slug: 'manrat', status: 404, claimed: true } } });
+  assert.ok(kinds(c).includes('CLAIM_MISMATCH'), 'expected CLAIM_MISMATCH, got ' + kinds(c));
+  assert.match(c.find((x) => x.kind === 'CLAIM_MISMATCH').detail, /hasRSS/);
+});
+
+check('CLAIM_MISMATCH on a brand-new slug that arrives already lying', () => {
+  const c = diff(state({}), { maxItems: 0, feeds: { manrat: { slug: 'manrat', status: 404, claimed: true } } });
+  assert.ok(kinds(c).includes('CLAIM_MISMATCH'), kinds(c));
+});
+
+check('CLAIM_RESOLVED when the feed finally appears', () => {
+  const c = diff(
+    state({ manrat: { slug: 'manrat', status: 404, claimed: true } }, 5),
+    { maxItems: 5, feeds: { manrat: liveFeed({ slug: 'manrat', claimed: true }) } });
+  assert.ok(kinds(c).includes('CLAIM_RESOLVED'), kinds(c));
+});
+
+check('CLAIM_RESOLVED when the listing stops advertising it', () => {
+  const c = diff(
+    state({ manrat: { slug: 'manrat', status: 404, claimed: true } }, 5),
+    { maxItems: 0, feeds: { manrat: { slug: 'manrat', status: 404, claimed: false } } });
+  assert.ok(kinds(c).includes('CLAIM_RESOLVED'), kinds(c));
+});
+
+// The mirror case: a live feed the server will never fetch, because the harvest
+// input is `hasRSS`. Silent content loss rather than a visible error.
+check('FEED_UNFETCHED when a live feed has no XML button', () => {
+  const c = diff(
+    state({ dn: { slug: 'dn', status: 404, claimed: false } }, 5),
+    { maxItems: 5, feeds: { dn: liveFeed({ slug: 'dn', claimed: false }) } });
+  assert.ok(kinds(c).includes('FEED_UNFETCHED'), kinds(c));
+  assert.match(c.find((x) => x.kind === 'FEED_UNFETCHED').detail, /will not fetch/);
+});
+
 console.log('\nsilence is real, not blindness:');
+
+// A standing mismatch must not shout on every run — only the transition does.
+// Without this, 21 currently-mismatched shows would make every scan exit 1 and
+// the signal would be trained out of existence within a week.
+check('a mismatch that was already there produces NO change', () => {
+  const f = { manrat: { slug: 'manrat', status: 404, claimed: true } };
+  const c = diff(state(f), { maxItems: 0, feeds: JSON.parse(JSON.stringify(f)) });
+  assert.deepStrictEqual(c, [], 'a standing mismatch must be quiet');
+});
+
+check('a consistent claim (feed exists, button shown) produces NO change', () => {
+  const f = { dn: liveFeed({ slug: 'dn', claimed: true }) };
+  const c = diff(state(f), { maxItems: 5, feeds: JSON.parse(JSON.stringify(f)) });
+  assert.deepStrictEqual(c, [], JSON.stringify(c));
+});
 
 check('identical input produces NO changes', () => {
   const f = { dn: liveFeed({ slug: 'dn' }), lenlo: { slug: 'lenlo', status: 404 } };

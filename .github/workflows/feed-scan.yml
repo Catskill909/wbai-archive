@@ -1,0 +1,95 @@
+name: Feed scan
+
+# Watches WBAI's archive for changes that would break this site, once a day.
+#
+# The failure it exists to catch actually happened on 2026-07-29: archive2 began
+# rendering a podcast XML button on 21 shows whose feeds returned 404, and the
+# server was deciding what to publish from that button. Fourteen invented
+# "A Mansion for the Rat" episodes appeared on the live site, one of them second
+# from the top. It was found by a human looking at the page.
+#
+# scan.js checks each show's feed directly rather than believing the listing, so
+# it sees that class of change the day it happens.
+#
+# Runs here rather than on a laptop because this repo lives under ~/Desktop,
+# which macOS protects: a cron or launchd job cannot read it without being
+# granted Full Disk Access to /bin/sh — a wildly disproportionate permission for
+# a script that reads one public website. GitHub has no such problem, and it runs
+# whether or not anyone's machine is awake.
+
+on:
+  schedule:
+    # 09:17 UTC daily. Off the hour on purpose — GitHub's scheduler queues
+    # heavily at :00 and delays are common there.
+    - cron: '17 9 * * *'
+  workflow_dispatch:      # "Run workflow" button, for checking on demand
+
+permissions:
+  contents: read
+
+concurrency:
+  group: feed-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'   # scan.js needs global fetch (18+). No dependencies to install.
+
+      # The scanner reports what CHANGED, so it needs to remember the last run.
+      # A rolling cache key with restore-keys means each run restores the newest
+      # previous state and saves a fresh one. If the cache is ever evicted the
+      # next run simply re-baselines and reports nothing — safe, not wrong.
+      - name: Restore previous scan state
+        uses: actions/cache/restore@v4
+        with:
+          path: test/feed-scan/state.json
+          key: feed-scan-state-${{ github.run_id }}
+          restore-keys: feed-scan-state-
+
+      - name: Scan
+        id: scan
+        run: |
+          set +e
+          OUT=$(node test/feed-scan/scan.js 2>&1)
+          CODE=$?
+          echo "$OUT"
+          {
+            echo '## WBAI feed scan'
+            echo
+            if [ $CODE -eq 0 ]; then echo 'Nothing changed upstream.'
+            elif [ $CODE -eq 1 ]; then echo '**Something changed upstream — see below.**'
+            else echo '**The scan itself failed.** A scanner that has stopped working looks exactly like a quiet one, so this is treated as a failure too.'
+            fi
+            echo
+            echo '```'
+            echo "$OUT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      # Saved even when the scan reports changes, so tomorrow diffs against today
+      # and a standing change is not re-reported every single day.
+      - name: Save scan state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: test/feed-scan/state.json
+          key: feed-scan-state-${{ github.run_id }}
+
+      # Failing the job is the notification: GitHub emails the repo owner when a
+      # scheduled workflow fails, with no tokens, secrets or extra permissions.
+      # A quiet day passes silently and sends nothing.
+      - name: Report
+        if: steps.scan.outputs.code != '0'
+        run: |
+          echo "Feed scan exit ${{ steps.scan.outputs.code }} — see the job summary."
+          exit 1
