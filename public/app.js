@@ -2734,6 +2734,146 @@
     label();
   })();
 
+  // ---------------- Back to top ----------------
+  // Appears once you are deep enough in the listing that scrolling back is a
+  // chore, gets out of the way while you are moving, returns when you stop.
+  //
+  // The rule is DIRECTION-AWARE, and that is the whole feel of it. An upward
+  // scroll already means "I'm heading back", so the button appears on that frame
+  // instead of waiting out the idle timer; downward scrolling hides it; and the
+  // timer only has to cover stopping mid-flight. 800ms reads as "it waited for
+  // me" — the 1-2s that sounds right when you describe the behaviour out loud
+  // reads as broken when you use it.
+  //
+  // Geometry — and in particular how it keeps its distance from the ✕ that ends
+  // playback — is in styles.css under "Back to top".
+  (function(){
+    var btn = document.getElementById('toTop');
+    if(!btn) return;
+    var bar = document.getElementById('playerBar');
+    var mainEl = document.getElementById('top');
+    var root = document.documentElement;
+
+    var IDLE_MS = 800;
+    // 1.5 viewports rather than a flat 300px: under that, scrolling back up is
+    // cheap and the button is just something in the way of the listing.
+    function threshold(){ return window.innerHeight * 1.5; }
+    function scrollY(){ return window.pageYOffset || root.scrollTop || 0; }
+
+    var lastY = scrollY();
+    var isShown = false;
+    var idleTimer = 0;
+    var frameQueued = false;
+    var gliding = false;   // a click-driven scroll to the top is in flight
+
+    function setShown(on){
+      if(on === isShown) return;
+      isShown = on;
+      btn.setAttribute('data-show', on ? 'true' : 'false');
+    }
+
+    function measure(){
+      var y = scrollY();
+      var dy = y - lastY;
+      lastY = y;
+
+      // Our own glide: stay hidden for the whole trip, or the upward-scroll rule
+      // below would instantly re-show the button we just dismissed and it would
+      // ride the animation back up. Released early if the user grabs the page
+      // mid-flight (see the input listeners), so this only has to notice arrival.
+      if(gliding){
+        if(y <= 2) gliding = false;
+        return;
+      }
+
+      clearTimeout(idleTimer);
+      if(y <= threshold()){
+        // Not resting — arrived. No idle grace on the way out.
+        setShown(false);
+        return;
+      }
+      // The +/-2px deadband keeps sub-pixel and momentum-tail scroll events from
+      // being read as a direction.
+      if(dy < -2){ setShown(true); return; }   // heading up: no delay, that's the point
+      if(dy > 2) setShown(false);              // heading down: get out of the way
+      idleTimer = setTimeout(function(){ setShown(true); }, IDLE_MS);
+    }
+
+    function onScroll(){
+      if(frameQueued) return;
+      frameQueued = true;
+      requestAnimationFrame(function(){ frameQueued = false; measure(); });
+    }
+
+    // These fire BEFORE the click below (pointerdown/touchstart precede click),
+    // so pressing the button itself clears a stale flag and then sets a fresh
+    // one — the ordering is load-bearing, don't reorder them into the click.
+    function endGlide(){ gliding = false; }
+
+    btn.addEventListener('click', function(){
+      var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      // Past ~6 viewports a smooth scroll takes seconds and reads as a hang, so
+      // it jumps instead. Under reduced motion it always jumps: a thirty-viewport
+      // glide is precisely what that setting exists to prevent.
+      var far = scrollY() > window.innerHeight * 6;
+      // Focus follows the viewport or it doesn't count — otherwise a keyboard
+      // user is left on row 340 looking at row 1. main is tabindex="-1" for this;
+      // preventScroll stops focus() from jumping there itself and eating the
+      // animation.
+      if(mainEl){
+        try{ mainEl.focus({ preventScroll: true }); }catch(e){ mainEl.focus(); }
+      }
+      gliding = true;
+      setShown(false);
+      // Belt and braces: if the glide is interrupted somewhere that fires no
+      // input event, the flag must not strand the button hidden.
+      setTimeout(endGlide, 1500);
+      window.scrollTo({ top: 0, behavior: (reduce || far) ? 'auto' : 'smooth' });
+    });
+
+    ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(function(type){
+      window.addEventListener(type, endGlide, { passive: true });
+    });
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+
+    // --player-h: the bar's real height, measured rather than assumed, because it
+    // is not a constant — phones stack the scrubber, live mode drops it, and the
+    // bar's bottom padding carries the safe-area inset. Read from here rather
+    // than hooking showPlayerBar/hidePlayerBar so the player code owes this
+    // feature nothing; ResizeObserver already reports 0 for a display:none bar,
+    // and the MutationObserver covers the hidden/live attribute flips that a
+    // ResizeObserver-less browser would miss.
+    // --resume-h rides along for the same reason. The resume toast floats above
+    // the bar and, in centred mode, in the same strip as the button — and its
+    // height is not a constant either: on a 390px phone the text wraps and it
+    // measures 58.8px, which a guessed 3.6rem undershoots by 9px. Publish the
+    // whole strip it occupies (height + its own margin), read from the
+    // stylesheet rather than restating .55rem here, and 0 while it is down.
+    var toast = document.getElementById('resumeToast');
+    function syncBarHeight(){
+      var h = (bar && !bar.hidden) ? bar.offsetHeight : 0;
+      root.style.setProperty('--player-h', h + 'px');
+      var t = 0;
+      if(toast && !toast.hidden){
+        t = toast.offsetHeight + (parseFloat(getComputedStyle(toast).marginBottom) || 0);
+      }
+      root.style.setProperty('--resume-h', t + 'px');
+    }
+    [bar, toast].forEach(function(el){
+      if(!el) return;
+      if('ResizeObserver' in window) new ResizeObserver(syncBarHeight).observe(el);
+      if('MutationObserver' in window){
+        new MutationObserver(syncBarHeight).observe(el, {
+          attributes: true, attributeFilter: ['hidden', 'class']
+        });
+      }
+    });
+    window.addEventListener('resize', syncBarHeight);
+    syncBarHeight();
+    measure();
+  })();
+
   document.getElementById('linkNoticeClose').addEventListener('click', function(){
     document.getElementById('linkNotice').hidden = true;
   });

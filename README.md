@@ -53,6 +53,11 @@ an archived broadcast.
 - **Keyboard and transport controls** — ±15s buttons in the player bar, plus
   Space for play/pause and ←/→ to skip, which stay out of the way while you're
   typing in the search field.
+- **Back to top** — the listing runs ~500 shows deep, so a quiet circle appears
+  once you're well into it, ducks out of the way while you're scrolling, and
+  returns when you stop — instantly if you were already scrolling back up. It
+  sits in the page margin on desktop and centres above the player bar on tablets
+  and phones. Clicking it moves keyboard focus as well as the viewport.
 - **Linkable views** — search, category and the open show live in the URL, so a
   view can be shared and the Back button closes the info sheet instead of
   leaving the app.
@@ -170,6 +175,18 @@ reload the page. `npm start` serves them directly.
   browser-based live player. Read before touching live audio; the regression
   suite that guards it is [test/live-stream/](test/live-stream/).
 
+Regression suites are zero-dependency too — headless Chrome over the DevTools
+protocol, driving the unmodified app. Each needs the server running on :8080:
+
+```sh
+./test/live-stream/run.sh            # live audio; also run with --strict
+./test/touch/run.sh                  # coarse-pointer affordances, overlay scroll locks
+./test/to-top/run.sh                 # back-to-top: show/hide rule, geometry, hit tests
+./test/ui/run.sh                     # listing, rows, reload, clock
+./test/share/run.sh                  # Open Graph / share cards (no browser needed)
+node test/feed-scan/scan.js          # upstream feed drift vs a stored snapshot
+```
+
 To exercise the mobile layout and lock-screen player, open the dev server from a
 phone on the same network (`http://<your-lan-ip>:8080`) — Media Session behavior
 can't be verified in a desktop devtools viewport.
@@ -198,6 +215,13 @@ can't be verified in a desktop devtools viewport.
 │   ├── package.json              # Tauri CLI only
 │   └── src-tauri/                # Cargo.toml, main.rs, tauri.conf.json, icons
 ├── .github/workflows/            # Windows desktop build
+├── test/                         # zero-dependency suites (headless Chrome over CDP)
+│   ├── live-stream/              # live audio + fake station; cdp.js lives here
+│   ├── touch/                    # coarse-pointer affordances, overlay scroll locks
+│   ├── to-top/                   # back-to-top show/hide, geometry, hit tests
+│   ├── ui/                       # listing, rows, reload, clock
+│   ├── share/                    # Open Graph / share cards (no browser)
+│   └── feed-scan/                # upstream feed drift vs a stored snapshot
 └── docs/
     ├── ARCHITECTURE.md           # how the server and proxies fit together
     ├── DEVELOPMENT.md            # code map, conventions, each built feature

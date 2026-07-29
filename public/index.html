@@ -105,7 +105,10 @@
   </div>
 </header>
 
-<main id="top">
+<!-- tabindex="-1" so Back to top can move FOCUS here as well as the viewport;
+     without it a keyboard user is left on row 340 while the page shows row 1.
+     Not in the tab order (-1), so it costs sighted keyboard users nothing. -->
+<main id="top" tabindex="-1">
   <section class="hero">
     <div class="hero-lockup">
       <img class="hero-logo" src="/assets/header.png" width="1024" height="248" alt="WBAI 99.5 FM">
@@ -401,6 +404,16 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
   </button>
 </div>
+
+<!-- Back to top. Body-level rather than inside main for two reasons: it anchors
+     to the player bar's top edge (which is fixed and lives out here too), and
+     main gets `inert` behind every overlay — inheriting that would have made the
+     button's disabled state a side effect of somebody else's code. It ducks
+     behind overlays on its own, via html.scroll-lock in styles.css.
+     Ships with data-show="false" so the first paint has it already hidden. -->
+<button class="to-top" id="toTop" type="button" data-show="false" aria-label="Back to top">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V6"/><path d="M6 12l6-6 6 6"/></svg>
+</button>
 
 <!-- The live stream has no static element on purpose: app.js builds a fresh
      <audio> per connection so a play can never resume a stale buffer. See the

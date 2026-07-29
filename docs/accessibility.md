@@ -171,6 +171,14 @@ Runtime stays dependency-free; testing is where packages earn their place
 Suggested cadence: axe + Lighthouse in a pre-commit or CI step for regressions;
 a manual SR pass before any release that touches the player or a modal.
 
+Two of the repo's own suites already cover a11y ground none of the above reaches,
+because both assert *effects* rather than markup: `test/touch/` §3 measures real
+tap targets against the 44px floor (2.5.8) and §4 proves the overlay scroll locks
+actually hold, and `test/to-top/` proves a hidden control is genuinely
+unreachable — out of the tab order and out of the hit test — rather than merely
+transparent, and that a scroll-to-top moves keyboard focus along with the
+viewport. See `docs/DEVELOPMENT.md` → *Back to top*.
+
 ---
 
 ## Proposed sequencing

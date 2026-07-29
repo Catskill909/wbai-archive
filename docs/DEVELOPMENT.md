@@ -64,6 +64,8 @@ zero-toolchain property is a feature of this project, not an accident.
 9. Now-playing poll, archive fetch
 10. **Show info sheet** — the modal, its data merge, and title matching
 11. Slide-out menu
+12. **Back to top** — the direction-aware show/hide rule, and the observers that
+    publish `--player-h` / `--resume-h` so the button can anchor to the bar
 
 ## Conventions
 
@@ -467,6 +469,76 @@ Verify player UI by asserting on state instead: that `.sheet-scrub` exists and
 un-hides, that `data-mp3` is on the button, that `updatePlayButtons()` swapped
 the glyph. Launch with `--mute-audio`, and kill the browser by its
 `--user-data-dir` when you're done.
+
+### Back to top
+
+**What it does:** a 40px circle that appears once you're deep in the ~500-item
+listing, gets out of the way while you're scrolling, and comes back when you stop.
+Guarded by [test/to-top/](../test/to-top/) — 33 assertions, all driven by
+synthesized scroll input.
+
+**The show/hide rule is direction-aware, and that's the whole feel of it.** An
+upward scroll already means "I'm heading back", so the button appears on that
+frame rather than waiting out a timer; a downward scroll hides it; and the idle
+timer only has to cover stopping mid-flight. `IDLE_MS` is 800 — the 1–2 seconds
+that sounds right when you describe the behaviour out loud reads as broken when
+you use it. The appearance threshold is 1.5 viewports rather than a flat 300px,
+and crossing back *under* it hides the button with no idle grace, because that
+isn't resting, it's arriving.
+
+**Placement is decided by the 1180px content column, and it changes at 1360px:**
+
+- **≥1360px** — out in the right gutter, its left edge pinned 1.4rem off the
+  column's right edge so the gap to the listing is constant from 1360px to 4K.
+  1360 is where that gutter first reaches ~90px, which is the narrowest margin a
+  40px button can sit in with real air on both sides.
+- **<1360px** — no gutter exists, so it overlays content, horizontally centred
+  above the player bar. Centre is the only spot simultaneously clear of the
+  transport cluster (left), the close ✕ (right), the resume toast (bottom left),
+  and the listing's scannable left edge.
+
+**It shares the right gutter with `.player-close`** — the ✕ that ends playback,
+which is pulled to ~8px off the true right edge at every width above 1360. The two
+boxes don't overlap, but only by 6px, and two circles that close read as one
+cluster in which the wrong one stops your audio. The separation is bought
+vertically instead: the `min-width:1360px` block lifts the button to 2rem above
+the bar rather than the 0.9rem used elsewhere. **That override is the only thing
+keeping them apart** — `test/to-top/` §8 measures the real gap between the two
+rectangles (currently 40px) rather than trusting the arithmetic.
+
+**Two heights are measured, not assumed,** and published as custom properties by
+the same observer pair (`ResizeObserver` for size, `MutationObserver` for the
+`hidden`/`class` flips):
+
+- `--player-h` — the bar isn't a fixed height: phones stack the scrubber, live
+  mode drops it, and its bottom padding carries the safe-area inset. CSS floors
+  it with `env(safe-area-inset-bottom)` via `max()`, so the no-player case still
+  clears the notch without double-counting the inset when the bar *is* up.
+- `--resume-h` — the strip the resume toast occupies, height plus its own margin,
+  0 while it's down. This started as a hardcoded 3.6rem and overlapped the toast
+  by 9px on a 390px phone, where the toast wraps to two lines. Publishing 0 when
+  the toast is hidden also let the `:has()` selector go away entirely: one
+  expression now covers both states.
+
+**Hidden means unreachable, not faint.** `[data-show="false"]` sets
+`visibility:hidden` and `pointer-events:none`, not just `opacity:0`. Below 1360px
+the button sits *on* the listing, so an opacity-only hide would go on eating row
+taps and catching Tab forever — the highest-risk bug in the feature, and the
+reason `test/to-top/` §5 fires a hit test at the parked coordinates and requires
+it to land on the listing. `html.scroll-lock .to-top` hides it behind every
+overlay for the same reason: the scrim covers z-index 70 visually, but the button
+would still be in the tab order underneath it.
+
+**The click.** Smooth under ~6 viewports, instant beyond — a smooth scroll across
+the whole loaded list takes seconds and reads as a hang — and always instant under
+`prefers-reduced-motion`, which is precisely what that setting exists to prevent.
+Focus moves to `main#top` (`tabindex="-1"`, `preventScroll:true` so it doesn't eat
+the animation), because a viewport that moves without focus leaves a keyboard user
+on row 340 looking at row 1. A `gliding` flag suppresses the show/hide rule for
+the duration, or the upward-scroll branch would instantly re-show the button and
+ride it back up; it's released by any real input (`wheel`, `touchstart`,
+`pointerdown`, `keydown`) so taking over mid-glide works, and by a 1.5s timeout so
+an interrupted glide can't strand the button hidden.
 
 ### Casting — built, then removed
 

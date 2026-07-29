@@ -2057,6 +2057,140 @@
     .row-actions{grid-area:play;}
   }
 
+  /* ---------------- Back to top ----------------
+     A 40px circle that appears once you are deep in the listing, ducks out of
+     the way while you are moving, and comes back when you stop. app.js owns the
+     when; this owns the where, and the where is decided by three things that
+     were already fixed elsewhere in this file:
+
+     RIGHT GUTTER on desktop, WHICH IT SHARES with .player-close. That ✕ ends
+     playback, and it is pulled out to ~8px from the true right edge at every
+     width above 1360 (in flow with a negative margin below 1400, absolutely
+     positioned above it) — so it and this button are in the same margin. They do
+     not overlap horizontally, but 6px of clearance would read as one cluster of
+     two circles, and the wrong one of them stops the audio. The separation is
+     bought vertically instead: the min-width:1360 block below lifts this to 2rem
+     above the bar rather than the .9rem used everywhere else, which is the whole
+     reason that override exists. Do not tighten it back to .9rem.
+
+     1360px IS THE SWITCH, not 1180. The free gutter beside the content column is
+     (100vw - 1180)/2, so 1180 is where it becomes 0 and 1360 is where it reaches
+     ~90px — the first width that holds a 40px button with real air on both sides.
+     Below that there is no margin to sit in and it has to overlay content,
+     centred (see that block).
+
+     BOTTOM-ANCHORED TO THE BAR. --player-h is the bar's measured height, kept
+     current by app.js because it is not a constant: phones stack the scrubber,
+     live mode drops it, and the bar's own bottom padding already carries the
+     safe-area inset. max() with the inset gives the no-player case a floor
+     without double-counting the inset when the bar IS up. */
+  .to-top{
+    /* Above the sticky listing chrome (10/40), below the player bar (80) so it
+       can never sit on the bar's own shadow, and nowhere near the overlays
+       (150-300) — which it leaves entirely, see html.scroll-lock below. */
+    position:fixed; z-index:70;
+    --to-top-lift: max(var(--player-h, 0px), env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--to-top-lift) + .9rem);
+    /* Centred over the content by default; the desktop block below takes it out
+       to the gutter. left/right:0 + margin-inline:auto centres it without
+       knowing its width, which matters because the touch block grows it to 44px
+       and a translateX(-50%) would then fight the enter/exit transform. */
+    left:0; right:0; margin-inline:auto;
+    width:40px; height:40px; border-radius:999px; padding:0;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    /* Quiet at rest, on purpose and by the same logic as .player-close: the
+       accent-filled circle in the corner is the play button and it stays the
+       only one. Accent shows up on hover and press, never before. */
+    background:color-mix(in srgb, var(--surface-2) 92%, transparent);
+    backdrop-filter:blur(12px);
+    border:1px solid var(--outline-strong);
+    color:var(--ink-dim);
+    box-shadow:var(--shadow);
+    transition:opacity .2s ease, transform .2s ease, visibility .2s,
+               background .15s ease, color .15s ease, border-color .15s ease,
+               bottom .35s cubic-bezier(.22,1,.36,1);
+  }
+  /* The `bottom` transition is what makes the bar arriving read as one movement
+     rather than two: the button rides up with it, on the same curve the bar's
+     own .arrived animation runs on. */
+  .to-top svg{ width:18px; height:18px; }
+
+  .to-top[data-show="false"]{
+    /* visibility, not just opacity, and this is the whole bug class this feature
+       could have shipped: below 1360px the button sits ON the listing, so an
+       opacity:0 button would go on eating row taps and catching Tab forever.
+       visibility:hidden removes it from the focus order and the hit test, and it
+       transitions discretely — flipping at the END of a fade-out and the START
+       of a fade-in, which is exactly the timing wanted.
+       Exit runs at .12s against the .2s entrance: a slow fade-out is most of
+       what makes an interface feel like it is lagging behind you. */
+    opacity:0; visibility:hidden; pointer-events:none;
+    transform:translateY(6px) scale(.96);
+    transition-duration:.12s;
+  }
+
+  @media (hover:hover) and (pointer:fine){
+    .to-top:hover{
+      background:var(--surface-3); color:var(--ink);
+      border-color:color-mix(in srgb, var(--accent) 45%, var(--outline-strong));
+      transform:translateY(-2px);
+    }
+  }
+  .to-top:active{ transform:translateY(0) scale(.94); }
+  .to-top:focus-visible{ outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent); }
+
+  /* Desktop: out into the right gutter. Anchored by its LEFT edge to the content
+     column's right edge (50% + 590px) rather than centred in the margin, so the
+     gap to the listing is a constant 1.4rem at every width. Gutter-centring looks
+     identical at 1360 and abandons the button in the middle of a 370px margin at
+     1920.
+     The 2rem bottom (against .9rem elsewhere) is the vertical separation from
+     .player-close — see the ✕ note at the top of this section. */
+  @media (min-width:1360px){
+    .to-top{
+      left:calc(50% + 590px + 1.4rem);
+      right:auto; margin-inline:0;
+      bottom:calc(var(--to-top-lift) + 2rem);
+    }
+  }
+
+  /* Centred mode only: the resume toast floats above the bar's left edge, inside
+     the content column, and on a phone it runs most of the bar's width — so it
+     and the button want the same strip. Lift the button over it rather than
+     hiding it; the toast is transient and the button's job is not. Never needed
+     in gutter mode, where the two are never on the same horizontal run.
+
+     --resume-h is the strip the toast occupies (its height PLUS its own
+     margin-bottom), measured by app.js, and 0px whenever the toast is down — so
+     this one expression covers both states and no :has() is needed. It has to be
+     measured for the same reason --player-h does: a guessed constant was 3.6rem
+     here and the toast is 58.8px on a 390px phone, where the text wraps to two
+     lines. That overlapped by 9px, which is exactly the kind of miss a fixed
+     value makes and a measurement cannot. */
+  @media (max-width:1359.98px){
+    .to-top{ bottom:calc(var(--to-top-lift) + var(--resume-h, 0px) + .9rem); }
+  }
+
+  /* An overlay is open. The scrim covers z-index 70 anyway, so this is not about
+     what you can see — it is about the button still being in the tab order and
+     still being a hit target under a scrim. This file's history is mostly the
+     story of things leaking through those six overlays; do not make this the
+     seventh. */
+  html.scroll-lock .to-top{ opacity:0; visibility:hidden; pointer-events:none; }
+
+  @media (prefers-reduced-motion:reduce){
+    .to-top{
+      transition:opacity .18s ease, visibility .18s, background .15s ease,
+                 color .15s ease, border-color .15s ease;
+    }
+    .to-top[data-show="false"]{ transform:none; }
+    .to-top:active{ transform:none; }
+    @media (hover:hover) and (pointer:fine){
+      .to-top:hover{ transform:none; }
+    }
+  }
+
   /* ================= Gallery (grid) view ================= */
   /* In grid mode the sticky column-header row is meaningless, and #rows becomes a
      responsive card grid instead of a stack of table rows. */
@@ -2288,6 +2422,12 @@
        two segments span a comfortable thumb width with no seam between them. */
     .view-btn{ width: 58px; height: 44px; }
     .view-btn svg{ width: 20px; height: 20px; }
+    /* Back to top is standalone, so the ::before technique above would fit — but
+       it is position:fixed and centred with margin-inline:auto, so growing the
+       real box cannot shift any layout and cannot overhang a neighbour. Bigger
+       ink is also the right call for a control you tap with a thumb. */
+    .to-top{ width: 44px; height: 44px; }
+    .to-top svg{ width: 19px; height: 19px; }
     .player-transport{ gap: .5rem; }
     .player-skip{ width: 44px; height: 44px; }
     .player-toggle{ width: 48px; height: 48px; }
