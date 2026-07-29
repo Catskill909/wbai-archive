@@ -455,19 +455,27 @@ function feedIndex() {
  * per-feed item count; nothing here needs changing when they do.
  */
 /**
- * A broadcast that WBAI scheduled always starts on the hour or the half hour.
- * An episode stamped 12:56 pm or 11:01 am was not scheduled to start then — the
- * recorder died mid-show and restarted, leaving a fragment. Those fragments carry
- * the show's real name and artwork, so they look legitimate in a grid while being
- * three and a half minutes of a one-hour programme.
+ * Reject recordings too short to be a broadcast.
  *
- * Measured 2026-07-29: 7 of 361 episodes, running 3m31s to 35m against hour-long
- * slots. The odd minute is the reliable signal — duration alone would mean
- * guessing a threshold that a genuinely short programme could fall under.
+ * An earlier version of this tested the START TIME — anything not on the :00 or
+ * :30 grid was treated as a recorder restart. That was wrong, and it dropped
+ * real content: "Living for the City" aired 2026-07-29 at 11:13 am and ran
+ * 45m45s, a complete programme that simply started fourteen minutes late.
+ * Democracy Now has done the same at 8:07 am for 52 minutes.
+ *
+ * Duration is the honest test. WBAI's shortest scheduled format is 30 minutes —
+ * across 543 episodes the floor for a normal broadcast is 1802s (CounterSpin,
+ * ReelWorld, Economic Update all sit exactly there) and there is a clean gap
+ * with NOTHING between 5 and 15 minutes. So 20 minutes sits in empty space: well
+ * under anything WBAI schedules, well over the fragments (3m31s, 4m28s), and it
+ * does not depend on when the recorder happened to start.
  */
-function isScheduledStart(dt) {
-  const mins = new Date(dt * 1000).getMinutes();
-  return mins === 0 || mins === 30;
+const MIN_EPISODE_SEC = 20 * 60;
+
+function hmsToSec(hms) {
+  const p = String(hms || '').split(':').map((n) => parseInt(n, 10));
+  if (p.length !== 3 || p.some(Number.isNaN)) return 0;
+  return p[0] * 3600 + p[1] * 60 + p[2];
 }
 
 function applyFeeds(rows) {
@@ -497,7 +505,9 @@ function applyFeeds(rows) {
     // real, listed, and playable — the 5 is a display setting on WBAI's side, not
     // a statement about what exists.
     if (!haveFeed.has(r.sho)) { droppedNoFeed++; continue; }
-    if (!isScheduledStart(r.dt)) { droppedFragment++; continue; }
+    // 0 means the listing gave no parseable length; keep it rather than guess.
+    const secs = hmsToSec(r.length);
+    if (secs && secs < MIN_EPISODE_SEC) { droppedFragment++; continue; }
 
     const hit = byMp3.get(r.mp3);
     if (!hit) {
