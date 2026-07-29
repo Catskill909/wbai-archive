@@ -19,9 +19,11 @@ an archived broadcast.
 
 ## Features
 
-- **Live archive listing** — ~500 recent broadcasts scraped on demand from
-  `archive2.wbai.org`, with search, category filters, and sortable columns
-  (show, air date, retention, duration).
+- **Live archive listing** — ~500 recent broadcasts read from WBAI's own podcast
+  feeds (`archive2.wbai.org/xml/<show>.xml`), with search, category filters, and
+  sortable columns (show, air date, retention, duration). Structured XML is the
+  content source; the HTML listing supplies the shape around it. See
+  [docs/xml-feed-migration.md](docs/xml-feed-migration.md).
 - **Working audio** — a persistent bottom player for archived shows and a
   header live player for the 99.5 FM stream, each with a loading spinner that
   resolves to a pause control once connected.
@@ -75,14 +77,14 @@ attack surface at zero.
 | Route              | Description                                                        | Cache  |
 | ------------------ | ------------------------------------------------------------------ | ------ |
 | `GET /`            | The single-page app (`public/index.html`)                          | revalidate |
-| `GET /api/archive` | Live scrape of `archive2.wbai.org` → JSON list of shows            | 5 min  |
+| `GET /api/archive` | Episodes from WBAI's per-show podcast XML, structured by the `archive2.wbai.org` listing → JSON | 5 min  |
 | `GET /api/archive/head` | Freshness probe: `{updated, count, latest}` from the same cached scrape, minus the rows (~57 B) | 5 min  |
 | `GET /api/nowplaying` | Proxy of WBAI's on-air / up-next feed → normalized JSON         | 15 s   |
 | `GET /api/programs` | wbai.org's program directory → host, description, links per show  | 10 min |
 | `GET /api/showinfo` | Richer per-show records harvested from the on-air feed over time  | 1 min  |
 | `GET /api/showinfo/<altid>` | One show, resolved on demand from archive2's per-show endpoint — works for any show, not just what's on air | 1 hr |
 | `GET /pix/<file>`  | Image proxy for show artwork (allow-listed `*_med_*.jpg` names)    | 1 day  |
-| `GET /healthz`     | Health check for the container / load balancer, plus the bundle version and boot-time storage facts (`storage.showinfoOnDisk` tells you whether a persistent volume is really mounted) | —      |
+| `GET /healthz`     | Health check for the container / load balancer, plus the bundle version, boot-time storage facts (`storage.showinfoOnDisk` tells you whether a persistent volume is really mounted) and feed state (`feeds.held: 0` with `lastHarvest` set is the one condition that empties the listing) | —      |
 
 All upstream responses are cached in memory; if an upstream is briefly down, the
 last good response (or a shipped snapshot at `public/data/shows-fallback.json`)
@@ -142,8 +144,19 @@ reload the page. `npm start` serves them directly.
   proxies fit together, and why they're needed.
 - **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — container build and Coolify.
 - **[docs/UPSTREAM.md](docs/UPSTREAM.md)** — what WBAI actually exposes: which
-  endpoints are real JSON, which are base64'd HTML, which are dead, and why the
-  listing has to be scraped. Read before changing any upstream call.
+  endpoints are real JSON, which are base64'd HTML, which are dead, and which
+  lie. Read before changing any upstream call.
+- **[docs/xml-feed-migration.md](docs/xml-feed-migration.md)** — why episodes come
+  from per-show podcast XML rather than the HTML scrape, what the scrape still
+  supplies, and how feeds are kept fresh without hammering a small station's
+  server. Read before touching `applyFeeds()` or the feed harvest.
+- **[docs/archive-source-audit.md](docs/archive-source-audit.md)** — measured
+  defects in `archive2.wbai.org` (rows appended out of order, invented scheduler
+  entries, recorder fragments, a 23-day outage), with a section written for
+  Pacifica's developer.
+- **[docs/2026-07-29-xml-migration-log.md](docs/2026-07-29-xml-migration-log.md)** —
+  the working log of that migration: what was found, what was got wrong, and why
+  the code looks the way it does.
 - **[docs/live-audio-pattern.md](docs/live-audio-pattern.md)** — why a live
   stream can't be paused and resumed like a file, and the pattern that fixes it
   (one connection, never reused). Written to be portable to any project with a

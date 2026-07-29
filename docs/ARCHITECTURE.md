@@ -46,16 +46,46 @@ megabytes of audio through the app.
 ## Request flow
 
 ### `GET /api/archive`
+
+**Content comes from podcast XML; the scrape supplies structure.** Reworked
+2026-07-29 — see [xml-feed-migration.md](xml-feed-migration.md) for why, and
+[archive-source-audit.md](archive-source-audit.md) for the upstream defects that
+forced it.
+
 1. Fetch the archive front page (`archive2.wbai.org`) as latin1 (it's declared
    ISO-8859-1).
 2. Fetch the schedule grid (`pub_sched.php`) and extract the `altid → photo id`
    map from its image preloads (`pix/<altid>_med_<id>.jpg`).
 3. Regex-parse each `<tr name="show" …>` row into a structured object: title,
-   category, host, air date/time, duration, days-to-stay, MP3 URL, RSS feed, and
-   a `/pix/…` artwork path when the show has a photo.
-4. Cache the result in memory for 5 minutes. Concurrent misses share a single
+   category, host, air date/time, duration, days-to-stay, MP3 URL, RSS presence,
+   `ord` (position in archive2's own page), and a `/pix/…` artwork path.
+4. **Sync the feeds this scrape says are worth having** — both passes are driven
+   off the rows just parsed and both normally fetch *nothing*:
+   - `catchUpFeeds()` — shows that advertise a feed we hold nothing for. Without
+     it a show that gains a feed is absent from the site until the next sweep.
+   - `refreshStaleFeeds()` — shows whose feed is behind the newest air date in
+     the listing. This is what makes 5-minute freshness affordable: a feed whose
+     newest `<item>` is already current cannot be hiding anything, and measured
+     2026-07-29 that was 121 of 122 feeds.
+5. **Apply the feeds** (`applyFeeds()`), which decides what is publishable:
+   - no feed held for the show → **dropped**. Gating on the row's `hasRSS` flag
+     instead was tried and shipped a regression; archive2 advertises feeds that
+     do not exist. Trust the fetch, not the markup.
+   - shorter than 20 minutes → **dropped** as a failed recording.
+   - inside the feed's window → feed record (`source: 'feed'`), adding
+     `durationSec`, `bytes` and a per-episode description.
+   - outside it → the listing row (`source: 'listing'`).
+6. Cache the result in memory for 5 minutes. Concurrent misses share a single
    in-flight scrape, so a burst of requests at expiry still costs one upstream
    fetch.
+
+A blind sweep of every feed still runs every 6 hours, but only as a backstop for
+edits that do not move a feed's newest date — a corrected description, a re-cut
+episode. It is not on the critical path for anything a listener sees.
+
+`/healthz` reports `feeds: { held, lastHarvest, notModified, failed }`.
+**`held: 0` with `lastHarvest` set is the one state that empties the site**, which
+is why it is exposed rather than inferred — the same lesson as `showinfoOnDisk`.
 
 `GET /api/archive/head` returns `{updated, count, latest}` off the same cache —
 the ~57-byte freshness probe an open tab polls every 5 minutes to decide whether

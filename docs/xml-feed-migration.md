@@ -314,28 +314,72 @@ here; what landed is simpler than any of them.
 `applyFeeds()` in [server.js](../server.js):
 
 ```
-show has no podcast XML button (hasRSS false)  -> drop the row entirely
-episode starts off the :00/:30 grid            -> drop it (recorder fragment)
-episode is inside its feed                     -> serve the feed's record
-episode is outside its feed's item window      -> serve the listing row
+we hold no feed for the show        -> drop the row entirely
+episode is shorter than 20 minutes  -> drop it (failed recording)
+episode is inside its feed          -> serve the feed's record
+episode is outside its feed's window-> serve the listing row
 ```
 
 ```
-scraped rows          : 540
-  dropped, no feed    :  88
-  dropped, fragments  :   9
-PUBLISHED             : 443
-  source: feed        : 354
-  source: listing     :  89
+scraped rows          : 543
+  dropped, no feed    :  29
+  dropped, too short  :   5
+PUBLISHED             : 509
+  source: feed        : 402
+  source: listing     : 107
 ```
 
-**Gate per show, not per episode.** This was got wrong once and is worth stating
-plainly: gating per episode also deleted 89 older episodes of shows whose feeds
-are perfectly healthy, purely because a feed publishes only its most recent five.
-Those episodes are listed, playable and real — the item count is a display setting
-on WBAI's side, not a claim about what exists. `source` records which branch each
-episode took, so the share still riding on the scrape is a number you can read,
-and it goes to zero on its own as that setting rises.
+**Gate per show, not per episode.** Gating per episode also deleted 89 older
+episodes of shows whose feeds are perfectly healthy, purely because a feed
+publishes only its most recent five. Those episodes are listed, playable and
+real — the item count is a display setting on WBAI's side, not a claim about what
+exists. `source` records which branch each episode took, so the share still
+riding on the scrape is a number you can read, and it falls on its own as that
+setting rises.
+
+**Gate on the feed we hold, never on `hasRSS`.** The row's podcast-XML button is
+archive2's *claim*, and it is not reliable — see the ⚠️ section below. This cost
+a production regression the same day it was written.
+
+**Judge a broken recording by length, not start time.** An earlier rule dropped
+anything not starting on the `:00`/`:30` grid as a recorder restart. That fit the
+seven examples it was written against and is wrong as a rule: it hid a 52-minute
+Democracy Now (08:07), a 45-minute Early Morning Mondays (07:14), and "Living for
+the City" (11:13, 45m45s). WBAI's shortest scheduled format is 30 minutes and
+nothing at all falls between 5 and 15 minutes, so 20 minutes sits in empty space
+and does not care when the recorder started.
+
+### Keeping up without hammering upstream
+
+New episodes arrive on the 5-minute scrape regardless of the feeds — a row whose
+show has a feed publishes immediately as `source: 'listing'` and upgrades later.
+What needed solving was feed *freshness* without a blind sweep.
+
+The scrape already carries each show's newest air date, so a feed whose newest
+`<item>` is at least that recent cannot be hiding anything. `refreshStaleFeeds()`
+compares the two and fetches only what is behind — **121 of 122 feeds were already
+current when measured**, so the usual cost is zero requests.
+
+| approach | requests/day at WBAI | new episode's feed data |
+| --- | --- | --- |
+| hourly blind sweep | 2,928 | up to 60 min late |
+| 5-minute blind sweep | 35,136 | 5 min |
+| **targeted (shipped)** | **a few hundred** | **5 min** |
+
+A blind conditional sweep is genuinely cheap per request — all 122 feeds returned
+`304` for 16.7 KB total, no bodies — but 35,000 of them a day against a small
+station's Apache is not a polite default when almost none can have changed.
+
+Two details the tests forced out, both worth keeping:
+
+- **A stale refresh does not send `If-Modified-Since`.** Revalidating against a
+  `Last-Modified` we have already proved untrustworthy earns a `304` and keeps
+  the stale copy — the one outcome that cannot help. Found by handing the server
+  a deliberately truncated feed: it logged a refresh and recovered nothing.
+- **Behind-ness has a 10-minute cooldown.** A feed legitimately sits behind the
+  listing between the recording landing and the feed rebuilding; without a
+  cooldown that window is re-fetched every 5 minutes, and a feed that never
+  catches up would be re-fetched forever.
 
 ### Display order is archive2's, not ours
 
