@@ -222,22 +222,45 @@ Plus the finding from the audit: **52 episodes appear in feeds but not in the
 listing, and all 52 still play.** Merging the two sources grows the archive rather
 than shrinking it.
 
-## The one flag that makes this cheap
+## `hasRSS` selects what to FETCH. It must never select what to PUBLISH.
 
-We already parse it. `parseArchive()` sets `hasRSS` by looking for `getrss.php` in
-the row body ([server.js:154](../server.js#L154)), and that flag is a **perfect**
-predictor of feed existence:
+⚠️ **This section previously said `hasRSS` was a perfect predictor of feed
+existence. It was — for about six hours — and depending on that cost a
+production regression.** The measurement was real:
 
 ```
+2026-07-29, morning
 hasRSS=true  & feed exists : 98
 hasRSS=true  & feed missing:  0
 hasRSS=false & feed exists :  0
 hasRSS=false & no feed     : 33
-slugs whose rows disagree with each other: 0
 ```
 
-No 404-probing and no slug guessing **for shows already in the listing**. The
-listing tells us exactly which 98 feeds to fetch, and it has never been wrong.
+By the same afternoon, archive2 was rendering a podcast XML button on rows for
+`manrat` while `https://archive2.wbai.org/xml/manrat.xml` still answered **404**.
+`applyFeeds()` gated on `hasRSS`, so all 14 generated "A Mansion for the Rat"
+rows walked back into the listing — one at position 2 of the archive view — with
+`daysToStay` counting 0, 7, 14, 21 … Fixed in `695fbea`.
+
+**The rule that replaced it:** publish an episode only if we have actually
+fetched and parsed a non-empty feed for its show.
+
+```js
+const haveFeed = new Set(
+  Object.entries(feedStore)
+    .filter(([, rec]) => rec && rec.items && rec.items.length)
+    .map(([slug]) => slug)
+);
+if (!haveFeed.has(row.sho)) drop;
+```
+
+`hasRSS` keeps one job — deciding which slugs are worth *asking* for, which
+saves 404-probing every show on every harvest. It is a hint about where to look,
+never evidence of what is there. **Trust the fetch, not the markup.**
+
+The general lesson, which is CLAUDE.md §3a pointed at upstream data rather than at
+test code: a correlation you measured once is not an invariant. This one was
+verified across 131 slugs with zero exceptions and still broke the same day.
 
 ### But the show list moves, so discovery is still a live problem
 

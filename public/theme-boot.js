@@ -26,6 +26,28 @@
 (function () {
   var KEY = 'wbai-theme';
 
+  /* Scroll restoration OFF — a reload must land at the top of the list.
+   *
+   * The list renders 40 rows and appends more as you scroll (PAGE_SIZE in
+   * app.js). The browser, meanwhile, restores the scroll offset it remembers
+   * from before the reload — an offset that was valid against 400 rendered rows
+   * and is meaningless against the 40 that exist immediately after load. On
+   * Chrome for Android the result is a reload that lands in blank space below
+   * the end of the list, or partway down a list that then grows underneath you.
+   *
+   * This has to be set here rather than in app.js: restoration is applied around
+   * load, and app.js runs at the end of <body> — often too late to prevent the
+   * jump, and a scrollTo(0,0) afterwards would show the jump before undoing it.
+   * Setting it in a parser-blocking <head> script means the browser never
+   * attempts the restore at all.
+   *
+   * Only affects reloads and history navigation, not the in-page scroll resets
+   * in app.js (resetListScroll, which deliberately scrolls to the sticky
+   * controls row rather than to 0). */
+  try {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  } catch (e) {}
+
   /* Browser-chrome tint per theme. These must stay equal to --surface-1 in
      styles.css (the appbar sits directly under the browser's own bar, and any
      difference between the two reads as a seam across the top of the screen). */

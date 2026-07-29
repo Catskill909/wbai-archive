@@ -70,8 +70,9 @@ case "${1:-all}" in
   scroll) SUITES="scroll-tests.js" ;;
   clock)  SUITES="clock-tests.js" ;;
   rowtap) SUITES="row-tap-tests.js" ;;
-  all)    SUITES="ui-tests.js scroll-tests.js clock-tests.js row-tap-tests.js" ;;
-  *)      echo "unknown suite: $1 (use ui | scroll | clock | rowtap)"; exit 2 ;;
+  reload) SUITES="reload-tests.js" ;;
+  all)    SUITES="ui-tests.js scroll-tests.js clock-tests.js row-tap-tests.js reload-tests.js" ;;
+  *)      echo "unknown suite: $1 (use ui | scroll | clock | rowtap | reload)"; exit 2 ;;
 esac
 
 # Each suite exits non-zero on failure. Run them all before reporting, so one

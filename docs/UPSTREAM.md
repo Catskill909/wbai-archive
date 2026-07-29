@@ -153,9 +153,15 @@ The two constraints that decide everything:
 - **98 of 131 show slugs have a feed at all.** The other 33 return `404`.
 
 Together those reproduce **67% of the 530-row listing**, so the feeds are a
-supplement, not a replacement for the scrape. The listing's `hasRSS` flag — which
-`parseArchive()` already sets — predicted feed existence perfectly across all 131
-slugs, so no discovery pass is needed.
+supplement, not a replacement for the scrape.
+
+⚠️ **The listing's `hasRSS` flag is a hint, not evidence.** It matched feed
+existence across all 131 slugs on the morning of 2026-07-29 and had stopped
+matching by the afternoon — archive2 began rendering the podcast XML button on
+`manrat` rows while `/xml/manrat.xml` still answered `404`. Use `hasRSS` to
+decide which slugs are worth *fetching*; decide what to publish from what the
+fetch actually returned. See
+[xml-feed-migration.md](xml-feed-migration.md#hasrss-selects-what-to-fetch-it-must-never-select-what-to-publish).
 
 Worth having: `itunes:duration` in seconds, `enclosure length` in bytes,
 `itunes:author` (fills `host` for 91 slugs the listing leaves blank), and 52
