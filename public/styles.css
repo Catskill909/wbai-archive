@@ -1644,6 +1644,15 @@
     .sheet-desc-wrap .desc-toggle{ margin-top:-.45rem; }
     .sheet-link .link-wide{ display:none; }
     .sheet-link .link-narrow{ display:inline; }
+    /* Four pills on one row is the whole point of the narrow wordings above, and
+       at ~400px they were still ~10px over — Share wrapped to a row of its own.
+       Buy the room back twice: shave the pill's side padding and the row gap,
+       and let Share go icon-only (its .link-wide span is hidden by the rule
+       above, so nothing extra is needed here but the shape). */
+    .sheet-links{ gap:.35rem; }
+    .sheet-link{ padding-inline:.55rem; }
+    .sheet-share{ justify-content:center; }
+    .sheet-share svg{ width:14px; height:14px; }
   }
 
   /* ================= Responsive ================= */
@@ -1805,6 +1814,26 @@
   .player-art img{width:100%; height:100%; object-fit:cover; display:block;}
   .player-art img.failed,
   .player-art img:not([src]){display:none;}
+  /* Phones: the artwork is the largest thing in the bar, so the air around it is
+     the most visible thing in the bar too — a 44px thumb floating in .85rem of
+     gap on either side plus a 1rem gutter. Tighten all three and hand the pixels
+     to the image, which is what people actually look at.
+
+     Height is deliberately near-neutral. Archive mode doesn't move at all: the
+     title/sub/scrubber column is already taller than 52px, so it, not the art,
+     sets the bar height. Live mode has no scrubber and IS art-driven, so it
+     trims its own vertical padding to pay for most of the 8px. The padding is
+     scoped to .live for a reason — the touch-target rules further down grow the
+     scrubber with an -8px bottom margin that eats into the bar's bottom padding,
+     and there is no room left to take from it in archive mode. */
+  @media (max-width:560px){
+    .player-bar{ gap:.55rem; padding-inline:.7rem; }
+    .player-bar.live{
+      padding-top:.45rem;
+      padding-bottom:calc(.45rem + env(safe-area-inset-bottom,0px));
+    }
+    .player-art{ width:52px; height:52px; border-radius:10px; }
+  }
   .player-main{display:flex; flex-direction:column; justify-content:center; gap:.35rem; min-width:0; flex:1 1 auto;}
   /* art + title double as the trigger for the info modal */
   .player-open{border:0; background:none; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer;}
@@ -2248,6 +2277,10 @@
     /* pills and text buttons — give them a real vertical target */
     .on-air-btn, .appbar-actions .btn-donate, .refresh-pill, .lp-alert-btn,
     .sheet-play, .sheet-link, .sheet-restart{ min-height: 44px; }
+    /* Icon-only on phones (see the max-width:560px block), so min-height alone
+       would leave a 30px-wide target. Width has to be asked for separately —
+       it's the one pill with no label to give it width. */
+    .sheet-share{ min-width: 44px; }
     .resume-restart, .desc-toggle{
       min-height: 44px; display: inline-flex; align-items: center;
     }

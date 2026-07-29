@@ -2328,7 +2328,14 @@
     if(tw) links += sheetLink(tw, svgLink(), 'Twitter');
     // Rendered only where the OS can actually take it, in keeping with the
     // sheet's rule that nothing is shown as an inert placeholder.
-    if(navigator.share) links += '<button class="sheet-link sheet-share" type="button">'+svgShare()+'Share</button>';
+    //
+    // Its word is in a .link-wide span so phones can drop it (CSS) and leave the
+    // glyph alone — four pills don't fit one row otherwise, and Share is the only
+    // one that can lose its label: the share glyph is unambiguous, while Website
+    // and Twitter are both drawn with svgLink() and are told apart by wording.
+    // Hence the aria-label, which is the accessible name once the span is hidden.
+    if(navigator.share) links += '<button class="sheet-link sheet-share" type="button" aria-label="Share">'+
+      svgShare()+'<span class="link-wide">Share</span></button>';
 
     var play = r.mp3
       ? '<button class="sheet-play play-btn'+(isPlaying?' playing':'')+(isLoading?' loading':'')+'" type="button" '+
