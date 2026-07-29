@@ -212,7 +212,13 @@ function parseArchive(html, photoMap) {
  * slug aliasing (`dn` has a feed, `demnow` does not, and they are different shows).
  */
 const FEEDS_PATH = process.env.FEEDS_PATH || path.join(__dirname, 'data', 'feeds.json');
-const FEEDS_TTL = 60 * 60 * 1000;
+// Backstop only. New episodes and newly-added feeds are picked up per-scrape by
+// refreshStaleFeeds/catchUpFeeds, so this blind sweep exists purely to catch
+// edits that do NOT move a feed's newest date — a corrected description, a
+// re-cut episode. Six hours rather than one because it is no longer on the
+// critical path for anything a listener sees, and a blind sweep is 122 requests
+// where the targeted passes are usually zero.
+const FEEDS_TTL = 6 * 60 * 60 * 1000;
 const FEED_CONCURRENCY = 5;   // a small station's Apache. Do not raise.
 
 // slug -> { lastModified, fetchedAt, channel:{...}, items:[...] }
@@ -273,10 +279,14 @@ function parseFeedXml(xml) {
  * A feed that answers 200-with-nothing must never be allowed to erase what we
  * already hold.
  */
-async function fetchFeed(slug) {
+async function fetchFeed(slug, force = false) {
   const prev = feedStore[slug];
   const headers = { 'User-Agent': 'wbai-archive/1.0 (+https://github.com/Catskill909/wbai-archive)' };
-  if (prev && prev.lastModified) headers['If-Modified-Since'] = prev.lastModified;
+  // `force` skips the conditional request. Used when the listing has already
+  // proved our copy is behind: revalidating against a Last-Modified we no longer
+  // trust just earns a 304 and keeps the stale copy, which is the one outcome
+  // that cannot help.
+  if (!force && prev && prev.lastModified) headers['If-Modified-Since'] = prev.lastModified;
 
   const res = await fetch(`${UPSTREAM.archive}xml/${encodeURIComponent(slug)}.xml`, {
     headers,
@@ -306,13 +316,13 @@ async function fetchFeed(slug) {
  * trickle of new shows would keep postponing the sweep that refreshes everything
  * else.
  */
-async function harvestFeeds(slugs, full = true) {
+async function harvestFeeds(slugs, full = true, force = false) {
   let i = 0;
   const workers = Array.from({ length: Math.min(FEED_CONCURRENCY, slugs.length) }, async () => {
     while (i < slugs.length) {
       const slug = slugs[i++];
       try {
-        const rec = await fetchFeed(slug);
+        const rec = await fetchFeed(slug, force);
         if (rec) feedStore[slug] = rec;
       } catch (e) {
         feedsDiag.failed++;
@@ -333,6 +343,7 @@ async function harvestFeeds(slugs, full = true) {
 // all of them on every 5-minute archive refresh forever.
 const feedMissAt = new Map();
 const FEED_MISS_RETRY_MS = 15 * 60 * 1000;
+const FEED_STALE_RETRY_MS = 10 * 60 * 1000;
 
 /**
  * Fetch feeds for shows the listing now advertises but we hold nothing for.
@@ -363,6 +374,55 @@ async function catchUpFeeds(claimedSlugs) {
   const gained = Object.keys(feedStore).length - before;
   if (gained > 0) console.log(`[feeds] catch-up picked up ${gained} new feed(s) of ${unknown.length} probed`);
   return gained;
+}
+
+/**
+ * Refresh only the feeds that demonstrably have something new.
+ *
+ * The scrape we already do every 5 minutes carries each show's newest air date.
+ * A feed whose newest `<item>` is at least as recent as that cannot be hiding a
+ * new episode from us, so asking about it is pure waste — and it is nearly all
+ * of them: measured 2026-07-29, 121 of 122 feeds were already current, so this
+ * fetches **zero** on a typical pass against 122 for a blind sweep.
+ *
+ * That is what makes a 5-minute cadence affordable. A blind conditional sweep
+ * every 5 minutes is 35,000 requests a day at WBAI (cheap per request — 16.7 KB
+ * for all 122, every one a 304 — but 35,000 of them); this is a few hundred, and
+ * a new episode's feed data lands on the very next scrape instead of up to an
+ * hour later.
+ *
+ * The full sweep stays as a slow backstop: this comparison only notices changes
+ * that move a feed's newest date, so a corrected description or a re-cut episode
+ * would be missed without it.
+ */
+async function refreshStaleFeeds(rows) {
+  const newestByShow = new Map();
+  for (const r of rows) {
+    const cur = newestByShow.get(r.sho);
+    if (cur === undefined || r.dt > cur) newestByShow.set(r.sho, r.dt);
+  }
+
+  const stale = [];
+  for (const [slug, rec] of Object.entries(feedStore)) {
+    if (!rec || !rec.items || !rec.items.length) continue;
+    const scraped = newestByShow.get(slug);
+    if (scraped === undefined) continue;
+    const feedNewest = rec.items.reduce((m, i) => Math.max(m, i.dt || 0), 0);
+    if (scraped > feedNewest) stale.push(slug);
+  }
+
+  if (!stale.length) return 0;
+  // A feed can sit behind the listing for a while quite legitimately — the row
+  // appears as soon as the recording lands, the feed rebuilds afterwards. Without
+  // a cooldown that gap would be re-fetched on every 5-minute scrape, and a feed
+  // that never catches up would be re-fetched forever.
+  const now = Date.now();
+  const due = stale.filter((s) => now - (feedMissAt.get(s) || 0) > FEED_STALE_RETRY_MS);
+  if (!due.length) return 0;
+  due.forEach((s) => feedMissAt.set(s, now));
+  await harvestFeeds(due, false, true);
+  console.log(`[feeds] refreshed ${due.length} feed(s) the listing showed as behind: ${due.join(', ')}`);
+  return due.length;
 }
 
 // MP3 URL -> the feed item describing it, rebuilt from whatever the store holds.
@@ -508,10 +568,15 @@ async function getArchive() {
       if (!Object.keys(feedStore).length) await feedsInFlight;
     }
 
-    // Shows that gained a feed since the last sweep would otherwise be missing
-    // from the site for up to an hour. Cheap: only the slugs we hold nothing
-    // for, at most once per FEED_MISS_RETRY_MS each.
+    // Two targeted passes, both driven off the scrape we just did and both
+    // typically fetching nothing at all. Between them a new episode's feed data
+    // lands on the next 5-minute refresh rather than waiting for the sweep.
+    //
+    //   catchUpFeeds     — shows that gained a feed since the last sweep, which
+    //                      would otherwise be absent from the site entirely
+    //   refreshStaleFeeds — shows whose feed is behind what the listing shows
     await catchUpFeeds(feedSlugs);
+    await refreshStaleFeeds(scraped);
 
     const { rows, droppedNoFeed, droppedFragment } = applyFeeds(scraped);
     // A total wipe means the feed store is empty or the join key changed shape —
