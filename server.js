@@ -156,6 +156,13 @@ function parseArchive(html, photoMap) {
 
     rows.push({
       id: s.id,
+      // Position in archive2's own page, 0-based. Their table is not air-date
+      // sorted: new recordings are appended in the order they were ingested
+      // rather than merged into date position (see docs/archive-source-audit.md).
+      // That append order is "most recently added to the archive", and it is what
+      // the app displays by default so the two listings read alike. Sorting by
+      // date is still one click away in the UI.
+      ord: i,
       title,
       cat: CAT_MAP[s.cat] || 'special',
       sho: s.sho,
@@ -171,6 +178,237 @@ function parseArchive(html, photoMap) {
     });
   }
   return rows;
+}
+
+// ------------------------------------------------------------- podcast feeds
+
+/**
+ * Per-show podcast XML — the structured source that replaces the scrape wherever
+ * one exists.
+ *
+ * Every row on archive2 whose `hasRSS` is set links a real RSS 2.0 feed at
+ * `/xml/<slug>.xml`. Parsing XML beats regexing a 765 KB HTML table on every
+ * axis that matters, so nothing the app publishes depends on the listing's
+ * attribute order holding any more.
+ *
+ * **The feeds are the only content source.** An episode reaches the app if and
+ * only if a feed describes it; the scrape is kept for exactly one job, which is
+ * discovery — telling us which shows exist and which advertise an RSS link.
+ * A feed-less show is not served from the scrape as a fallback. It is dropped.
+ *
+ * That is a deliberate call, and it turned out to fix a data problem for free:
+ * archive2's HTML carries rows its own scheduler invented (nine weekly "A Mansion
+ * for the Rat" entries running back to April, `daysLeft` climbing 0, 7, 14, 21 …).
+ * Those shows have no feed, so going feed-only removed them without a date filter.
+ * The phantom rows and the feed-less rows are the same rows.
+ *
+ * One constraint shapes the rest, and it is not a defect: a feed carries however
+ * many episodes WBAI's archiver is set to publish (5, as their own page says).
+ * Read what arrives; never assume a number. When they raise that setting this
+ * layer picks up the extra episodes on its next run, with no code change.
+ *
+ * The join key is the MP3 URL, which the listing carries as `mp3` and the feed
+ * carries as `<enclosure url>` and `<guid>`. It is exact — no date rounding, no
+ * slug aliasing (`dn` has a feed, `demnow` does not, and they are different shows).
+ */
+const FEEDS_PATH = process.env.FEEDS_PATH || path.join(__dirname, 'data', 'feeds.json');
+const FEEDS_TTL = 60 * 60 * 1000;
+const FEED_CONCURRENCY = 5;   // a small station's Apache. Do not raise.
+
+// slug -> { lastModified, fetchedAt, channel:{...}, items:[...] }
+const feedStore = readJsonFile(FEEDS_PATH, {});
+const feedsDiag = { onDisk: Object.keys(feedStore).length, lastHarvest: 0, notModified: 0, failed: 0 };
+let feedsHarvestedAt = 0;
+let feedsInFlight = null;
+
+function cdata(block, tag) {
+  const m = block.match(new RegExp(`<${tag}>\\s*(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))\\s*</${tag}>`));
+  if (!m) return '';
+  return unescapeHtml((m[1] !== undefined ? m[1] : m[2]) || '');
+}
+
+function parseFeedXml(xml) {
+  const itemBlocks = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
+  const head = xml.split('<item>')[0];
+
+  const items = itemBlocks.map((b) => {
+    const enc = b.match(/<enclosure\s+url="([^"]+)"(?:\s+length="(\d+)")?/);
+    const pub = cdata(b, 'pubDate');
+    const t = pub ? Date.parse(pub) : NaN;
+    const dur = cdata(b, 'itunes:duration');
+    return {
+      mp3: enc ? enc[1] : cdata(b, 'guid'),
+      bytes: enc && enc[2] ? parseInt(enc[2], 10) : 0,
+      title: cdata(b, 'title'),
+      dt: Number.isNaN(t) ? 0 : Math.floor(t / 1000),
+      // iTunes duration is seconds here, but the spec also allows HH:MM:SS —
+      // accept both rather than trusting one station's generator forever.
+      durationSec: /^\d+$/.test(dur)
+        ? parseInt(dur, 10)
+        : dur.split(':').reduce((a, p) => a * 60 + (parseInt(p, 10) || 0), 0),
+      desc: cdata(b, 'description'),
+      category: cdata(b, 'category'),
+    };
+  }).filter((i) => i.mp3);
+
+  return {
+    channel: {
+      title: cdata(head, 'title').replace(/^WBAI\s*[-–]\s*/, '').trim(),
+      desc: cdata(head, 'description'),
+      author: cdata(head, 'itunes:author'),
+      image: (head.match(/<itunes:image\s+href="([^"]+)"/) || [])[1] || '',
+    },
+    items,
+  };
+}
+
+/**
+ * Conditional fetch of one feed. The feeds serve Last-Modified and honour
+ * If-Modified-Since with a 0-byte 304, which makes a full sweep almost free
+ * after the first one — there is no ETag and no gzip upstream, so this is the
+ * whole optimisation.
+ *
+ * Returns the previous record unchanged on 304, on any error, and on the
+ * failure mode that actually happened in July: HTTP 200 with an empty body.
+ * A feed that answers 200-with-nothing must never be allowed to erase what we
+ * already hold.
+ */
+async function fetchFeed(slug) {
+  const prev = feedStore[slug];
+  const headers = { 'User-Agent': 'wbai-archive/1.0 (+https://github.com/Catskill909/wbai-archive)' };
+  if (prev && prev.lastModified) headers['If-Modified-Since'] = prev.lastModified;
+
+  const res = await fetch(`${UPSTREAM.archive}xml/${encodeURIComponent(slug)}.xml`, {
+    headers,
+    signal: AbortSignal.timeout(12000),
+  });
+
+  if (res.status === 304) { feedsDiag.notModified++; return prev; }
+  if (!res.ok) return prev || null;
+
+  const xml = Buffer.from(await res.arrayBuffer()).toString('utf8');
+  if (!xml.trim()) return prev || null;
+
+  const parsed = parseFeedXml(xml);
+  if (!parsed.items.length) return prev || null;
+
+  return {
+    lastModified: res.headers.get('last-modified') || '',
+    fetchedAt: Date.now(),
+    channel: parsed.channel,
+    items: parsed.items,
+  };
+}
+
+async function harvestFeeds(slugs) {
+  let i = 0;
+  const workers = Array.from({ length: Math.min(FEED_CONCURRENCY, slugs.length) }, async () => {
+    while (i < slugs.length) {
+      const slug = slugs[i++];
+      try {
+        const rec = await fetchFeed(slug);
+        if (rec) feedStore[slug] = rec;
+      } catch (e) {
+        feedsDiag.failed++;
+      }
+    }
+  });
+  await Promise.all(workers);
+  feedsHarvestedAt = Date.now();
+  feedsDiag.lastHarvest = feedsHarvestedAt;
+  writeJsonSoon(FEEDS_PATH, () => feedStore);
+}
+
+// MP3 URL -> the feed item describing it, rebuilt from whatever the store holds.
+function feedIndex() {
+  const byMp3 = new Map();
+  for (const [slug, rec] of Object.entries(feedStore)) {
+    if (!rec || !rec.items) continue;
+    for (const it of rec.items) byMp3.set(it.mp3, { slug, item: it, channel: rec.channel });
+  }
+  return byMp3;
+}
+
+/**
+ * Feed-only: an episode reaches the app if and only if a podcast feed describes
+ * it. Anything the feeds do not carry is dropped.
+ *
+ * This is a deliberate product decision, not a technical limit — the scraped row
+ * for a feed-less show is still perfectly good data, and an earlier design served
+ * it as a fallback. It is dropped anyway, so that everything the app publishes
+ * came from structured XML and the HTML scrape can never silently become the
+ * source of a user-visible episode again.
+ *
+ * The scrape keeps exactly one job: **discovery**. It tells us which shows exist
+ * and which of them carry an RSS link. It no longer supplies content.
+ *
+ * The visible cost, measured 2026-07-29: 540 scraped rows in, ~356 out. The
+ * shortfall is not lost data — it is 88 rows from 40 feed-less shows, plus older
+ * episodes of feed-having shows that fall outside however many items each feed
+ * publishes. Both recover on their own as WBAI adds feeds and raises the
+ * per-feed item count; nothing here needs changing when they do.
+ */
+/**
+ * A broadcast that WBAI scheduled always starts on the hour or the half hour.
+ * An episode stamped 12:56 pm or 11:01 am was not scheduled to start then — the
+ * recorder died mid-show and restarted, leaving a fragment. Those fragments carry
+ * the show's real name and artwork, so they look legitimate in a grid while being
+ * three and a half minutes of a one-hour programme.
+ *
+ * Measured 2026-07-29: 7 of 361 episodes, running 3m31s to 35m against hour-long
+ * slots. The odd minute is the reliable signal — duration alone would mean
+ * guessing a threshold that a genuinely short programme could fall under.
+ */
+function isScheduledStart(dt) {
+  const mins = new Date(dt * 1000).getMinutes();
+  return mins === 0 || mins === 30;
+}
+
+function applyFeeds(rows) {
+  const byMp3 = feedIndex();
+  const kept = [];
+  let droppedNoFeed = 0;
+  let droppedFragment = 0;
+
+  for (const r of rows) {
+    // The gate is per SHOW, not per episode. `hasRSS` means archive2 renders a
+    // podcast XML button on that row, and it has matched feed existence exactly
+    // on every measurement. A show without one is dropped entirely.
+    //
+    // The distinction matters and got it wrong once: gating per *episode* also
+    // deleted 89 older episodes of shows whose feeds are perfectly healthy,
+    // purely because a feed publishes only its most recent 5. Those episodes are
+    // real, listed, and playable — the 5 is a display setting on WBAI's side, not
+    // a statement about what exists.
+    if (!r.hasRSS) { droppedNoFeed++; continue; }
+    if (!isScheduledStart(r.dt)) { droppedFragment++; continue; }
+
+    const hit = byMp3.get(r.mp3);
+    if (!hit) {
+      // Inside the feed's window we use the feed; outside it we keep the listing
+      // row as-is. `source` makes which one visible rather than inferred, so the
+      // share of the catalogue still riding on the scrape is a number we can read
+      // — and one that shrinks on its own as WBAI raises the per-feed item count.
+      kept.push(Object.assign({}, r, { source: 'listing' }));
+      continue;
+    }
+
+    const it = hit.item;
+    kept.push(Object.assign({}, r, {
+      source: 'feed',
+      feedSlug: hit.slug,
+      // The listing still supplies identity — id, dt, daysLeft, category and the
+      // schedule artwork have no equivalent in the feed, and mp3/dt are the join
+      // itself, so they are never overwritten.
+      durationSec: it.durationSec || 0,
+      bytes: it.bytes || 0,
+      // Per-episode text, kept only when it says something the show blurb doesn't.
+      episodeDesc: it.desc && it.desc !== hit.channel.desc ? it.desc : '',
+      host: r.host || hit.channel.author || '',
+    }));
+  }
+
+  return { rows: kept, droppedNoFeed, droppedFragment };
 }
 
 // 5 minutes. A re-scrape costs ~950 KB from upstream and ~2 ms of parse, so the
@@ -194,13 +432,46 @@ async function getArchive() {
       fetchText(UPSTREAM.archive),
       fetchPhotoMap().catch(() => ({})),
     ]);
-    const rows = parseArchive(html, photoMap);
-    if (!rows.length) throw new Error('parsed zero rows');
+    const scraped = parseArchive(html, photoMap);
+    if (!scraped.length) throw new Error('parsed zero rows');
+
+    // Discovery is the scrape's only remaining job: it names the shows that
+    // advertise an RSS link, and that list drives the harvest. Refreshed on the
+    // feed TTL rather than the archive's, so a 5-minute re-scrape doesn't pull
+    // 98 feeds with it.
+    const feedSlugs = [...new Set(scraped.filter((r) => r.hasRSS).map((r) => r.sho))];
+    if (Date.now() - feedsHarvestedAt > FEEDS_TTL) {
+      if (!feedsInFlight) {
+        feedsInFlight = harvestFeeds(feedSlugs)
+          .catch((e) => console.warn('[feeds] harvest failed:', e.message))
+          .finally(() => { feedsInFlight = null; });
+      }
+      // The very first harvest is awaited — serving a feed-only listing from an
+      // empty feed store would publish zero episodes. Later refreshes run in the
+      // background off whatever is already held.
+      if (!Object.keys(feedStore).length) await feedsInFlight;
+    }
+
+    const { rows, droppedNoFeed, droppedFragment } = applyFeeds(scraped);
+    // A total wipe means the feed store is empty or the join key changed shape —
+    // never a real editorial state. Fail, so the request handler falls back to
+    // the last good payload instead of publishing an empty archive.
+    if (!rows.length) throw new Error('feed join produced zero rows');
+
     // `latest` (newest air date) plus `count` is the freshness signature the client
     // polls via /api/archive/head — an episode added moves `latest`, one aging out
     // of the retention window moves `count`.
     const latest = rows.reduce((max, r) => Math.max(max, r.dt), 0);
-    const payload = { updated: Date.now(), count: rows.length, latest, shows: rows };
+    const payload = {
+      updated: Date.now(),
+      count: rows.length,
+      latest,
+      scraped: scraped.length,
+      droppedNoFeed,
+      droppedFragment,
+      feeds: Object.keys(feedStore).length,
+      shows: rows,
+    };
     archiveCache.set(payload);
     return payload;
   })();
@@ -1034,6 +1305,18 @@ const server = http.createServer(async (req, res) => {
           writable: storageDiag.writable,
           showinfoOnDisk: storageDiag.showinfoOnDisk,
           showinfoNow: Object.keys(showInfo).length,
+          feedsOnDisk: feedsDiag.onDisk,
+        },
+        // The app now publishes only what the feeds carry, so "how many feeds do
+        // we hold" is the difference between a full archive and an empty one.
+        // `held` at 0 with `lastHarvest` set means every fetch failed — the one
+        // state that empties the site, and it is invisible from the outside
+        // otherwise.
+        feeds: {
+          held: Object.keys(feedStore).length,
+          lastHarvest: feedsDiag.lastHarvest,
+          notModified: feedsDiag.notModified,
+          failed: feedsDiag.failed,
         },
       });
     }

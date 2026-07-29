@@ -50,7 +50,12 @@
     var storedView = localStorage.getItem('wbai-view');
     if(storedView==='list' || storedView==='grid') savedView = storedView;
   } catch(e){}
-  var state = { query:'', cat:'all', sortKey:'date', sortDir:'desc', view:savedView };
+  // sortKey 'archive' = the order archive2 publishes them in (see the sort
+  // comparator). It is the default so this listing and archive2's read alike on
+  // load; clicking any column header switches to a real sort and there is no way
+  // back to it short of a reload, which is fine — it is a starting view, not a
+  // column.
+  var state = { query:'', cat:'all', sortKey:'archive', sortDir:'desc', view:savedView };
 
   // ---------------- URL state ----------------
   // Search, category and the open sheet are reflected in the query string so a
@@ -390,6 +395,12 @@
       var dir = state.sortDir==='asc' ? 1 : -1;
       if(state.sortKey==='title') return a.title.localeCompare(b.title)*dir;
       if(state.sortKey==='daysLeft') return (a.daysLeft-b.daysLeft)*dir;
+      // 'archive' — the order archive2 itself lists them in, which is what the
+      // app shows on load so the two listings read the same top to bottom. Their
+      // page is not date-sorted; recent recordings are appended in ingestion
+      // order. `ord` carries that position. Ascending = their top row first, so
+      // this key alone ignores sortDir until someone picks a column.
+      if(state.sortKey==='archive') return (a.ord||0) - (b.ord||0);
       return (a.dt - b.dt)*dir;
     });
 
