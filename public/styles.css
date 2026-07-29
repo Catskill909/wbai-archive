@@ -1799,30 +1799,6 @@
   @media (max-width:420px){
     .player-skip{display:none;}
   }
-  /* Remote playback — Cast / AirPlay. A sibling of ±15s and shaped like one, but
-     deliberately NOT dropped with them below 420px: the phone is the one place
-     this button is the only route to a TV, since desktop Chrome can already cast
-     a tab from its own menu. It costs nothing there either — the ±15s pair has
-     just vacated 88px at exactly that width.
-     Hidden by default and revealed by app.js only once a device answers, so the
-     [hidden] rule has to beat the display:flex above it. */
-  .player-cast{
-    width:34px; height:34px; border-radius:50%; border:none; flex:none;
-    background:transparent; color:var(--ink-dim); cursor:pointer;
-    display:flex; align-items:center; justify-content:center;
-    transition:background .15s ease, color .15s ease, transform .12s ease;
-  }
-  .player-cast[hidden]{display:none;}
-  @media (hover:hover) and (pointer:fine){
-    .player-cast:hover{background:var(--surface-hover); color:var(--ink);}
-  }
-  .player-cast:active{transform:scale(.92);}
-  .player-cast:focus-visible{outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent);}
-  .player-cast svg{width:20px; height:20px;}
-  /* Connected: the glyph is the only thing in the bar that says "this audio is
-     coming out of something else", so it takes the same accent as the LIVE badge
-     rather than a second colour nobody has learned. */
-  .player-cast.on{color:var(--accent);}
   .player-toggle{
     width:42px;height:42px;border-radius:50%;border:none; flex:none;
     background:var(--accent); color:var(--accent-ink); display:flex; align-items:center; justify-content:center;
@@ -2295,7 +2271,6 @@
     .view-btn svg{ width: 20px; height: 20px; }
     .player-transport{ gap: .5rem; }
     .player-skip{ width: 44px; height: 44px; }
-    .player-cast{ width: 44px; height: 44px; }
     .player-toggle{ width: 48px; height: 48px; }
     .player-toggle svg{ width: 20px; height: 20px; }
 

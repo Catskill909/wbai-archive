@@ -531,11 +531,6 @@
   // Which source owns the docked bar: 'archive' (a seekable mp3, full scrubber) or
   // 'live' (the stream — scrubber and ±15s hidden, play/pause + close only).
   var barMode = null;
-  // The one seam the remote-playback module (Cast / AirPlay, further down) has
-  // into the rest of the app: "the bar's audio element may have changed, look
-  // again". Declared here beside barMode because that is the state it reads.
-  // Stays a no-op on browsers with no remote playback, so callers never check.
-  var refreshCast = function(){};
 
   function formatTime(sec){
     if(!isFinite(sec) || sec < 0) return '0:00';
@@ -774,7 +769,6 @@
     audio.src = mp3;
     audio.play().catch(function(){ /* surfaced by the error event below */ });
     updatePlayButtons();
-    refreshCast();               // the bar now points at the archive element
   }
 
   // Metadata is (re)published on `play` rather than in playTrack(): iOS Safari can
@@ -918,7 +912,6 @@
       setStatus('');
       hidePlayerBar();
       if(mediaMode === 'live') clearMediaSession();
-      refreshCast();
       return;
     }
     // before anything else: the `pause` event is async, and by the time it fires
@@ -936,7 +929,6 @@
     hidePlayerBar();
     updatePlayButtons();
     clearMediaSession();
-    refreshCast();
   });
 
   // The player bar's art + title open the info sheet for whatever is playing.
@@ -1336,7 +1328,6 @@
     destroyLiveEl(old);          // a half-finished handover must not be orphaned
     setLiveLoading(false);
     setLiveIcon(false);
-    refreshCast();               // the element the button was aimed at is gone
     if(mediaMode === 'live') setPlaybackState('paused');
     if(liveErrored) return;      // liveFailed() owns the note and the bar status
     setLiveNote(liveEngaged ? 'Paused' : 'Tap play to tune in');
@@ -1442,146 +1433,9 @@
     setStatus('<span class="player-live"><span class="player-live-dot"></span>Live</span>');
     showPlayerBar();
     refreshToggleIcon();
-    // Fired from the live element's own 'playing' handler, so this also catches
-    // a drift handover swapping one connection for another underneath us.
-    refreshCast();
   }
 
   audio.addEventListener('play', function(){ if(liveWanted) stopLive(); });
-
-  // ---- Remote playback: Cast and AirPlay, on standards only -------------------
-  //
-  // Web standards, no SDK: `HTMLMediaElement.remote` (Chromium → Chromecast /
-  // Google TV) and Safari's `webkitShowPlaybackTargetPicker` (→ AirPlay). The
-  // Google Cast Web Sender SDK was declined on purpose — it is a third-party
-  // script from gstatic, it needs a CSP hole and a registered receiver, and it
-  // cannot reach iOS at all. See docs/casting-dev.md for the full comparison.
-  //
-  // The whole feature is one browser hand-off: we name an element, the browser
-  // moves its playback to the device and owns the transport from there. There is
-  // no second player to keep in sync, so barMode stays the only thing that says
-  // what the bar controls, and none of the live-audio rules move.
-  //
-  // The one wrinkle this app has: remote playback is a property of a *media
-  // element*, and there are two — the stable archive element and a live element
-  // that is built and thrown away per play (live-audio-pattern.md). So this
-  // module never holds a reference of its own. It asks who owns the bar right
-  // now, exactly as togglePlayback() does, and re-asks whenever refreshCast()
-  // says the answer may have changed.
-  (function(){
-    var btn = document.getElementById('playerCast');
-    if(!btn) return;
-
-    // Feature-detect, never sniff the UA. Chromium exposes `remote`; Safari
-    // exposes the webkit picker; Firefox and everything else expose neither and
-    // lose the button entirely rather than get a dead control.
-    var canRemote  = !!(audio.remote && typeof audio.remote.prompt === 'function');
-    var canAirPlay = typeof audio.webkitShowPlaybackTargetPicker === 'function';
-    if(!canRemote && !canAirPlay){ btn.remove(); return; }
-
-    var watched = null;    // the element whose availability we are listening to
-    var watchId = null;    // Chromium's watchAvailability() handle
-    var available = false; // is there a device on this network to play to?
-    var connected = false; // is our audio playing on one right now?
-
-    function target(){
-      // Same question togglePlayback() asks, and it must be answered the same
-      // way: barMode first. A live takeover can leave a paused archive track in
-      // nowPlaying, and casting that instead of the stream would be a lie.
-      if(barMode === 'live') return liveAudio;   // null between connections
-      return nowPlaying.mp3 ? audio : null;
-    }
-
-    function paint(){
-      // Availability gates the button because a picker with nothing in it is
-      // worse than no button, and because watching costs battery (Apple say so
-      // explicitly) — so we only ever watch the element that owns the bar.
-      btn.hidden = !(watched && available);
-      btn.classList.toggle('on', connected);
-      btn.setAttribute('aria-label', connected
-        ? 'Playing on another device — change or stop'
-        : 'Play on a TV or speaker');
-    }
-
-    function onAvail(a){ available = !!a; paint(); }
-    function onAirAvail(e){ available = (e.availability === 'available'); paint(); }
-    function onState(){
-      connected = !!(watched && (canRemote
-        ? watched.remote.state === 'connected'
-        : watched.webkitCurrentPlaybackTargetIsWireless));
-      paint();
-    }
-
-    function unwatch(){
-      var el = watched;
-      watched = null; available = false; connected = false;
-      if(!el) return;
-      if(canRemote){
-        if(watchId !== null){
-          try{ el.remote.cancelWatchAvailability(watchId); }catch(e){ /* element already gone */ }
-          watchId = null;
-        }
-        el.remote.removeEventListener('connect', onState);
-        el.remote.removeEventListener('connecting', onState);
-        el.remote.removeEventListener('disconnect', onState);
-      } else {
-        el.removeEventListener('webkitplaybacktargetavailabilitychanged', onAirAvail);
-        el.removeEventListener('webkitcurrentplaybacktargetiswirelesschanged', onState);
-      }
-    }
-
-    function watch(el){
-      watched = el;
-      if(canRemote){
-        el.remote.addEventListener('connect', onState);
-        el.remote.addEventListener('connecting', onState);
-        el.remote.addEventListener('disconnect', onState);
-        el.remote.watchAvailability(onAvail).then(function(id){
-          // The live element can be discarded while this promise is in flight —
-          // a stop, or a drift handover replacing it mid-connection. Whatever we
-          // were handed then belongs to nobody, so cancel it rather than leak a
-          // watch on a dead element.
-          if(el !== watched){
-            try{ el.remote.cancelWatchAvailability(id); }catch(e){}
-            return;
-          }
-          watchId = id;
-        }).catch(function(err){
-          // CLAUDE.md §3: do not swallow errors while debugging. An empty catch
-          // here is how "the cast button never appears" becomes unexplainable.
-          console.warn('[cast] watchAvailability failed', err);
-        });
-      } else {
-        el.addEventListener('webkitplaybacktargetavailabilitychanged', onAirAvail);
-        el.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', onState);
-      }
-      onState();
-    }
-
-    btn.addEventListener('click', function(){
-      var el = target();
-      if(!el) return;
-      if(canRemote){
-        el.remote.prompt().catch(function(err){
-          // Dismissing the picker rejects with NotAllowedError. That is a user
-          // saying no, not a failure — everything else is worth seeing.
-          if(err && err.name === 'NotAllowedError') return;
-          console.warn('[cast] prompt failed', err);
-        });
-      } else {
-        try{ el.webkitShowPlaybackTargetPicker(); }
-        catch(err){ console.warn('[cast] AirPlay picker failed', err); }
-      }
-    });
-
-    refreshCast = function(){
-      var el = target();
-      if(el === watched) return;
-      unwatch();
-      if(el) watch(el);
-      paint();
-    };
-  })();
 
   // ---- Volume. New to the modal; the strip had none. Setting .volume is a no-op
   // on iOS (the OS owns it), so the slider is dropped there rather than shown dead.
