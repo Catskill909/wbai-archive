@@ -186,7 +186,7 @@ Apple HIG says 44×44pt; Material says 48×48dp; WCAG 2.2 SC 2.5.8 (AA) says
 | `.lp-alert-dismiss` | 26×26 | `400` | dismiss on the live-stream error alert |
 | `.resume-dismiss` | 26×26 | `1338` | dismiss on the resume toast |
 | `.view-btn` | 32×28 | `630` | **two of them, 2px apart** (`.view-toggle` gap, `:629`) |
-| `.player-close` | 30×30 (≤700px) | `1370,1390` | player bar |
+| `.player-close` | 34×34 | `1983` | player bar; glyph only at every width |
 | `.player-skip` | 34×34 | `1235` | ±15s; hidden below 420px (`:1248`) |
 | `.play-btn` | 36×36 | `760` | **the primary action in every list row** |
 | `.social-btn` | 36×36, `.5rem` gap | `881,880` | five in a row in the drawer |

@@ -1986,14 +1986,15 @@
        minimized state — there is nothing below it to hand off to. Promising a
        minimize here would be exactly the lie the chevron exists to remove.
        It does share their contrast though: the chip is 1.09:1 against the bar,
-       so the glyph and the edge are the only things that say "button". */
+       so the glyph and the edge are the only things that say "button".
+       Glyph only at every width — the word "Close" was dropped, so the ✕ carries
+       the whole meaning and gets full ink. Still shorter than the art beside it,
+       so the bar's height is unchanged. */
     flex:none; cursor:pointer;
     border:1px solid color-mix(in srgb, var(--ink) 26%, transparent);
-    height:30px; border-radius:999px; padding:0 .7rem 0 .6rem;
-    display:inline-flex; align-items:center; gap:.35rem;
-    background:var(--surface-3); color:color-mix(in srgb, var(--ink) 88%, transparent);
-    font-family:var(--font-display); text-transform:uppercase; letter-spacing:.06em;
-    font-size:.68rem; font-weight:700; line-height:1;
+    width:34px; height:34px; border-radius:999px; padding:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:var(--surface-3); color:var(--ink);
     /* hard-right: cancel the 1180-column inset (measured in vw, since % here is the
        bar's already-inset content box) so it sits ~8px off the true edge, and lift
        it a little toward the top of the bar */
@@ -2006,18 +2007,7 @@
   }
   .player-close:active{transform:scale(.95);}
   .player-close:focus-visible{outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent);}
-  .player-close svg{width:13px; height:13px; flex:none;}
-  /* Phones: the word "Close" is dropped, so the glyph carries the whole meaning
-     on its own — full ink and a little more of it. Still shorter than the art
-     beside it, so the bar's height is unchanged. */
-  @media (max-width:420px){
-    .player-close-label{display:none;}
-    .player-close{
-      padding:0; width:34px; height:34px; justify-content:center;
-      color:var(--ink);
-    }
-    .player-close svg{ width:15px; height:15px; }
-  }
+  .player-close svg{width:15px; height:15px; flex:none;}
   @media (max-width:700px){
     .player-status{display:none;}
   }
@@ -2035,11 +2025,7 @@
     .player-bar:not(.live) .player-close{
       position:absolute; right:8px; top:calc(.6rem - 3px); margin:0;
     }
-    /* still the full "✕ Close" pill at this width */
-    .player-bar:not(.live) .player-info{ padding-right:6rem; }
-  }
-  @media (max-width:420px){
-    /* glyph only — 34px square */
+    /* glyph only — 34px square + its 8px overhang */
     .player-bar:not(.live) .player-info{ padding-right:2.6rem; }
   }
   /* Tablet and up: the bar chrome still spans the viewport, but its controls sit in
