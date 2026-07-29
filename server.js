@@ -300,7 +300,13 @@ async function fetchFeed(slug) {
   };
 }
 
-async function harvestFeeds(slugs) {
+/**
+ * `full` marks a sweep of every known slug, which is what the hourly TTL counts.
+ * A targeted catch-up (see `catchUpFeeds`) must NOT reset that clock, or a
+ * trickle of new shows would keep postponing the sweep that refreshes everything
+ * else.
+ */
+async function harvestFeeds(slugs, full = true) {
   let i = 0;
   const workers = Array.from({ length: Math.min(FEED_CONCURRENCY, slugs.length) }, async () => {
     while (i < slugs.length) {
@@ -314,9 +320,49 @@ async function harvestFeeds(slugs) {
     }
   });
   await Promise.all(workers);
-  feedsHarvestedAt = Date.now();
-  feedsDiag.lastHarvest = feedsHarvestedAt;
+  if (full) {
+    feedsHarvestedAt = Date.now();
+    feedsDiag.lastHarvest = feedsHarvestedAt;
+  }
   writeJsonSoon(FEEDS_PATH, () => feedStore);
+}
+
+// A slug we asked for and did not get a feed for, and when. Most of these are
+// permanent — as of 2026-07-29, 21 shows advertise a podcast XML button with
+// nothing behind it — so without a cooldown the catch-up below would re-probe
+// all of them on every 5-minute archive refresh forever.
+const feedMissAt = new Map();
+const FEED_MISS_RETRY_MS = 15 * 60 * 1000;
+
+/**
+ * Fetch feeds for shows the listing now advertises but we hold nothing for.
+ *
+ * Publication is gated on feeds we actually hold, so a show that *gains* a feed
+ * is invisible until the next harvest — and on the hourly TTL that is up to an
+ * hour of a real, listed, playable show missing from the site. That is not
+ * hypothetical: WBAI added 21 feeds in a few minutes on 2026-07-29, and "Living
+ * for the City" sat with five published episodes and a working feed while the
+ * site showed none of them.
+ *
+ * So a claim we cannot satisfy is treated as a reason to go and look, rather
+ * than something to wait out. Only the unknown slugs are fetched, not all ~122,
+ * and each is retried at most every FEED_MISS_RETRY_MS. Awaited rather than
+ * backgrounded because its whole purpose is to affect the response being built.
+ */
+async function catchUpFeeds(claimedSlugs) {
+  const now = Date.now();
+  const unknown = claimedSlugs.filter((s) => {
+    const held = feedStore[s];
+    if (held && held.items && held.items.length) return false;
+    return now - (feedMissAt.get(s) || 0) > FEED_MISS_RETRY_MS;
+  });
+  if (!unknown.length) return 0;
+  unknown.forEach((s) => feedMissAt.set(s, now));
+  const before = Object.keys(feedStore).length;
+  await harvestFeeds(unknown, false);
+  const gained = Object.keys(feedStore).length - before;
+  if (gained > 0) console.log(`[feeds] catch-up picked up ${gained} new feed(s) of ${unknown.length} probed`);
+  return gained;
 }
 
 // MP3 URL -> the feed item describing it, rebuilt from whatever the store holds.
@@ -461,6 +507,11 @@ async function getArchive() {
       // background off whatever is already held.
       if (!Object.keys(feedStore).length) await feedsInFlight;
     }
+
+    // Shows that gained a feed since the last sweep would otherwise be missing
+    // from the site for up to an hour. Cheap: only the slugs we hold nothing
+    // for, at most once per FEED_MISS_RETRY_MS each.
+    await catchUpFeeds(feedSlugs);
 
     const { rows, droppedNoFeed, droppedFragment } = applyFeeds(scraped);
     // A total wipe means the feed store is empty or the join key changed shape —
