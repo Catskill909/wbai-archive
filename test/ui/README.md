@@ -8,7 +8,7 @@ timestamps).
 ```sh
 node server.js &          # must be running on :8080
 ./run.sh                  # every suite
-./run.sh ui               # one of: ui | scroll | clock | rowtap | reload
+./run.sh ui               # one of: ui | scroll | clock | rowtap | reload | outlink
 ```
 
 Port **9224** — `test/live-stream` owns 9222, `test/touch` owns 9223.
@@ -22,6 +22,7 @@ Port **9224** — `test/live-stream` owns 9222, `test/touch` owns 9223.
 | `clock-tests.js` | the freshness label: every branch of the relative time, clock skew, and the tap-to-swap control |
 | `row-tap-tests.js` | every dead zone in a list row opens the info sheet, and the play column still doesn't |
 | `reload-tests.js` | state that has to survive a reload |
+| `outlink-tests.js` | tapping an external link on a touch device leaves a way back: one tab, not two, and Back lands on the app — while a fine pointer still gets its new tab |
 
 ### What headless Chrome cannot see
 
@@ -62,6 +63,9 @@ perfectly once the measurement goes blind:
 - `clock-tests.js` §6 demands two different injected offsets produce two
   different labels, so a silently broken interception fails loudly instead of
   passing on live data by luck.
+- `outlink-tests.js` §2 repeats the whole tap on a **fine** pointer and requires
+  the target counter to report the second tab it just denied on touch. It is
+  also the desktop regression check, so one section covers both directions.
 
 ### The no-flash proof
 

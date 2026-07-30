@@ -1,8 +1,8 @@
 #!/bin/sh
 # Runs the UI-behaviour suites against the app on :8080.
 #
-#   ./run.sh              all four
-#   ./run.sh ui           just one (ui | scroll | clock | rowtap)
+#   ./run.sh              every suite
+#   ./run.sh ui           just one (ui | scroll | clock | rowtap | reload | outlink)
 #
 # Like test/touch, this needs no fake station — it asserts rendered geometry and
 # DOM behaviour, not audio. What it covers:
@@ -14,6 +14,8 @@
 #                    /api/archive with controlled timestamps
 #   row-tap-tests.js every dead zone in a list row opens the info sheet, and
 #                    the play column still doesn't
+#   outlink-tests.js tapping an external link on a phone leaves a way back —
+#                    same tab, Back returns; desktop still gets its new tab
 #
 # House rule these follow (CLAUDE.md §3a): assert the EFFECT, not the
 # declaration. Where a suite asserts an absence ("the page did not move", "the
@@ -70,9 +72,10 @@ case "${1:-all}" in
   scroll) SUITES="scroll-tests.js" ;;
   clock)  SUITES="clock-tests.js" ;;
   rowtap) SUITES="row-tap-tests.js" ;;
-  reload) SUITES="reload-tests.js" ;;
-  all)    SUITES="ui-tests.js scroll-tests.js clock-tests.js row-tap-tests.js reload-tests.js" ;;
-  *)      echo "unknown suite: $1 (use ui | scroll | clock | rowtap | reload)"; exit 2 ;;
+  reload)  SUITES="reload-tests.js" ;;
+  outlink) SUITES="outlink-tests.js" ;;
+  all)    SUITES="ui-tests.js scroll-tests.js clock-tests.js row-tap-tests.js reload-tests.js outlink-tests.js" ;;
+  *)      echo "unknown suite: $1 (use ui | scroll | clock | rowtap | reload | outlink)"; exit 2 ;;
 esac
 
 # Each suite exits non-zero on failure. Run them all before reporting, so one
