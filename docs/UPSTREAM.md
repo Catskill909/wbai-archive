@@ -168,6 +168,22 @@ Worth having: `itunes:duration` in seconds, `enclosure length` in bytes,
 still-playable episodes that have aged out of the HTML listing. Feeds honour
 `If-Modified-Since` (`304`, 0 bytes); they do **not** gzip.
 
+⚠️ **They are all regenerated in one batch, so `Last-Modified` moves on every
+feed at once.** Measured 2026-07-30: all 122 held feeds carried a `Last-Modified`
+inside a four-second window (`23:04:54`–`23:04:57 GMT`). A conditional sweep is
+therefore close to all-or-nothing — run it just after a regeneration and every
+feed answers `200`; run it a minute earlier and every feed answers `304`.
+
+Two consequences worth designing around:
+
+- **A "how many were unchanged" counter is meaningless without its denominator.**
+  Two consecutive production deploys reported 122 and then 0, and both readings
+  were correct. `feedsDiag.lastSweep` exists for this reason.
+- **A sweep costs either ~16 KB or the full set** — nothing in between. That
+  makes *when* you sweep matter more than how cheap a 304 is, which is why the
+  harvest clock is restored from disk rather than reset on every boot. See
+  DEVELOPMENT.md § Feed harvest.
+
 `SHOW_RSS = false` in `public/app.js` is **not** affected by this revival. It is
 off by policy — episode access stays inside the apps — and the dead feeds were
 only ever a parenthetical in that decision. Reviving feeds is not a reason to
@@ -200,3 +216,8 @@ Full survey and a phased plan: [xml-feed-migration.md](xml-feed-migration.md).
    See the TTL and single-flight notes in [ARCHITECTURE.md](ARCHITECTURE.md).
 4. **Re-test before relying on anything in this file.** Dates matter here: the
    RSS feeds presumably worked once.
+5. **Count requests per deploy, not just per request.** A conditional fetch is
+   cheap; 122 of them on every container start is not, and that is easy to ship
+   without noticing — it stayed invisible here until persistent storage made the
+   re-fetching pointless rather than necessary. `FEED_CONCURRENCY` carries the
+   same warning: this is a small station's Apache.

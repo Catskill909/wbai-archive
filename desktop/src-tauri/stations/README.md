@@ -61,9 +61,42 @@ between stations.
   Signing an affiliate's app with Pacifica's certificate would name Pacifica as
   the developer of software they don't own.
 
-## What is not parameterized yet
+## What the server side already parameterizes
 
-Only the desktop shell reads these profiles. The web app it points at still has
-the station baked in — the upstream hosts at `server.js` (the `UPSTREAM` object),
-plus display copy and the non-affiliation notice in `public/`. A second station
-needs that work too; a profile here only renames the window around it.
+Only the desktop shell reads *these* profiles, but the server a station deploys
+is no longer entirely hardcoded. As of 2026-07-30 it takes four environment
+variables, each with a working default, and the full annotated list is
+[`.env.example`](../../../.env.example):
+
+| Variable | Per station |
+| --- | --- |
+| `STATION_ID` | Which station this deployment is. Stamped into `.instance.json` so a data volume restored or attached to the wrong app is caught rather than silently merged. |
+| `DATA_DIR` | Everything the server persists, under one path — the same string as the volume mount. One setting, not three. |
+| `STUDIO_PASSWORD` | Enables that station's private view at `/studio`. Unset and the routes do not exist at all, which is the right default for a station that doesn't want one. |
+| `STUDIO_SECRET`, `STUDIO_SESSION_HOURS` | Optional session tuning. |
+
+The rule these follow, and the one to keep following: **a per-station difference
+should be a setting, never a code edit.** The moment it is a code edit, every
+station is a fork, and forks do not get each other's fixes.
+
+Storage in particular has a station-independent gotcha worth reading before the
+second deployment: Coolify has been observed ignoring the compose `volumes:`
+block, and a Dockerfile `VOLUME` line with no explicit mount silently creates a
+throwaway anonymous volume. `/healthz` now reports `storage.mounted` and
+`storage.instanceId` so this is *read* rather than assumed. See
+[DEPLOYMENT.md](../../../docs/DEPLOYMENT.md) step 5.
+
+## What is still not parameterized
+
+The web app the shell points at still has the station baked into its **content**:
+
+- the upstream hosts in the `UPSTREAM` object in `server.js` — the biggest piece,
+  since every station has its own archive, schedule, artwork and stream hosts;
+- display copy, the station name and logo, and the non-affiliation notice across
+  `public/`;
+- `seed/showinfo.json`, which is WBAI's harvested descriptions;
+- the studio's own header, which reads `STATION_ID` for the badge but nothing
+  else.
+
+A profile here only renames the window around all of that. The full plan is
+item 4 in [ROADMAP.md](../../../docs/ROADMAP.md).

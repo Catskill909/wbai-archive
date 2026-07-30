@@ -83,7 +83,10 @@
     <dl class="studio-facts" id="buildFacts"></dl>
   </section>
 
-  <p class="studio-error" id="loadError" role="alert" hidden></p>
+  <!-- aria-live="polite" deliberately overrides role="alert"'s implicit
+       "assertive": a failed background refresh on a status page should not
+       interrupt whatever a screen-reader user is currently reading. -->
+  <p class="studio-error" id="loadError" role="alert" aria-live="polite" hidden></p>
 </main>
 
 <script src="/studio.js"></script>

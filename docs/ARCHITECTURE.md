@@ -14,11 +14,12 @@
       │             │  GET /api/programs  → directory scrape ──┼─────▶│   artwork /pix)    │
       │             │  GET /pix/<file>    → image proxy ───────┼─────▶│                    │
       │  <audio>    │  GET /healthz                            │      │ wbai.org           │
-      └─────────────┼──────────────────────────────────────────┘      │  (program pages)   │
-        live stream │  (media plays directly from WBAI hosts,  │      └────────────────────┘
+      │             │  GET /studio        → gated station view │      │  (program pages)   │
+      └─────────────┼──────────────────────────────────────────┘      └────────────────────┘
+        live stream │  (media plays directly from WBAI hosts,  │
         + archive    │   allowed by the page's media-src CSP)  │
         mp3s ────────┼──────────────────────────────────────────▶  streaming.wbai.org / archive2
-                    │  data/  ← on-disk caches (rebuildable)   │
+                    │  $DATA_DIR/  ← on-disk state             │
                     └──────────────────────────────────────────┘
 ```
 
@@ -214,11 +215,40 @@ additionally falls back to the shipped snapshot at
 `public/data/shows-fallback.json`, and the front-end falls back to that same file
 if `/api/archive` itself is unreachable. The archive is never a blank page.
 
-The two show-info caches additionally persist to disk (`data/programs.json`,
-`data/showinfo.json`, overridable via `PROGRAMS_PATH` / `SHOWINFO_PATH`) because
-one is expensive to rebuild and the other accrues slowly. Writes are debounced
-and every read and write is wrapped: an unwritable `data/` logs a single line and
+### On-disk state
+
+Everything the server persists lives under **one** directory, named by **one**
+env var: `DATA_DIR` (default `/app/data` in the image, `./data` locally). It
+holds `feeds.json`, `programs.json`, `showinfo.json` — all caches, all
+rebuildable from WBAI — plus `.instance.json`, which is not a cache but a marker
+(below). The per-file overrides `FEEDS_PATH` / `PROGRAMS_PATH` / `SHOWINFO_PATH`
+still work; nothing needs them.
+
+Writes are **debounced, atomic, and flushed on shutdown**:
+
+- Atomic — temp file, `fsync`, rename — so a crash or a killed container cannot
+  leave a half-written file that the next boot silently discards as unparseable.
+- Flushed on `SIGTERM`/`SIGINT`, because the debounce is ten seconds with an
+  unref'd timer and a redeploy would otherwise drop whatever was queued. Every
+  redeploy.
+
+Every read and write is still wrapped: an unwritable data dir logs one line and
 degrades to memory-only. Deleting the directory is always safe.
+
+### Proving the volume, rather than assuming it
+
+A container's filesystem is rebuilt from the image on every deploy, so
+persistence depends entirely on a mount that the server cannot see declared. This
+deployment ran for weeks with a data dir that looked healthy and reset on every
+deploy (see DEPLOYMENT.md). So the server reports the two facts that settle it:
+
+| `/healthz` field | Answers |
+| --- | --- |
+| `storage.mounted` (+ `volume`, `anonymousVolume`) | What the kernel says is attached at `DATA_DIR`, read from `/proc/self/mountinfo`. Available on the **first** deploy: `false` means no volume at all, and a 64-hex volume name means Docker invented one, which a redeploy will discard. |
+| `storage.instanceId` | Identity of the directory, from `.instance.json`. **Unchanged across two deploys is the proof.** |
+
+Nothing about this is testable locally — `./data` has no container boundary to
+survive, so every check passes by construction. See admin-page.md §5.1.
 
 ## Front-end data merge
 
@@ -249,10 +279,19 @@ elements are used: one for the live stream (header) and one for archived shows
 
 - **Zero third-party dependencies** — nothing to audit or patch beyond Node.
 - **Non-root container** — runs as the built-in `node` user.
-- **Method allow-list** — only `GET`/`HEAD` are served.
+- **Method allow-list** — only `GET`/`HEAD` are served, plus `POST` on exactly
+  two studio auth routes when the studio is enabled. Everything else still 405s.
 - **Path traversal guard** — static paths are resolved and confirmed to stay
   inside `public/`.
 - **SSRF guard** — the image proxy only accepts the exact WBAI artwork filename
   pattern.
 - **Security headers on every response** — `Content-Security-Policy`,
   `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`.
+- **The studio is off unless configured** — with no `STUDIO_PASSWORD` the routes
+  are never registered, so `/studio` falls through like any unknown path rather
+  than presenting a login form to whoever scans for one. When it is on: sessions
+  are HMAC-signed cookies (`HttpOnly`, `SameSite=Strict`, `Secure` over TLS) with
+  no server-side store, login is rate limited per forwarded client address, and
+  its responses are `private, no-store` + `Vary: Cookie`. Its HTML lives in
+  `admin/`, outside `public/`, because anything under `public/` is served to
+  anyone who asks. See admin-page.md.

@@ -51,6 +51,22 @@ The codebase is in good shape. Confirmed present:
 This is already above the median web app. The plan below is about closing
 specific, known gaps — not a rebuild.
 
+**The studio** (`/studio`, added 2026-07-30) is held to the same bar and audited
+separately, because it is a different document with its own markup:
+
+| Area | Evidence |
+| --- | --- |
+| Landmark structure | `<header>` / `<main>` on the dashboard, `<main>` on the login page |
+| Labelled input | real `<label>` wrapping the password field, `autocomplete="current-password"` |
+| Errors announced, not just drawn | `role="alert"` + `aria-live="polite"` on both error slots, `hidden` until there is something to say |
+| Loading state | `aria-busy` on `<main>`, cleared when the first payload renders |
+| Focus-visible rings | `.studio-btn:focus-visible` and `.studio-input:focus-visible` |
+| Touch targets | `min-height: 2.75rem` on buttons (WCAG 2.2 § 2.5.8) |
+| Theme control on every page | shares `theme-boot.js`, so a saved preference applies before first paint — no flash |
+| Status not conveyed by colour alone | the storage verdict states the outcome in words; the coloured dot only reinforces it |
+| Reduced motion | honoured via the shared token set and an explicit block in `studio.css` |
+| No zoom trap on iOS | input font-size pinned to 1rem/16px |
+
 ---
 
 ## Gaps & candidate work

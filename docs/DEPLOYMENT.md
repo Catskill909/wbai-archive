@@ -9,7 +9,7 @@ does this for you.
 1. **New Resource → Application → Public/Private Git Repository.**
    Point it at `https://github.com/Catskill909/wbai-archive` (branch `main`).
 2. **Build Pack: Dockerfile.** The repo's `Dockerfile` builds a
-   `node:20-alpine` image that runs as a non-root user.
+   `node:24-alpine` image that runs as a non-root user.
    - Alternatively choose **Docker Compose** and Coolify will use
      `docker-compose.yml`.
 3. **Port:** set the exposed/container port to **8080**. Coolify maps its proxy
