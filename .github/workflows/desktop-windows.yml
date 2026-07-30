@@ -58,16 +58,30 @@ jobs:
           echo "value=$URL" >> "$GITHUB_OUTPUT"
           echo "Building against $URL"
 
+      # --bundles nsis overrides bundle.targets in tauri.conf.json, which also
+      # lists the macOS-only dmg and app targets. Naming the one target this
+      # runner can actually produce keeps the build from depending on how the
+      # bundler treats the other two on Windows.
       - name: Build
         working-directory: desktop
         env:
           WBAI_APP_URL: ${{ steps.url.outputs.value }}
-        run: npm run build
+        run: npm run build -- --bundles nsis
 
       - uses: actions/upload-artifact@v4
         with:
           name: wbai-archive-windows
           if-no-files-found: error
-          path: |
-            desktop/src-tauri/target/release/bundle/nsis/*.exe
-            desktop/src-tauri/target/release/bundle/msi/*.msi
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+
+      # No Cargo.lock is committed, so every run resolves Tauri 2.x afresh — an
+      # upstream release can break a build with no change here. Download this
+      # from the first green run and commit it; then the build is reproducible
+      # and Swatinem/rust-cache gets a real cache key.
+      - name: Upload resolved Cargo.lock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lock
+          if-no-files-found: warn
+          path: desktop/src-tauri/Cargo.lock
