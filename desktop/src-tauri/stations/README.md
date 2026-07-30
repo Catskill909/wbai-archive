@@ -28,7 +28,18 @@ than quietly ship one station's app under another's name.
    `stations/<slug>/icons/*`. Paths resolve relative to `src-tauri/`. Generate
    the set with `npx tauri icon` — see the icon notes in `docs/TAURI.md`; the
    files must be 32-bit RGBA.
-4. Point `STATION_URL` at that station's own deployment.
+4. **Render the installer artwork**, which is also per station:
+
+   ```bash
+   npm run artwork <slug>      # from desktop/
+   ```
+
+   It reads `productName` and `copyright` straight out of the profile, uses that
+   station's icon if it ships one, and writes
+   `src-tauri/installer/<slug>/`. Then point the profile's
+   `bundle.windows.nsis.headerImage` / `sidebarImage` and
+   `bundle.macOS.dmg.background` at those files, as `wbai.json` does.
+5. Point `STATION_URL` at that station's own deployment.
 
 ## Who can sign what
 

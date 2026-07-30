@@ -1,0 +1,51 @@
+<!-- NSIS page-header bitmap. Rendered at exactly 150x57, then converted to
+     24-bit BMP. This strip sits at the top of every wizard page except the
+     first and last, right-aligned by NSIS convention, and it is small: the
+     mark plus a short name is all that fits legibly. -->
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; width: 150px; height: 57px; overflow: hidden; }
+  body {
+    background: {{CANVAS}};
+    font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex; align-items: center;
+  }
+
+  img.mark {
+    width: 34px; height: 34px; margin-left: 11px;
+    border-radius: 7px;
+    box-shadow: 0 0 0 1px rgba(250,250,250,0.10);
+    flex: none;
+  }
+
+  .text { margin-left: 9px; margin-right: 8px; min-width: 0; }
+
+  .name {
+    font-size: 14px; line-height: 1.05;
+
+    color: {{INK}};
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .kind {
+    margin-top: 2px;
+    font-size: 7.5px; line-height: 1.2;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: {{INK_DIM}};
+    white-space: nowrap;
+  }
+
+  /* Accent hairline along the bottom, which is where the header meets the
+     page body — it hides the seam between our dark strip and NSIS's grey. */
+  .edge {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+    background: {{ACCENT}};
+  }
+</style>
+
+<img class="mark" src="{{ICON_DATA_URI}}" alt="">
+<div class="text">
+  <div class="name">{{NAME}}</div>
+  <div class="kind">Archive</div>
+</div>
+<div class="edge"></div>

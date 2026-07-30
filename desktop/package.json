@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "artwork": "node installer/render.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0"

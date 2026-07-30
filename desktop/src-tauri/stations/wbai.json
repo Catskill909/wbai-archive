@@ -5,6 +5,19 @@
   "bundle": {
     "shortDescription": "WBAI 99.5 FM on-demand archive",
     "longDescription": "Search, stream, and browse WBAI 99.5 FM's on-demand broadcast archive. Audio, artwork and listings come from WBAI's own public systems.",
-    "copyright": "(c) Pacifica Foundation / WBAI 99.5 FM."
+    "copyright": "(c) Pacifica Foundation / WBAI 99.5 FM.",
+    "macOS": {
+      "dmg": {
+        "background": "installer/wbai/dmg-background.png"
+      }
+    },
+    "windows": {
+      "nsis": {
+        "headerImage": "installer/wbai/nsis-header.bmp",
+        "sidebarImage": "installer/wbai/nsis-sidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
+    }
   }
 }

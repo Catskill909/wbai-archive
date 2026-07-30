@@ -1,0 +1,88 @@
+<!-- macOS DMG window background. Designed in 660x400 points — the same numbers
+     as bundle.macOS.dmg.windowSize — and rendered at 2x (1320x800) for retina.
+     The art IS the layout: the arrow lands between appPosition (180,170) and
+     applicationFolderPosition (480,170), so if those move in tauri.conf.json,
+     this file has to move with them. Finder draws the two icons and their
+     labels itself; everything here works around them. -->
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; width: 1320px; height: 800px; overflow: hidden; background: {{CANVAS}}; }
+
+  /* Design in points, emit pixels. */
+  .stage {
+    position: absolute; top: 0; left: 0;
+    width: 660px; height: 400px;
+    transform: scale(2); transform-origin: top left;
+    background: {{CANVAS}};
+    font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  /* A soft lift behind the two icon wells, so the middle of the window isn't
+     a flat void. Kept very low contrast — Finder's icon labels are drawn in
+     white and have to stay readable on top of it. */
+  .glow {
+    position: absolute; left: 50%; top: 170px;
+    width: 620px; height: 340px;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(ellipse at center,
+                rgba(250,250,250,0.055) 0%, rgba(250,250,250,0.018) 42%, rgba(250,250,250,0) 72%);
+  }
+
+  .title {
+    position: absolute; left: 0; right: 0; top: 34px;
+    text-align: center;
+    font-size: 26px; line-height: 1;
+
+    letter-spacing: 0.005em;
+    color: {{INK}};
+  }
+  .subtitle {
+    position: absolute; left: 0; right: 0; top: 66px;
+    text-align: center;
+    font-size: 10px; line-height: 1;
+    letter-spacing: 0.19em; text-transform: uppercase;
+    color: {{INK_DIM}};
+  }
+
+  /* Between the icons: 180 + 64 = 244 through 480 - 64 = 416. The head stops
+     just short of the Applications well rather than centring in the gap — it
+     should read as pointing at a destination. */
+  .arrow { position: absolute; left: 256px; top: 158px; width: 156px; height: 24px; }
+
+  /* Sits under both icon wells, clear of the 128pt icons (170 + 64 = 234). */
+  .hint {
+    position: absolute; left: 0; right: 0; top: 268px;
+    text-align: center;
+    font-size: 11px; line-height: 1;
+    letter-spacing: 0.03em;
+    color: {{INK_DIM}};
+  }
+
+  /* Bottom band left deliberately empty — Finder can draw a status strip
+     across it, and anything here would be clipped or fight with it. */
+  .footer {
+    position: absolute; left: 0; right: 0; bottom: 22px;
+    text-align: center;
+    font-size: 8.5px; line-height: 1;
+    letter-spacing: 0.09em;
+    color: {{INK_FAINT}};
+  }
+</style>
+
+<div class="stage">
+  <div class="glow"></div>
+
+  <div class="title">{{NAME}}</div>
+  <div class="subtitle">Desktop Player</div>
+
+  <svg class="arrow" viewBox="0 0 160 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M2 12 H132" stroke="{{ACCENT}}" stroke-width="2"
+          stroke-linecap="round" stroke-dasharray="1.5 7"/>
+    <path d="M128 4 L142 12 L128 20 Z" fill="{{ACCENT}}"/>
+  </svg>
+
+  <div class="hint">Drag the app onto Applications to install</div>
+  <div class="footer">{{FOOTER}}</div>
+</div>

@@ -2,12 +2,17 @@
 
 Native macOS and Windows builds of the web app, from `desktop/`.
 
-> **Status: scaffolding only.** Project, config, icons and Windows CI are
-> committed, and the Tauri CLI parses the config cleanly — but **no binary has
-> been produced yet**, because building needs a Rust toolchain that wasn't
-> installed when this was written. Treat every step below as untested until one
-> build succeeds. Installer artwork is planned but not made — both installers
-> currently ship with stock DMG and NSIS chrome (see Step 7).
+> **Status: nothing has been compiled yet.** Project, config, station profiles,
+> icons, installer artwork and Windows CI are all committed, and the Tauri CLI
+> parses the config cleanly — but **no binary has been produced**, because
+> building needs a Rust toolchain that still isn't installed. Treat every step
+> below as untested until one build succeeds.
+>
+> What *is* independently verified: the icons are 32-bit RGBA with the required
+> `.ico` layers, the NSIS bitmaps are 24-bit BMPs (checked with a second parser),
+> every asset path in the merged config resolves to a file on disk, and the
+> artwork generator refuses to emit a blank sheet. What is not: that NSIS, Finder
+> and `codesign` accept any of it. That is what the first build is for.
 
 ## What it is
 
@@ -285,127 +290,199 @@ npm run build -- --target universal-apple-darwin
 
 ---
 
-## Step 7 — Installer look and feel (planned, not built)
+## Step 7 — Installer artwork (built)
 
-Right now both installers ship stock: a bare DMG window with two icons on grey,
-and an NSIS wizard with NSIS's own default header art. Nothing below has been
-implemented — this is the plan.
+Both installers have real artwork now, generated per station. What is *not* yet
+proven is that NSIS and Finder accept it — that needs a build, and no build has
+run. Everything below describes committed files and verified formats.
+
+Regenerate any time:
+
+```bash
+cd desktop
+npm run artwork wbai        # -> src-tauri/installer/wbai/
+```
 
 ### The palette comes from the app icon
 
 No new brand work. `public/assets/app_icon_1024.png` is a four-quadrant
-`W B A I` mark, and those four colours plus the app's own surface token are the
-entire installer palette:
+`W B A I` mark, and those colours plus the app's own surface token are the entire
+installer palette. They live in one `PALETTE` object in `installer/render.js`:
 
 | Role | Hex | Where it comes from |
 | --- | --- | --- |
 | Ink / glyphs | `#fafafa` | the letters in the mark |
-| Deep maroon | `#362224` | `W` quadrant |
-| Warm grey | `#595353` | `B` quadrant |
-| Light grey | `#989994` | `A` quadrant |
-| Accent blue | `#2f8ab9` | `I` quadrant — the one saturated colour, use it sparingly |
+| Ink dim / faint | `#b7a99e` / `#7d7168` | `--ink-dim`, `--ink-faint` |
+| Accent blue | `#2f8ab9` | `I` quadrant — the one saturated colour, used only for the arrow and two hairlines |
 | Canvas | `#14100f` | `--surface-0` in `public/styles.css` (dark) |
-| On-air red | `#e14a2e` | `--accent` — **installer chrome only if nothing else needs emphasis**; it means "live" in the app |
+| Deep maroon / warm grey / light grey | `#362224` / `#595353` / `#989994` | the other three quadrants, present via the mark itself |
 
-Type follows the app too: `--font-display` is Arial Narrow / condensed, which is
-what the wordmark should be set in. Body text on installer panels stays in the
-platform UI font — Segoe UI on Windows, SF on macOS — because installers should
-look native, not branded-over.
+On-air red (`--accent`, `#e14a2e`) is deliberately **absent**: it means "live" in
+the app, and an installer is not live.
 
-The look to aim for: dark canvas, generous margins, the icon large and
-uncropped, one line of condensed display type, no gradients-over-photos, no
-drop shadows on text. Modern here means restraint, not decoration.
+Type is the app's `--font-display`, Arial Narrow — confirmed actually resolving,
+not silently falling back: it measures 105px where Helvetica Neue measures 128px
+for the same string. `font-stretch: condensed` was removed as a no-op; the family
+is already narrow, and specifying both is how you get a silent fallback later.
+
+### How it is generated
+
+`desktop/installer/` holds three HTML templates and `render.js`. Chrome renders
+each at exact pixel dimensions; the two NSIS sheets are then converted to
+**24-bit BI_RGB BMP** by an encoder in the same file, because NSIS has no alpha
+channel and will not take a PNG.
+
+HTML rather than SVG or a design file, for one reason: the artwork is per station
+and there will eventually be several, so it has to be diffable text that a
+command regenerates identically. Chrome rather than a library, because it is
+already installed on any machine doing this work — and the whole tree stays out
+of the web app, which remains zero-toolchain.
+
+**Two traps, both already stepped in:**
+
+- **A blank render produces a perfectly valid file.** A 24-bit BMP's size is
+  fixed by its dimensions, so a template that paints nothing yields a normal
+  looking, entirely empty bitmap that Tauri bundles without complaint. `render.js`
+  therefore measures **ink coverage** — the fraction of pixels differing from the
+  canvas colour — and refuses to write a sheet below a floor (currently 20.9%,
+  19.7% and 23.2% against floors of 6%, 4% and 1%). This is `CLAUDE.md` §3a
+  applied to artwork: assert the effect, not the declaration. The check has been
+  verified to fire, by reintroducing the bug and watching it fail.
+- **Centered absolute elements need an explicit pixel width.** In headless
+  Chrome, an element that is `position:absolute` against the page, takes its
+  width from `left:0;right:0` or `width:100%`, *and* centres its contents
+  (`text-align:center`, or `align-items:center` on a flex row) paints **nothing
+  at all** — text and images both vanish, backgrounds still draw. Give it
+  `width: 164px` and it renders. The sidebar was silently blank until this was
+  bisected; the DMG template avoids it by putting everything inside a fixed-width
+  stage.
 
 ### macOS — the DMG window
 
-Tauri drives this from `bundle.macOS.dmg` (verified against
-`config.schema.json` in the CLI):
+Mechanics in the base config, art path in the station profile:
 
 ```jsonc
-"macOS": {
-  "dmg": {
-    "background": "installer/dmg-background.png",
-    "windowSize": { "width": 660, "height": 400 },
-    "appPosition": { "x": 180, "y": 170 },
-    "applicationFolderPosition": { "x": 480, "y": 170 }
-  }
-}
+// tauri.conf.json — station-neutral
+"macOS": { "dmg": {
+  "windowSize": { "width": 660, "height": 400 },
+  "appPosition": { "x": 180, "y": 170 },
+  "applicationFolderPosition": { "x": 480, "y": 170 }
+}}
+
+// stations/wbai.json
+"macOS": { "dmg": { "background": "installer/wbai/dmg-background.png" } }
 ```
 
-- **The background art and those coordinates are one design.** The image is the
-  layout: the drag-here arrow, the labels and the wordmark are painted into the
-  background, and `appPosition` / `applicationFolderPosition` must land the two
-  real icons exactly where the art expects them. Change one, re-check the other.
-- **Window size is in points, art is in pixels.** Author the background at 2×
-  (1320 × 800) for the retina case, and if Finder renders it soft or wrong-sized,
-  fall back to a 1× 660 × 400 PNG. Tauri accepts `png`/`jpg`/`gif` only — the
-  classic multi-resolution TIFF trick is not available through this config.
-- **One image serves both system themes.** Finder does not theme a DMG
-  background, so the art must carry its own dark canvas and not assume the
-  window furniture around it is dark.
-- **Keep the bottom ~64 points quiet.** Finder can draw a status strip there.
-
-Planned layout: icon-and-wordmark block on the left third, then app icon → thin
-arrow → Applications folder across the middle, `#2f8ab9` used only for the
-arrow.
+- **The background art and those coordinates are one design.** The dashed arrow
+  is positioned in the gap between the two icon wells — 180 + 64 through
+  480 − 64 — so if the positions move in `tauri.conf.json`, the template's
+  `.arrow` has to move with them. The template says so, in a comment, at the top.
+- **Designed in points, emitted at 2×.** The template lays out in a 660 × 400
+  stage and renders through `transform: scale(2)` to 1320 × 800 for retina. Tauri
+  accepts `png`/`jpg`/`gif` only — the multi-resolution TIFF trick isn't
+  available. If Finder renders it soft, fall back to a 1× 660 × 400 sheet.
+- **One image serves both system themes.** Finder doesn't theme a DMG
+  background, so the art carries its own dark canvas.
+- **The bottom band is empty on purpose** — Finder can draw a status strip there.
+- Finder draws the two icons *and their labels*; the art never duplicates them.
 
 ### Windows — the NSIS wizard
 
-Config lives at `bundle.windows.nsis`:
+| Key | Asset | Size | State |
+| --- | --- | --- | --- |
+| `headerImage` | strip on the middle pages | **150 × 57** | ✅ 24-bit BMP |
+| `sidebarImage` | Welcome and Finish pages | **164 × 314** | ✅ 24-bit BMP |
+| `installerIcon` / `uninstallerIcon` | wizard and uninstaller icon | `.ico` | ✅ reuses `icons/icon.ico` |
 
-| Key | Asset | Exact size |
-| --- | --- | --- |
-| `headerImage` | strip on every page but the first and last | **150 × 57** BMP |
-| `sidebarImage` | Welcome and Finish pages | **164 × 314** BMP |
-| `installerIcon` | wizard window / taskbar icon | `.ico` |
-| `uninstallerIcon` | same, for uninstall | `.ico` |
+Both BMPs report as `PC bitmap, Windows 3.x format, … x 24` — checked with a
+second, independent parser (`sips`) rather than trusting the encoder that wrote
+them.
 
-- **These must be BMP, and BMP has no alpha.** Bake the canvas colour in; do not
-  export a transparent PNG and rename it. Save as 24-bit BMP (BMP3) — NSIS is
-  the pickiest consumer in this whole repo.
-- **150 × 57 is tiny.** It gets the four-quadrant mark and nothing else; the
-  wordmark is illegible at that height and should be left out.
-- **164 × 314 is a tall thin panel.** Icon top-centre, product name under it in
-  condensed type, everything below the top third left as empty canvas so the
-  page's own text doesn't fight it.
-- Also set **`installMode: "currentUser"`** — a per-user install needs no UAC
-  prompt, and this app writes nothing outside its own directory. That is a
-  first-run-experience decision as much as a packaging one.
-- `startMenuFolder` stays unset: one app, no group.
+- **150 × 57 is tiny**, so it gets the mark at 34px, the product name at 14px
+  with ellipsis, and a 7.5px label. Nothing else fits legibly.
+- **164 × 314 is a tall panel**: mark at 88px, name, `DESKTOP PLAYER`, then a
+  rule and the copyright line at the bottom. The middle-lower area stays empty
+  because NSIS draws its own body text over this bitmap on the Welcome page.
+- **`installMode: "currentUser"`** is set in the base config — a per-user install
+  raises no UAC prompt, and the app writes nothing outside its own directory.
+- `languages: ["English"]` is explicit; `startMenuFolder` stays unset, since one
+  app needs no group.
+- `uninstallerHeaderImage` is left unset: it defaults to `headerImage`.
 
-If the `.msi` target is ever kept, WiX takes its own pair — `bannerPath`
-(493 × 58) and `dialogImagePath` (493 × 312) — same art, different crops. Both
-are also BMP.
+If the `.msi` target is ever added, WiX needs its own pair — `bannerPath`
+(493 × 58) and `dialogImagePath` (493 × 312), also BMP.
 
-### Where the files go
+### What's committed
 
 ```
-desktop/src-tauri/installer/
-  dmg-background.png        # 1320x800
-  nsis-header.bmp           # 150x57
-  nsis-sidebar.bmp          # 164x314
-  src/*.svg                 # the sources everything above is rendered from
+desktop/installer/
+  render.js                     # generator: Chrome -> PNG -> 24-bit BMP, + ink guard
+  src/nsis-header.html          # sources, per-sheet, with the layout notes
+  src/nsis-sidebar.html
+  src/dmg-background.html
+desktop/src-tauri/installer/wbai/
+  nsis-header.bmp               # 150x57   24-bit
+  nsis-sidebar.bmp              # 164x314  24-bit
+  dmg-background.png            # 1320x800
 ```
 
-Paths in `tauri.conf.json` are relative to that file, so `installer/...` as
-written above. Commit the rendered assets — CI must not need a design toolchain
-— but commit the SVG sources next to them, the way the icons' provenance is
-already recorded in the notes below. A one-shot render script belongs in
-`desktop/`, never at the repo root: `public/` and `server.js` stay
-zero-toolchain.
+Rendered assets are committed so CI needs no design toolchain; the templates are
+committed beside them so the assets are reproducible. Config paths resolve
+relative to `src-tauri/`.
 
-### How we'll know it's right
+### Still unverified — needs the first build
 
-Screenshots, not config diffs. §1 of `CLAUDE.md` applies to installers as much
-as to `app.js` — a background image that the bundler silently skipped looks
-exactly like one that isn't finished yet.
+Formats are proven; acceptance is not. §1 of `CLAUDE.md` applies as much to
+installers as to `app.js` — a bitmap the bundler silently skipped looks exactly
+like one that was never made.
 
-1. `open src-tauri/target/release/bundle/dmg/*.dmg` and confirm the mounted
-   window matches the art, at both 1× and on a retina display.
-2. Run the NSIS `.exe` in a Windows VM and step through every page — Welcome,
-   the middle pages that use `headerImage`, Finish, then the uninstaller.
+1. `open src-tauri/target/release/bundle/dmg/*.dmg` — does the mounted window
+   match the art, at 1× and on a retina display, with the icons landing on the
+   arrow?
+2. Run the NSIS `.exe` in a Windows VM and step every page — Welcome, the middle
+   pages that use `headerImage`, Finish, then the uninstaller.
 3. Check both at 100% and 200% display scaling; the header strip is where
    scaling artefacts show first.
+
+### Not done yet
+
+- **The app icon has no transparency.** Its rounded corners are painted
+  `#1a1a1a`, so macOS will draw a hard square instead of applying its squircle.
+  Fixing it means masking the corners and adding the ~10% margin macOS expects,
+  then re-running `npx tauri icon`.
+- **A second station's artwork is one command**, but it will use the same WBAI
+  mark until that station ships its own icon set — see
+  `src-tauri/stations/README.md`.
+
+---
+
+## Step 8 — Windows signing (optional, and nothing is signed today)
+
+**Every Windows build this repo has ever produced is unsigned.** That is not an
+oversight to be embarrassed about, it's the default: there is no
+`bundle.windows.certificateThumbprint`, no `signCommand`, and no signing step in
+the workflow. GitHub Actions does not sign artifacts, and no account is
+implicitly involved. The consequence is a SmartScreen "unknown publisher" warning
+that the user can click past.
+
+Unlike macOS, Windows has **no Account Holder problem, no notary service and no
+role permissions**. An unsigned installer runs. This step is entirely optional
+and can be deferred indefinitely.
+
+When it does matter — when the publisher name should read *Pacifica Foundation*
+rather than *Unknown* — two things are worth knowing before anyone budgets it:
+
+- **The certificate comes from a commercial CA** (DigiCert, Sectigo, SSL.com),
+  not Microsoft. Roughly $200–400/year, and an OV certificate requires *business*
+  validation, so the station has to buy it and pass the validation. That's the
+  organizational dependency: paperwork and payment, not a portal role.
+- **Since 2023, code-signing private keys must live on FIPS-certified hardware** —
+  a USB token or a cloud HSM. "Put the `.pfx` in a GitHub secret" is no longer a
+  thing that exists. CI signing means a cloud signing service, which is a
+  different integration than the `certificateThumbprint` field suggests.
+
+SmartScreen reputation also accrues per certificate: a brand-new OV certificate
+can still warn until enough installs accumulate.
 
 ---
 
@@ -418,6 +495,11 @@ exactly like one that isn't finished yet.
   before that, when the app was an unofficial client with no station behind it.
   **Check the station's existing Identifiers before adding a profile**, so a new
   app doesn't collide with or contradict the convention their other apps use.
+- **The crate is still named `wbai-archive`.** `Cargo.toml` and
+  `desktop/package.json` carry WBAI-specific names and descriptions even though
+  everything user-facing is now per station. Renaming them changes the built
+  binary's filename, and adding an untested variable *before the first successful
+  compile* is a bad trade — do it once a build is known good.
 - **`frontendDist` points at `../../public`** even though the window loads a
   remote URL and never reads those files. It keeps the config valid and leaves
   the door open to a bundled-assets variant. Harmless, ~1 MB.

@@ -1,0 +1,84 @@
+<!-- NSIS Welcome/Finish page bitmap. Rendered at exactly 164x314, then
+     converted to 24-bit BMP — NSIS has no alpha channel, so the canvas colour
+     is baked in. Placeholders are filled by ../render.js.
+
+     CENTERED ABSOLUTE ELEMENTS NEED AN EXPLICIT PIXEL WIDTH. In the headless
+     Chrome that renders these, an element that is `position:absolute` against
+     the page, gets its width from `left:0;right:0` or `width:100%`, *and*
+     centres its contents (`text-align:center`, or `align-items:center` in a
+     flex row) paints **nothing at all** — no text, no images, just backgrounds.
+     Give it `width: 164px` instead and it renders. This file was silently blank
+     until that was bisected; the DMG template avoids it by putting everything
+     inside a fixed-width stage. Re-render and *look at the output* after
+     touching layout here — a blank BMP is not obviously blank in a diff. -->
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; width: 164px; height: 314px; overflow: hidden; }
+  body {
+    background: {{CANVAS}};
+    font-family: 'Arial Narrow', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* A single hairline of the accent, top to bottom, so the panel reads as
+     deliberate rather than as a dark rectangle NSIS failed to fill. */
+  .edge {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+    background: {{ACCENT}};
+  }
+
+  /* width in pixels, not left+right — see the note at the top of this file. */
+  .stack {
+    position: absolute; left: 0; top: 34px; width: 164px;
+    text-align: center;
+  }
+
+  img.mark {
+    width: 88px; height: 88px;
+    display: block; margin: 0 auto;
+    /* The mark carries its own dark plate; a faint ring keeps it from
+       dissolving into the canvas. */
+    border-radius: 18px;
+    box-shadow: 0 0 0 1px rgba(250,250,250,0.10);
+  }
+
+  .name {
+    margin: 20px auto 0;
+    width: 132px;
+    font-size: 21px; line-height: 1.05;
+    letter-spacing: 0.01em;
+    color: {{INK}};
+  }
+
+  .kind {
+    margin-top: 9px;
+    font-size: 10px; line-height: 1.3;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: {{INK_DIM}};
+  }
+
+  /* Bottom third stays empty on purpose: NSIS draws its own body text over
+     this bitmap on the Welcome page. */
+  .rule {
+    position: absolute; left: 38px; right: 38px; bottom: 46px;
+    height: 1px; background: rgba(250,250,250,0.12);
+  }
+  .foot {
+    position: absolute; left: 12px; width: 140px; bottom: 22px;
+    text-align: center;
+    font-size: 8px; line-height: 1.35;
+    letter-spacing: 0.05em;
+    color: {{INK_FAINT}};
+  }
+</style>
+
+<div class="edge"></div>
+
+<div class="stack">
+  <img class="mark" src="{{ICON_DATA_URI}}" alt="">
+  <div class="name">{{NAME}}</div>
+  <div class="kind">Desktop Player</div>
+</div>
+
+<div class="rule"></div>
+<div class="foot">{{FOOTER}}</div>
