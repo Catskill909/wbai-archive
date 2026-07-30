@@ -280,6 +280,14 @@ spctl -a -vvv -t install "src-tauri/target/release/bundle/macos/WBAI Archive.app
 xcrun stapler validate src-tauri/target/release/bundle/dmg/*.dmg
 ```
 
+**Rehearse the chain on a personal paid account while waiting for theirs.** The
+whole sign → notarize → staple → `spctl` sequence works identically under any
+paid Developer Program membership, so it can be exercised end to end before the
+station's certificate exists: your identity, your Apple ID, your team ID. When
+theirs arrives you are changing three environment variables instead of debugging
+Gatekeeper for the first time under a deadline. Two rules — don't distribute a
+personally-signed build of someone else's station, and delete it afterwards.
+
 **One thing Apple won't tell you:** `npm run build` targets your host
 architecture only, so an Apple-silicon build won't run on an Intel Mac. For both:
 

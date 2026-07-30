@@ -15,6 +15,7 @@ Ordered most valuable first. Each is independent; none blocks another.
 | 2 | iOS launch images | M | Removes the white flash on launch, jarring for a dark app. Needs a matrix of exact per-device `apple-touch-startup-image` sizes — iOS ignores any that don't match. Worth it once the design settles. |
 | 3 | Desktop app — first real build | M | Config, station profiles, RGBA icons and installer artwork are all committed and self-checked, but **nothing has been compiled**. Needs a Rust toolchain locally for macOS, and a `STATION_URL` repo variable for the Windows CI job. The first build is what proves NSIS and Finder accept the artwork. See [TAURI.md](TAURI.md). |
 | 4 | Station profiles for the web app | L | The desktop shell is per-station already (`desktop/src-tauri/stations/`). The server it points at is not: upstream hosts live in one `UPSTREAM` object in `server.js`, but station name, stream URL, links and the non-affiliation notice are hardcoded across `public/`. A second station needs this before it needs anything else. |
+| 5 | Settle the "unofficial" framing | S | **A decision, not a task.** The desktop app now signs as the Pacifica Foundation and claims `org.wbai.archive`, while [README.md](../README.md) and the menu note in `public/index.html` still tell users this is unofficial and unaffiliated. Both can't be true. Those disclaimers are a public promise, so rewriting them is Pacifica's call to make explicitly — not a side effect of a commit. Until they do, the disclaimers stay. |
 
 ## Won't do
 

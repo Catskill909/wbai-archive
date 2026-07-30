@@ -144,7 +144,9 @@ reload the page. `npm start` serves them directly.
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** — what doesn't exist yet: proposals,
   and ideas that were considered and rejected, with reasons.
 - **[docs/TAURI.md](docs/TAURI.md)** — step-by-step for the macOS and Windows
-  desktop builds. Scaffolded and wired to CI, but not yet compiled.
+  desktop builds: one build per station, code signing on both platforms, and the
+  installer artwork. Everything is committed and wired to CI, but **nothing has
+  been compiled yet**, so treat it as untested.
 - **[docs/casting-dev.md](docs/casting-dev.md)** — a Cast/AirPlay button, built
   and then removed on the same day. Kept for three findings that outlive it: why
   the Google Cast SDK is the wrong dependency here, what headless Chrome
@@ -213,7 +215,10 @@ can't be verified in a desktop devtools viewport.
 │   └── showinfo.json             # starting set for the harvest above (npm run seed)
 ├── desktop/                      # Tauri shell (optional; the only build step)
 │   ├── package.json              # Tauri CLI only
+│   ├── installer/                # installer artwork generator (HTML -> PNG/BMP)
 │   └── src-tauri/                # Cargo.toml, main.rs, tauri.conf.json, icons
+│       ├── stations/             # one profile per station: name, identifier, copy
+│       └── installer/<slug>/     # that station's rendered DMG + NSIS artwork
 ├── .github/workflows/            # Windows desktop build
 ├── test/                         # zero-dependency suites (headless Chrome over CDP)
 │   ├── live-stream/              # live audio + fake station; cdp.js lives here
