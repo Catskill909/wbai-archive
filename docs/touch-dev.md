@@ -186,8 +186,8 @@ Apple HIG says 44×44pt; Material says 48×48dp; WCAG 2.2 SC 2.5.8 (AA) says
 | `.lp-alert-dismiss` | 26×26 | `400` | dismiss on the live-stream error alert |
 | `.resume-dismiss` | 26×26 | `1338` | dismiss on the resume toast |
 | `.view-btn` | 32×28 | `630` | **two of them, 2px apart** (`.view-toggle` gap, `:629`) |
-| `.player-close` | 34×34 | `1983` | player bar; glyph only at every width |
-| `.player-skip` | 34×34 | `1235` | ±15s; hidden below 420px (`:1248`) |
+| `.player-close` | 28×28 chip, 44×44 target | `2098` | player bar; glyph only at every width. Small on purpose — it ends playback — so it carries its own `::before` target at every pointer type rather than joining the coarse-pointer list |
+| `.player-skip` | 34×34 | `1933` | ±15s; **hidden at/below 700px** (`:1957`), and on any coarse-pointer viewport under 500px tall (`:1966`) so landscape phones lose it too. Was 420px, which left it on Pro Max-class phones |
 | `.play-btn` | 36×36 | `760` | **the primary action in every list row** |
 | `.social-btn` | 36×36, `.5rem` gap | `881,880` | five in a row in the drawer |
 | `.sheet-close` | 36×36 | `930` | info sheet |
@@ -450,7 +450,8 @@ What remains is **double-tap-to-zoom**: two taps inside ~300ms on the same
 element zoom the page instead of firing two clicks. The controls this hits are
 exactly the ones users tap repeatedly:
 
-- `.player-skip` ±15s (`:1235`) — skipping 30s is two fast taps
+- `.player-skip` ±15s (`:1933`) — skipping 30s is two fast taps (tablets ≥700px
+  only; the pair is hidden on phones)
 - `.player-toggle` (`:1250`) — pause/resume corrections
 - `.view-btn` list/gallery (`:630`) — toggling back and forth
 - `.play-btn` (`:760`) — impatient re-taps while a stream buffers
@@ -641,7 +642,7 @@ Per-phase checks, on a real iOS device and a real Android device:
 
 | Phase | Check |
 | --- | --- |
-| 1 | Tap `.play-btn`, `.menu-close`, `.social-btn` — **no blue/grey square**. A ~4% shrink acknowledges each press. Focus the search field — page does **not** zoom. Double-tap `.player-skip` fast — skips 30s, no page zoom. Long-press a `.show-thumb` — no "Save Image" sheet. |
+| 1 | Tap `.play-btn`, `.menu-close`, `.social-btn` — **no blue/grey square**. A ~4% shrink acknowledges each press. Focus the search field — page does **not** zoom. Double-tap `.view-btn` fast — toggles twice, no page zoom (`.player-skip` is no longer on phones to test). Long-press a `.show-thumb` — no "Save Image" sheet. |
 | 2 | Tap a row's play button, then stop playback — the button returns to neutral, not orange. Tap a gallery card — it does not stay lifted with a stuck play circle. |
 | 3 | Every control in the F4 table is tappable at its edge without hitting a neighbor. Drag the scrubber and the volume slider with a thumb, not a fingernail. |
 | 4 | Open the lightbox and the donate modal, drag vertically — the listing behind does **not** move. Install to home screen: app bar clears the notch, player bar clears the home indicator. |

@@ -1943,8 +1943,27 @@
   .player-skip:focus-visible{outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent);}
   .player-skip svg{width:21px; height:21px;}
   .player-skip svg text{font-family:var(--font-body); letter-spacing:-.02em;}
-  /* the bar gets tight before the skip controls stop being worth their width */
-  @media (max-width:420px){
+  /* Hidden on phones and small tablets. 420px was the old cutoff and it was too
+     low to be the phone rule it was meant to be — an iPhone Pro Max is 430px, so
+     the ±15s pair survived on the largest phones, where they are also the most
+     awkward: on a phone the transport is thumb-work at the bottom edge, and two
+     34px satellites 6px from the play button are the two things you hit when you
+     meant to hit pause. 700px rather than a new number of its own because that
+     is already where this bar changes shape — below it the status text goes, the
+     scrubber takes the full width and Close leaves the flex row (see the blocks
+     further down). Scrubbing to a spot is the gesture that replaces them, and it
+     is the one that got the width. ← / → still skip on any keyboard (app.js);
+     nothing here removes the capability, only the buttons. */
+  @media (max-width:700px){
+    .player-skip{display:none;}
+  }
+  /* A phone turned sideways is still a phone, and a width rule stops seeing it:
+     a Pro Max in landscape is 932px wide. Height is what stays phone-sized, so
+     ask that instead — every landscape phone is under 500px tall, every tablet
+     is comfortably over it (iPad landscape is 768+). Paired with pointer:coarse
+     so a short desktop window, which has a mouse and no thumb problem, keeps
+     its buttons. */
+  @media (max-height:500px) and (pointer:coarse){
     .player-skip{display:none;}
   }
   .player-toggle{
@@ -2104,10 +2123,16 @@
        so the glyph and the edge are the only things that say "button".
        Glyph only at every width — the word "Close" was dropped, so the ✕ carries
        the whole meaning and gets full ink. Still shorter than the art beside it,
-       so the bar's height is unchanged. */
-    flex:none; cursor:pointer;
+       so the bar's height is unchanged.
+       The CHIP is 28px; the TARGET is 44px. Ending playback by accident is the
+       expensive mistake here, so the visible affordance stays small and quiet
+       while the ::before below keeps a full finger's worth of hit area around
+       it — which is why `position:relative` is in the base rule and not only in
+       the coarse-pointer block: the ::before needs this element as its
+       containing block at every width. */
+    flex:none; cursor:pointer; position:relative;
     border:1px solid color-mix(in srgb, var(--ink) 26%, transparent);
-    width:34px; height:34px; border-radius:999px; padding:0;
+    width:28px; height:28px; border-radius:999px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
     background:var(--surface-3); color:var(--ink);
     /* hard-right: cancel the 1180-column inset (measured in vw, since % here is the
@@ -2122,7 +2147,18 @@
   }
   .player-close:active{transform:scale(.95);}
   .player-close:focus-visible{outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent);}
-  .player-close svg{width:15px; height:15px; flex:none;}
+  .player-close svg{width:13px; height:13px; flex:none;}
+  /* The tap area, at every pointer type — the coarse-pointer block near the end
+     of this file expands a long list of controls to 44px, but this one is small
+     by design rather than by accident, so it carries its own. Centred on the
+     chip and pointer-events inherited, so the 8px of slop on each side hits the
+     button; nothing sits within 8px of it (see .player-info padding below and
+     the to-top gap test), so it reaches over nothing. */
+  .player-close::before{
+    content:""; position:absolute;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    width:44px; height:44px;
+  }
   @media (max-width:700px){
     .player-status{display:none;}
   }
@@ -2140,8 +2176,9 @@
     .player-bar:not(.live) .player-close{
       position:absolute; right:8px; top:calc(.6rem - 3px); margin:0;
     }
-    /* glyph only — 34px square + its 8px overhang */
-    .player-bar:not(.live) .player-info{ padding-right:2.6rem; }
+    /* glyph only — 28px chip + its 8px overhang, plus the 8px the 44px tap area
+       reaches back over the title on this side */
+    .player-bar:not(.live) .player-info{ padding-right:2.75rem; }
   }
   /* Tablet and up: the bar chrome still spans the viewport, but its controls sit in
      the same centered 1180px column as the listing instead of sprawling edge to edge. */
@@ -2502,16 +2539,21 @@
        `top`/`right` became flow offsets: the info sheet, lightbox and donate
        close buttons all landed half off the LEFT edge, and the live player's
        — a flex child of a centre-aligned column — sat in the middle of the
-       header. Touch devices only, so a fine-pointer browser never showed it. */
+       header. Touch devices only, so a fine-pointer browser never showed it.
+
+       .player-close is absent for the opposite reason: it is small on purpose
+       and already carries its own 44px ::before at every pointer type, up in
+       the player-bar section. Listing it here again would be a second rule
+       claiming to own the same box. */
     .play-btn:not(.card-art), .menu-close,
     .link-notice-close, .lp-alert-dismiss, .resume-dismiss,
-    .social-btn, .player-close{ position: relative; }
+    .social-btn{ position: relative; }
 
     .play-btn:not(.card-art)::before,
     .sheet-close::before, .menu-close::before, .lightbox-close::before,
     .donate-close::before, .link-notice-close::before,
     .lp-alert-dismiss::before, .resume-dismiss::before,
-    .social-btn::before, .player-close::before{
+    .social-btn::before{
       content: ""; position: absolute;
       top: 50%; left: 50%; transform: translate(-50%, -50%);
       width: 100%; height: 100%;
