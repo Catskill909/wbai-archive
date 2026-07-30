@@ -9,14 +9,23 @@ use tauri::{Url, WebviewUrl, WebviewWindowBuilder};
 /// already serves — deliberately not a second implementation. Every listing,
 /// image and on-air lookup still goes through the Node proxies, because the
 /// upstream feeds send no CORS headers and a webview enforces CORS exactly as
-/// a browser does. So a server is always involved: your own deployment for a
-/// release build, or `npm start` on localhost while developing.
+/// a browser does. So a server is always involved: that station's own
+/// deployment for a release build, or `npm start` on localhost while developing.
 ///
-/// Set at compile time:
-///     WBAI_APP_URL=https://your-domain npm run build
-const APP_URL: &str = match option_env!("WBAI_APP_URL") {
+/// One station per build. Set at compile time:
+///     STATION_URL=https://archive.wbai.org npm run build -- --config stations/wbai.json
+const APP_URL: &str = match option_env!("STATION_URL") {
     Some(url) => url,
     None => "http://localhost:8080",
+};
+
+/// Window title. The rest of a station's identity — product name, bundle
+/// identifier, copyright — lives in `stations/<slug>.json`, but the title is
+/// set in code when the window is built, so it comes through the environment
+/// the same way the URL does.
+const STATION_NAME: &str = match option_env!("STATION_NAME") {
+    Some(name) => name,
+    None => "Station Archive",
 };
 
 fn main() {
@@ -24,10 +33,10 @@ fn main() {
         .setup(|app| {
             let url: Url = APP_URL
                 .parse()
-                .expect("WBAI_APP_URL must be an absolute URL, e.g. https://example.org");
+                .expect("STATION_URL must be an absolute URL, e.g. https://example.org");
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
-                .title("WBAI 99.5 FM Archive")
+                .title(STATION_NAME)
                 .inner_size(1180.0, 820.0)
                 // below this the player bar's controls start colliding
                 .min_inner_size(380.0, 520.0)
@@ -37,5 +46,5 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running the WBAI Archive desktop app");
+        .expect("error while running the station archive desktop app");
 }

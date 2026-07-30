@@ -13,7 +13,8 @@ Ordered most valuable first. Each is independent; none blocks another.
 | --- | --- | --- | --- |
 | 1 | Window Controls Overlay | M | `display_override: ["window-controls-overlay"]` lets the appbar draw into the desktop title bar. Costs a second layout keyed on `env(titlebar-area-*)`, maintained alongside the normal one. |
 | 2 | iOS launch images | M | Removes the white flash on launch, jarring for a dark app. Needs a matrix of exact per-device `apple-touch-startup-image` sizes — iOS ignores any that don't match. Worth it once the design settles. |
-| 3 | Desktop app — first real build | M | `desktop/` is scaffolded and its config validates, but nothing has been compiled. Needs a Rust toolchain locally for macOS, and a `WBAI_APP_URL` repo variable for the Windows CI job. See [TAURI.md](TAURI.md). |
+| 3 | Desktop app — first real build | M | `desktop/` is scaffolded and its config validates, but nothing has been compiled. Needs a Rust toolchain locally for macOS, and a `STATION_URL` repo variable for the Windows CI job. See [TAURI.md](TAURI.md). |
+| 4 | Station profiles for the web app | L | The desktop shell is per-station already (`desktop/src-tauri/stations/`). The server it points at is not: upstream hosts live in one `UPSTREAM` object in `server.js`, but station name, stream URL, links and the non-affiliation notice are hardcoded across `public/`. A second station needs this before it needs anything else. |
 
 ## Won't do
 

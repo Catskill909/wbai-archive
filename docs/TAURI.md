@@ -50,22 +50,39 @@ npm install                  # first time only
 npm run dev
 ```
 
-`npm run dev` defaults to `http://localhost:8080`. Nothing else to configure.
+`npm run dev` defaults to `http://localhost:8080`. Nothing else to configure —
+the window will say UNCONFIGURED, which is correct for a dev run with no station
+selected. To develop against a real station's identity, pass its profile the same
+way a release build does:
+
+```bash
+STATION_NAME="WBAI 99.5 FM Archive" npm run dev -- --config stations/wbai.json
+```
 
 ## Step 3 — Build a macOS release
 
+**One station per build.** The station's identity comes from a profile in
+`src-tauri/stations/` and its URL from the environment:
+
 ```bash
 cd desktop
-WBAI_APP_URL=https://your-domain npm run build
+STATION_URL=https://archive.wbai.org STATION_NAME="WBAI 99.5 FM Archive" \
+  npm run build -- --config stations/wbai.json
 ```
 
 Output lands in `src-tauri/target/release/bundle/` (`dmg/` and `macos/`).
 
-**`WBAI_APP_URL` is baked in at compile time** — `main.rs` reads it via
-`option_env!`. Omit it and the app ships pointing at `localhost:8080`, which is
-only useful for testing. There is deliberately no runtime setting for it: an app
-that can be repointed after the fact is an app that can be repointed at
-something you don't control.
+**`--config` is not optional for a real build.** The base `tauri.conf.json` is
+station-neutral and says `UNCONFIGURED` on purpose, so a forgotten profile is
+loud rather than shipping one station's app under another's identifier. See
+[`desktop/src-tauri/stations/README.md`](../desktop/src-tauri/stations/README.md)
+for what a profile holds and how to add one.
+
+**`STATION_URL` and `STATION_NAME` are baked in at compile time** — `main.rs`
+reads both via `option_env!`. Omit the URL and the app ships pointing at
+`localhost:8080`, which is only useful for testing. There is deliberately no
+runtime setting for it: an app that can be repointed after the fact is an app
+that can be repointed at something you don't control.
 
 macOS builds are not in CI because they need signing with your own certificates.
 Unsigned builds run locally, but Gatekeeper will warn anyone else who opens one —
@@ -77,20 +94,28 @@ The Windows build runs in GitHub Actions:
 `.github/workflows/desktop-windows.yml`.
 
 1. Go to **Settings → Secrets and variables → Actions → Variables**.
-2. Add a repository variable **`WBAI_APP_URL`** = your deployed URL.
+2. Add a repository variable **`STATION_URL`** = that station's deployed URL.
+3. Optionally add **`STATION`** = the default profile slug (defaults to `wbai`).
 
-Without it the workflow **fails on purpose** rather than silently producing an
-app that points at localhost.
+Without a URL the workflow **fails on purpose** rather than silently producing an
+app that points at localhost, and it fails just as deliberately if the named
+station has no profile — listing the ones that do.
+
+Both are overridable per run from the workflow's input boxes, which is how you
+build a second station without touching repository settings.
 
 ## Step 5 — Produce a Windows build
 
 Either:
 
-- **Push a tag** — `git tag v1.0.0 && git push origin v1.0.0`, or
+- **Push a tag** — `git tag v1.0.0 && git push origin v1.0.0`, which builds the
+  default station, or
 - **Run it manually** — Actions → *Desktop (Windows)* → *Run workflow*, giving a
-  URL in the input box (this overrides the repository variable).
+  station slug and a URL in the input boxes (these override the repository
+  variables). This is the per-station path.
 
-Download the NSIS `.exe` from the run's artifacts. The workflow builds with
+Download the NSIS `.exe` from the run's artifacts — named
+`station-archive-windows-<slug>`, so builds for different stations don't collide. The workflow builds with
 `--bundles nsis`, overriding `bundle.targets` — that key also names `dmg` and
 `app`, which only exist on macOS, and there's no reason for a Windows run to
 depend on how the bundler treats them.
@@ -112,54 +137,90 @@ Skip it and you get a bundle that runs on your own machine (right-click → Open
 the first time). Anyone else has to go to System Settings → Privacy & Security →
 Open Anyway, which is not a thing you can ask a listener to do.
 
+**Sign as the station, not as yourself.** A certificate attests to a legal
+identity, so the account that signs a station's app has to be that station's.
+
+- **Pacifica Foundation is one legal entity** holding the licenses for WBAI,
+  KPFA, KPFK, WPFW and KPFT. One Pacifica developer account and one Developer ID
+  Application certificate covers all five; only the bundle identifier differs.
+- **Affiliates are separate entities** and each needs its own account and
+  certificate. Signing an affiliate's app with Pacifica's certificate would name
+  Pacifica as the developer of software that isn't theirs.
+- **Your personal account is for test builds only.** It puts your legal name on
+  the app as the verified developer, and a Developer ID certificate cannot be
+  transferred to the client later — they'd have to re-sign, under a new identity.
+
 **On Apple's side, in order:**
 
-1. **Enroll in the Apple Developer Program** — $99/year. Enroll as an
-   **individual**, under your own name. Organization enrollment needs a D-U-N-S
-   number and would have you claiming to represent WBAI/Pacifica; this client is
-   unofficial, which is the same reason `identifier` avoids `org.wbai`.
-2. **Create a "Developer ID Application" certificate.** Easiest: Xcode →
-   Settings → Accounts → Manage Certificates → **+** → Developer ID Application.
-   (Manual route: a CSR from Keychain Access, uploaded under Certificates,
-   Identifiers & Profiles.) Requires the Account Holder role, and these are
-   capped at 5 per account — don't spend them experimenting.
+1. **Use the station's organization account.** Pacifica already has one, with
+   their existing apps in it. An affiliate starting from nothing has to enroll
+   themselves — organization enrollment needs a D-U-N-S number and someone with
+   authority to bind the entity, so it is never the contractor's to do.
+2. **Look for a certificate they already have, before anyone creates one.** An
+   organization that has been shipping apps for years usually has a Developer ID
+   Application certificate already, and they are **capped at 5 per account** —
+   spending one by reflex is a bad trade. Certificates, Identifiers & Profiles →
+   Certificates, filter **Developer ID Application**: an Admin can read that list
+   even though they can't add to it. Note the expiry (these run 5 years).
+
+   If one exists, the work isn't issuing a certificate — it's **finding the Mac
+   that holds its private key**, because Apple keeps only the public half. Whoever
+   generated it exports the pair as a `.p12` (Keychain Access → right-click the
+   certificate → Export) and hands it over.
+
+3. **If there's genuinely no usable certificate, only the Account Holder can make
+   one — Admin is not enough.** Apple's documented path for an Admin is
+   *cloud-managed* certificates, which **do not help here**: cloud signing only
+   works through the Xcode Organizer archive-and-distribute workflow, and Tauri's
+   bundler shells out to `codesign` against a local keychain identity instead.
+
+   So their Account Holder creates it (Xcode → Settings → Accounts → Manage
+   Certificates → **+** → Developer ID Application, a few minutes on their
+   machine), exports the `.p12`, and passes it to whoever builds. Treat that file
+   as a live credential: never in the repo, revoked when the engagement ends.
+
+   While you're in the portal as Admin, check **Identifiers** too — an account
+   with existing station apps has a bundle-ID convention, and the desktop app
+   should follow it rather than collide with it. That's what decides whether the
+   profile says `org.wbai.archive` or something in their existing namespace.
 
    **Not an App ID.** Registering an identifier under *Identifiers* does nothing
    for this. App IDs exist to bind a bundle ID to provisioning profiles and
    capabilities (push, iCloud, App Groups) — that's App Store, TestFlight and
    Mac App Store territory. Direct distribution is signed with a certificate and
    cleared by notarization; Apple's own instructions for a Developer ID
-   certificate never mention registering an identifier first. Our
-   `io.github.catskill909.wbaiarchive` only has to be *well-formed*, not
-   registered. Creating an App ID anyway is harmless and inert.
+   certificate never mention registering an identifier first. A station's
+   `org.wbai.archive` only has to be *well-formed*, not registered. Creating an
+   App ID anyway is harmless and inert.
 
    Skip **Developer ID Installer** too — that signs `.pkg` files, and we ship a
    `.dmg`.
 
-   **The private key is the part you can lose.** A `.cer` with no matching
-   private key in your keychain cannot sign anything, and Apple cannot reissue
-   the key — only the certificate. The Xcode route keeps both together
-   automatically. Once it's there, export the pair as a `.p12` (Keychain Access →
-   right-click the certificate → Export) and keep it with its password: that file
-   is your only migration path to another Mac, and base64 of it is
-   `APPLE_CERTIFICATE` if macOS ever moves into CI.
-3. **Note your signing identity and Team ID.**
+   **The private key is the half nobody can reissue.** Apple can replace a
+   certificate; it cannot replace the key, because it never had it. So the `.p12`
+   plus its password is the only thing that survives a wiped laptop — and base64
+   of that same file is `APPLE_CERTIFICATE` if macOS ever moves into CI.
+4. **Note the signing identity and Team ID.**
    `security find-identity -v -p codesigning` prints
-   `Developer ID Application: Your Name (TEAMID)`.
-4. **Create a notarization credential** — either an app-specific password
-   (appleid.apple.com → Sign-In and Security), or an App Store Connect API key
-   (Users and Access → Integrations), whose `.p8` downloads exactly once.
+   `Developer ID Application: Pacifica Foundation (TEAMID)` once the `.p12` is
+   imported — which doubles as proof the private key came across.
+5. **Create a notarization credential.** This part *doesn't* need their Account
+   Holder: notarytool authorizes on team membership, so your own Apple ID plus an
+   app-specific password (appleid.apple.com → Sign-In and Security) plus **their**
+   Team ID is enough. An App Store Connect API key (Users and Access →
+   Integrations) works too, and its `.p8` downloads exactly once.
 
 **Then build.** These env var names were read out of the Tauri CLI binary in
 `desktop/node_modules`, so they match the version this repo pins:
 
 ```bash
 cd desktop
-export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
-export APPLE_ID="you@example.com"
-export APPLE_PASSWORD="abcd-efgh-ijkl-mnop"   # app-specific password
-export APPLE_TEAM_ID="TEAMID"
-WBAI_APP_URL=https://your-domain npm run build
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Pacifica Foundation (TEAMID)"
+export APPLE_ID="you@example.com"            # your Apple ID, as a team member
+export APPLE_PASSWORD="abcd-efgh-ijkl-mnop"  # your app-specific password
+export APPLE_TEAM_ID="TEAMID"                # theirs
+STATION_URL=https://archive.wbai.org STATION_NAME="WBAI 99.5 FM Archive" \
+  npm run build -- --config stations/wbai.json
 ```
 
 The API-key alternative is `APPLE_API_KEY`, `APPLE_API_ISSUER` and
@@ -314,9 +375,13 @@ exactly like one that isn't finished yet.
 
 ## Notes for whoever builds it first
 
-- **`identifier`** is `io.github.catskill909.wbaiarchive`, deliberately not under
-  `org.wbai` — this is an unofficial client and shouldn't claim the station's
-  namespace.
+- **`identifier` lives in the station profile, not here.** The base config's
+  `org.example.stationarchive` is a placeholder that exists to be conspicuous;
+  `stations/wbai.json` sets `org.wbai.archive`. It moved out of the base config
+  when this became a per-station build — and it was `io.github.catskill909.*`
+  before that, when the app was an unofficial client with no station behind it.
+  **Check the station's existing Identifiers before adding a profile**, so a new
+  app doesn't collide with or contradict the convention their other apps use.
 - **`frontendDist` points at `../../public`** even though the window loads a
   remote URL and never reads those files. It keeps the config valid and leaves
   the door open to a bundled-assets variant. Harmless, ~1 MB.
