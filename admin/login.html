@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Studio · WBAI 99.5 FM</title>
+<!-- Nothing here should ever be indexed, previewed or linked. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#1c1615" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" href="/assets/icon-256.png">
+<!-- styles.css carries the design tokens the whole app shares; studio.css only
+     adds this page's layout. Both are version-stamped by the server. -->
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/studio.css">
+<!-- Applies a saved light/dark choice before the first paint. Same file the
+     listener app uses, so the studio inherits the theme the operator already
+     chose rather than flashing the system one at them. -->
+<script src="/theme-boot.js"></script>
+</head>
+<body class="studio-body studio-body--login">
+
+<!-- The same toggle as the dashboard and the listener app. On the login page it
+     is floated rather than in a bar: whoever is here has already decided what
+     they came for, and a whole app bar around one control would be furniture. -->
+<div class="studio-login-theme">
+  <button class="theme-btn" id="themeBtn" type="button" aria-label="Switch theme">
+    <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <mask id="themeMoonMask">
+        <rect x="-4" y="-4" width="32" height="32" fill="#fff"/>
+        <circle class="theme-icon-bite" cx="18" cy="7" r="8" fill="#000"/>
+      </mask>
+      <circle class="theme-icon-orb" cx="12" cy="12" r="9" mask="url(#themeMoonMask)"/>
+      <g class="theme-icon-rays">
+        <line x1="12" y1="1"    x2="12"   y2="3"/>
+        <line x1="12" y1="21"   x2="12"   y2="23"/>
+        <line x1="1"  y1="12"   x2="3"    y2="12"/>
+        <line x1="21" y1="12"   x2="23"   y2="12"/>
+        <line x1="4.2"  y1="4.2"  x2="5.7"  y2="5.7"/>
+        <line x1="18.3" y1="18.3" x2="19.8" y2="19.8"/>
+        <line x1="4.2"  y1="19.8" x2="5.7"  y2="18.3"/>
+        <line x1="18.3" y1="5.7"  x2="19.8" y2="4.2"/>
+      </g>
+    </svg>
+  </button>
+</div>
+
+<main class="studio-login">
+  <form class="studio-card studio-login-card" id="loginForm" autocomplete="on">
+    <h1 class="studio-login-title">
+      <span class="studio-login-station">WBAI 99.5 FM</span>
+      Studio
+    </h1>
+    <p class="studio-login-sub">Station tools. Not for air.</p>
+
+    <label class="studio-field">
+      <span class="studio-field-label">Password</span>
+      <input class="studio-input" id="password" type="password" name="password"
+             autocomplete="current-password" required autofocus
+             aria-describedby="loginError">
+    </label>
+
+    <button class="studio-btn studio-btn--primary" id="submit" type="submit">Enter</button>
+
+    <!-- aria-live so the failure is announced, not just drawn. Empty until
+         something goes wrong; a permanently-present empty alert is noise. -->
+    <p class="studio-error" id="loginError" role="alert" aria-live="polite" hidden></p>
+  </form>
+</main>
+
+<script src="/studio.js"></script>
+</body>
+</html>

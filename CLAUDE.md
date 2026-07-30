@@ -153,3 +153,19 @@ code that ran.
   the unmodified app in headless Chrome against a fake station. Run **both**
   `./run.sh` and `./run.sh --strict` — the strict pass is the one that catches
   autoplay-policy regressions.
+- `npm test` runs the two suites that need no browser: `test/storage/` (the
+  mount-probe parser) and `test/studio/` (the auth gate, against a real server
+  process). The browser suites are per-directory `./run.sh` scripts.
+- **Everything persisted lives under `DATA_DIR`** (default `./data`). Writes go
+  through `writeJsonAtomic` and are flushed on `SIGTERM` — if you add a new file
+  here, use `writeJsonSoon`/`writeJsonAtomic` rather than `fs.writeFileSync`, or
+  it will be lost on every redeploy and truncated by any crash.
+- **`/studio` is a password-gated station view** (`STUDIO_PASSWORD`; unset means
+  the routes do not exist). Its markup is in `admin/` — *deliberately* outside
+  `public/`, because anything under `public/` is served to anyone who asks and
+  would walk around the gate. Its CSS/JS are in `public/` and are inert without
+  a session. Read `docs/admin-page.md` before extending it; the phases and the
+  reasoning are all there.
+- **This repo is a template.** Other Pacifica stations deploy it with the same
+  tools, so prefer one env var over three, plain JSON over a database, and a
+  setting over a code edit. `.env.example` is the list; keep it current.

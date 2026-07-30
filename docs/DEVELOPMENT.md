@@ -24,6 +24,10 @@ for why the server exists, [DEPLOYMENT.md](DEPLOYMENT.md) for shipping it, and
 - Installs as a PWA: home-screen icon, standalone launch, category shortcuts.
 - Puts search, category and the open show in the URL, so views are linkable and
   the Back button closes the sheet.
+- Keeps its caches across a redeploy, and can prove it — see
+  [Durable storage](#durable-storage) below.
+- Offers a password-gated station view at `/studio`, off unless configured — see
+  [The studio](#the-studio).
 
 ## Setup
 
@@ -33,6 +37,9 @@ edit the files in `public/` and reload.
 ```bash
 npm start                 # → http://localhost:8080
 PORT=3000 npm start       # different port
+npm test                  # storage + studio suites (no browser needed)
+
+STUDIO_PASSWORD=local-dev-password npm start    # …with /studio enabled
 ```
 
 Nothing is minified, bundled, or transpiled. If you find yourself wanting a
@@ -49,7 +56,9 @@ zero-toolchain property is a feature of this project, not an accident.
 | `public/app.js` | All front-end logic, wrapped in one IIFE |
 | `public/manifest.webmanifest` | PWA metadata — name, icons, colors, `display` |
 | `public/data/shows-fallback.json` | Offline snapshot served when the upstream scrape fails |
-| `data/` | Runtime caches (`programs.json`, `showinfo.json`). Gitignored, rebuildable, safe to delete |
+| `public/studio.css`, `public/studio.js` | The studio's own layout and logic. Public files, inert without a session |
+| `admin/login.html`, `admin/studio.html` | The studio's markup. **Outside `public/` on purpose** — anything under `public/` is served to anyone who asks, which would walk straight around the password gate |
+| `data/` | Runtime caches (`feeds.json`, `programs.json`, `showinfo.json`) plus `.instance.json`. Set by `DATA_DIR`. Gitignored, rebuildable, safe to delete |
 
 `app.js` is organized into commented sections. In source order:
 
@@ -548,3 +557,59 @@ same day on UX grounds: the player bar is already the busiest strip in the app.
 anyone proposes it again, because two of its findings outlive the feature (what
 headless Chrome structurally cannot test, and why the Google Cast SDK is the
 wrong dependency for this repo).
+
+### Durable storage
+
+Everything the server persists lives under one directory, named by one env var:
+`DATA_DIR` (default `/app/data` in the image, `./data` locally). The three
+per-file overrides — `SHOWINFO_PATH`, `PROGRAMS_PATH`, `FEEDS_PATH` — still
+work, but nothing needs them.
+
+Three properties, all added on 2026-07-30 and all boring until the day they
+matter:
+
+- **Writes are atomic.** `writeJsonAtomic` writes a sibling `.tmp`, `fsync`s it,
+  then renames — atomic within a filesystem. A plain `writeFileSync` truncates
+  first, so a crash mid-write leaves valid-looking bytes that aren't valid JSON,
+  which `readJsonFile` then discards silently at the next boot.
+- **Pending writes are flushed on the way out.** `writeJsonSoon` debounces by
+  ten seconds with an unref'd timer, so before this a `SIGTERM` simply dropped
+  whatever was queued — on *every* Coolify redeploy. A `SIGTERM`/`SIGINT`/
+  `beforeExit` handler now flushes synchronously and re-raises the signal, so the
+  exit status stays 143.
+- **The volume can prove itself.** `.instance.json` gives the data directory an
+  identity. `/healthz` reports `mounted` (what the kernel says is attached at
+  `DATA_DIR` — answerable on the *first* deploy) and `instanceId` (unchanged
+  across two deploys = the same directory came back, which is the proof).
+
+Why this got attention: none of it is testable locally. `./data` is an ordinary
+directory with no container boundary, so every storage check passes by
+construction — see [admin-page.md](admin-page.md) §5.1, and CLAUDE.md §4.
+
+### The studio
+
+A password-gated station view at `/studio`. **Unset `STUDIO_PASSWORD` and it
+does not exist** — the routes are never registered, so the path falls through
+like any other unknown one rather than showing a login form to whoever scans for
+it. That is the default, and the right one for a template.
+
+- Sessions are a signed cookie (`HMAC-SHA256`), **no server-side store** — this
+  app's persistence was unreliable for months, and a session table on a volume
+  that may not be mounted would sign people out at random. The key derives from
+  the password, so rotating it revokes every session at once. The cost, accepted
+  and pinned by a test: signing out clears your browser but cannot invalidate a
+  cookie already copied off a device.
+- Login is rate limited per `X-Forwarded-For` hop, with exponential backoff after
+  two free tries. Reading the socket address instead would bucket the whole
+  internet behind Traefik into one counter.
+- `POST` is opened for the two auth routes only; everything else still 405s.
+- Studio responses are `private, no-store` + `Vary: Cookie`.
+- The pages share `styles.css` and `theme-boot.js` with the listener app, which
+  is why the theme toggle and both palettes work with no extra code. `studio.css`
+  is layout only — every colour is a token. Adding a colour literal there breaks
+  the theming; don't.
+
+`test/studio/studio-tests.js` drives a real server process (`npm test`). Per
+CLAUDE.md §3a every refusal is paired with the same request *succeeding* under a
+valid session — a suite of pure refusals passes perfectly once the probe goes
+blind.

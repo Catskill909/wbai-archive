@@ -1,5 +1,5 @@
 # WBAI Archive — single-stage, zero-dependency Node image.
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Run as the unprivileged built-in "node" user.
 WORKDIR /app
@@ -8,6 +8,11 @@ WORKDIR /app
 COPY package.json ./
 COPY server.js ./
 COPY public ./public
+
+# The studio's HTML. Deliberately NOT under public/ — anything in that directory
+# is served to anyone who asks, which would let /studio.html walk straight around
+# the password gate. Only an authenticated route ever reads these.
+COPY admin ./admin
 
 # Starting set for the show-info cache. Kept outside /app/data because a mounted
 # volume shadows the image's copy of that directory — the server merges this in

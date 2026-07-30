@@ -1,0 +1,314 @@
+/* Studio — layout only.
+ *
+ * Every colour, font and elevation here is a token from styles.css, which this
+ * page loads first. That is the whole reason the studio looks like the app
+ * without duplicating it, and why the theme toggle needs no extra work: the
+ * tokens are already redefined four times over there (dark default, the
+ * prefers-color-scheme:light query, and both explicit [data-theme] overrides),
+ * so anything expressed in tokens follows the theme for free.
+ *
+ * Adding a colour literal to this file breaks that. Don't.
+ */
+
+.studio-body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--ink);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ---------------------------------------------------------------- app bar */
+
+.studio-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--outline);
+  /* The bar sits under the browser's own chrome; theme-boot.js keeps the
+     theme-color meta equal to --surface-1 so there is no seam across the top. */
+  padding: 0 var(--page-gutter);
+  padding-top: env(safe-area-inset-top);
+}
+
+.studio-bar-inner {
+  max-width: 60rem;
+  margin: 0 auto;
+  min-height: 3.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.studio-brand {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.studio-brand-station {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  white-space: nowrap;
+}
+
+.studio-bar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ------------------------------------------------------------------ main */
+
+.studio-main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.5rem var(--page-gutter) 4rem;
+  display: grid;
+  gap: 1.5rem;
+}
+
+/* One column below ~52rem, two above. A dashboard of small fact tables reads
+   badly as a single tall column on a wide screen and badly as two squeezed
+   ones on a phone; there is no third case worth a breakpoint. */
+@media (min-width: 52rem) {
+  .studio-main { grid-template-columns: 1fr 1fr; align-items: start; }
+  .studio-section:first-child { grid-column: 1 / -1; }
+}
+
+.studio-section {
+  background: var(--surface-1);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  box-shadow: var(--elev-1);
+  padding: 1.15rem 1.25rem 1.35rem;
+}
+
+.studio-h2 {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.studio-note {
+  margin: 0 0 0.9rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--ink-faint);
+  max-width: 46ch;
+}
+
+/* --------------------------------------------------------------- verdict */
+
+/* The one element on the page meant to be readable from across a room. It
+   carries meaning by colour AND by wording — the text says what happened, so
+   the colour is reinforcement rather than the only signal. */
+.studio-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid var(--outline);
+  background: var(--surface-2);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  margin-bottom: 1.1rem;
+}
+
+.studio-verdict-dot {
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-top: 0.36rem;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+
+.studio-verdict[data-state="good"] { background: var(--good-bg); border-color: transparent; }
+.studio-verdict[data-state="good"] .studio-verdict-dot { background: var(--good); }
+.studio-verdict[data-state="warn"] { background: var(--warn-bg); border-color: transparent; }
+.studio-verdict[data-state="warn"] .studio-verdict-dot { background: var(--warn); }
+.studio-verdict[data-state="bad"]  { background: var(--danger-bg); border-color: transparent; }
+.studio-verdict[data-state="bad"] .studio-verdict-dot { background: var(--danger); }
+
+/* ----------------------------------------------------------------- facts */
+
+.studio-facts {
+  margin: 0;
+  display: grid;
+  /* Label column sized to content but capped, so the values still line up when
+     one label is much longer than the rest. */
+  grid-template-columns: minmax(6rem, max-content) 1fr;
+  gap: 0.4rem 1rem;
+  font-size: 0.9rem;
+}
+
+.studio-fact-key {
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.studio-fact-val {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--ink);
+  /* Instance ids, volume names and data dirs are long and unbreakable. Let them
+     wrap anywhere rather than push the page into a horizontal scroll. */
+  overflow-wrap: anywhere;
+}
+
+.studio-fact-val.is-bad { color: var(--danger); }
+
+/* --------------------------------------------------------------- buttons */
+
+.studio-btn {
+  font: inherit;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--outline-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  /* 44px minimum touch target — the same rule the listener app follows. */
+  min-height: 2.75rem;
+}
+
+.studio-btn:hover { background: var(--surface-3); }
+.studio-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Keyboard focus must be visible on its own, not inferred from the hover
+   colour — the accessibility bar the rest of the app is held to. */
+.studio-btn:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+.studio-btn--primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 600;
+  width: 100%;
+}
+.studio-btn--primary:hover { filter: brightness(1.08); }
+
+.studio-btn--quiet { background: transparent; }
+
+/* ------------------------------------------------------------------ login */
+
+.studio-login {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem var(--page-gutter);
+}
+
+/* Top-right, clear of the notch on a phone. Absolute rather than in the grid so
+   it cannot shift the card off centre. */
+.studio-login-theme {
+  position: absolute;
+  top: calc(0.75rem + env(safe-area-inset-top));
+  right: calc(0.75rem + env(safe-area-inset-right));
+}
+
+.studio-login-card {
+  width: 100%;
+  max-width: 22rem;
+  background: var(--surface-1);
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  box-shadow: var(--elev-2);
+  padding: 1.75rem 1.5rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.studio-login-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.studio-login-station {
+  display: block;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: var(--ink-faint);
+  margin-bottom: 0.15rem;
+}
+
+.studio-login-sub {
+  margin: -0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+}
+
+.studio-field { display: grid; gap: 0.35rem; }
+
+.studio-field-label {
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.studio-input {
+  font: inherit;
+  /* 16px minimum, or iOS zooms the whole page on focus — the same reason the
+     listener app pins its input sizes. */
+  font-size: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--outline-strong);
+  background: var(--surface-0);
+  color: var(--ink);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.studio-input:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.studio-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--danger);
+  line-height: 1.4;
+}
+
+/* Honour a reduced-motion preference the same way the rest of the app does. */
+@media (prefers-reduced-motion: reduce) {
+  .studio-btn, .studio-btn--primary:hover { transition: none; }
+}

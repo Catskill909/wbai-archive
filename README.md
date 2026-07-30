@@ -89,7 +89,8 @@ attack surface at zero.
 | `GET /api/showinfo` | Richer per-show records harvested from the on-air feed over time  | 1 min  |
 | `GET /api/showinfo/<altid>` | One show, resolved on demand from archive2's per-show endpoint — works for any show, not just what's on air | 1 hr |
 | `GET /pix/<file>`  | Image proxy for show artwork (allow-listed `*_med_*.jpg` names)    | 1 day  |
-| `GET /healthz`     | Health check for the container / load balancer, plus the bundle version, boot-time storage facts (`storage.showinfoOnDisk` tells you whether a persistent volume is really mounted) and feed state (`feeds.held: 0` with `lastHarvest` set is the one condition that empties the listing) | —      |
+| `GET /studio`      | Password-gated station view. **Only exists when `STUDIO_PASSWORD` is set** — otherwise the route is never registered and the path falls through like any other unknown one | — |
+| `GET /healthz`     | Health check for the container / load balancer, plus the bundle version, storage identity (`storage.mounted` and `storage.instanceId` are what tell you a persistent volume is really mounted — see below) and feed state (`feeds.held: 0` with `lastHarvest` set is the one condition that empties the listing) | —      |
 
 All upstream responses are cached in memory; if an upstream is briefly down, the
 last good response (or a shipped snapshot at `public/data/shows-fallback.json`)
@@ -101,12 +102,23 @@ usually gets a bodiless 304. There is no build step and so no content-hashed
 filenames, which makes a plain `max-age` on `app.js` a correctness bug rather
 than an optimisation. Files under `/assets/` keep a real one-day TTL.
 
-The two show-info caches also persist to `data/` (`programs.json`, `showinfo.json`)
-so a restart doesn't start cold. That directory is a **cache, never a source of
-truth** — delete it and the server rebuilds it from WBAI. If the path isn't
-writable the server logs one line and runs memory-only. `docker-compose.yml`
-mounts a named volume there; override the paths with `PROGRAMS_PATH` /
-`SHOWINFO_PATH`.
+Everything the server persists lives under one directory, named by one env var:
+**`DATA_DIR`** (default `/app/data` in the image, `./data` locally). It holds the
+feed, program and show-info caches — a **cache, never a source of truth**; delete
+it and the server rebuilds it from WBAI. If the path isn't writable the server
+logs one line and runs memory-only.
+
+Writes are atomic (temp file + `fsync` + rename) and pending writes are flushed
+on `SIGTERM`, so a redeploy cannot truncate a file or drop the last few seconds
+of harvest.
+
+**Whether a volume is really mounted is a question you ask the server, not one
+you infer.** `/healthz` reports `storage.mounted` (what the kernel says is
+attached at `DATA_DIR` — readable on the very first deploy) and
+`storage.instanceId` (unchanged across two deploys means the same directory came
+back, which is the only thing that proves persistence). Declaring a volume in
+`docker-compose.yml` is *not* proof — Coolify has been observed ignoring it. See
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Run locally
 
@@ -118,7 +130,16 @@ npm start
 # open http://localhost:8080
 ```
 
-Override the port with `PORT=3000 npm start`.
+Override the port with `PORT=3000 npm start`. Run the browser-free suites with
+`npm test`. To try the station view locally:
+
+```bash
+STUDIO_PASSWORD=local-dev-password npm start   # → http://localhost:8080/studio
+```
+
+Every setting has a working default; [`.env.example`](.env.example) is the full
+list. This repo is used as a **template by other Pacifica stations**, so
+configuration is deliberately one env var per decision rather than a code edit.
 
 ## Run with Docker
 
@@ -199,18 +220,24 @@ can't be verified in a desktop devtools viewport.
 .
 ├── server.js                     # zero-dependency Node server (static + proxies)
 ├── package.json                  # metadata + start script (no dependencies)
-├── Dockerfile                    # node:20-alpine, runs as non-root
+├── Dockerfile                    # node:24-alpine, runs as non-root
 ├── docker-compose.yml            # local + Coolify compose reference
 ├── public/
 │   ├── index.html                # markup
 │   ├── styles.css                # all styles (design tokens, light/dark)
 │   ├── app.js                    # front-end logic (API, players, Media Session)
 │   ├── manifest.webmanifest      # PWA metadata (name, icons, colors, display)
+│   ├── studio.css, studio.js     # the studio's layout and logic (inert without a session)
 │   ├── assets/                   # station logo (header.png) + app icon
 │   └── data/shows-fallback.json  # offline snapshot fallback
-├── data/                         # runtime caches (gitignored, rebuildable)
+├── admin/                        # the studio's markup — NOT under public/, which
+│   ├── login.html                #   is served to anyone; these need a session
+│   └── studio.html
+├── data/                         # DATA_DIR: runtime caches (gitignored, rebuildable)
+│   ├── feeds.json                # per-show podcast XML, cached
 │   ├── programs.json             # wbai.org program directory
-│   └── showinfo.json             # records harvested from the on-air feed
+│   ├── showinfo.json             # records harvested from the on-air feed
+│   └── .instance.json            # volume identity, so persistence can be proven
 ├── seed/                         # committed, shipped in the image
 │   └── showinfo.json             # starting set for the harvest above (npm run seed)
 ├── desktop/                      # Tauri shell (optional; the only build step)
@@ -226,11 +253,14 @@ can't be verified in a desktop devtools viewport.
 │   ├── to-top/                   # back-to-top show/hide, geometry, hit tests
 │   ├── ui/                       # listing, rows, reload, clock
 │   ├── share/                    # Open Graph / share cards (no browser)
+│   ├── storage/                  # mount-probe parser (no browser)
+│   ├── studio/                   # the /studio auth gate (no browser)
 │   └── feed-scan/                # upstream feed drift vs a stored snapshot
 └── docs/
     ├── ARCHITECTURE.md           # how the server and proxies fit together
     ├── DEVELOPMENT.md            # code map, conventions, each built feature
     ├── ROADMAP.md                # what doesn't exist yet
+    ├── admin-page.md             # the studio: design, phases, storage rules
     ├── TAURI.md                  # desktop build steps
     ├── casting-dev.md            # Cast/AirPlay: built, removed, and why
     ├── google-tv.md              # what a native TV app would cost (research)

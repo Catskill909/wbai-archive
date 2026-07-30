@@ -1,8 +1,9 @@
 # The Studio — a private view for the people who run this thing
 
-**Status: proposal.** Nothing here is built. Per [ROADMAP.md](ROADMAP.md)'s rule,
-this file describes intent; only [DEVELOPMENT.md](DEVELOPMENT.md) describes what
-works.
+**Status: Phases 1b and 1 are built and verified (2026-07-30). Phases 2–5 are
+still proposals.** Per [ROADMAP.md](ROADMAP.md)'s rule this file describes
+intent, so treat everything below Phase 1 as a plan rather than a description —
+each phase says which it is.
 
 Five decisions are already made and everything below assumes them:
 
@@ -413,37 +414,95 @@ plan only promises not to make that job harder:
 Each phase ends in something that can be deployed and verified. Nothing later
 is a prerequisite for anything earlier.
 
-### Phase 1 — the gate (nothing to look at yet)
+### Phase 1 — the gate — **BUILT 2026-07-30**
 
-Ship the auth shell and prove it, with a deliberately boring page behind it:
-version string, uptime, storage diagnostics. Resist building the dashboard here.
+The auth shell, with a deliberately plain page behind it. The dashboard is
+Phase 2; what is there now is storage, content counts, harvest health and build
+info — enough to prove a session works, and it happens to render the storage
+verdict Phase 1b just earned.
 
-**Deliverables**
-- `admin/studio.html` (dashboard shell) and `admin/login.html`, both outside `public/`.
-- `public/studio.css`, `public/studio.js` — served normally, useless without a session.
-- Auth module in `server.js`: env vars, timing-safe compare, HMAC cookie, rate limiter, the five routes in §3.4.
-- Narrow `POST` allowance (constraint #1); studio-safe cache headers (#6).
-- **`stampAssets()` generalised** so `studio.css` / `studio.js` are version-stamped (#4).
-- `appVersion()` extended, or a second stamp — a studio-only change must be visible on `/healthz`.
-- Theme toggle on the studio pages, reusing `window.WBAITheme`.
-- DEPLOYMENT.md: the new env vars, and how to set them in Coolify.
+**Built**
+- ✅ `admin/studio.html` + `admin/login.html`, outside `public/`, read only by an
+  authenticated route. `COPY admin ./admin` added to the Dockerfile — without it
+  the studio would have 500'd in production while working perfectly locally.
+- ✅ `public/studio.css`, `public/studio.js`. The CSS is layout only; every
+  colour comes from a `styles.css` token, which is why both themes and the
+  toggle work with no extra code.
+- ✅ Auth in `server.js`: env vars, `timingSafeEqual` over hashed inputs, HMAC
+  session cookie, rate limiter, the five routes in §3.4.
+- ✅ Narrow `POST` allowance — the two auth routes only; everything else still
+  405s (constraint #1). Studio-safe headers: `private, no-store` + `Vary: Cookie`
+  (#6).
+- ✅ **`stampAssets()` generalised** to a regex over all local `.css`/`.js`
+  references (#4). It was three hardcoded filenames, which worked exactly until
+  someone added a fourth — and the fourth would have been the newest code in the
+  repo, silently exempt from the guarantee that exists because staleness cost
+  this project the most time of any bug class.
+- ✅ `studioVersion` on `/healthz`, separate from `version`. Folding it in would
+  have made DEPLOYMENT.md's "the version must change or the old image is still
+  serving" rule fire falsely on every studio-only deploy.
+- ✅ `/healthz` deliberately does **not** report whether the studio is enabled —
+  it is a public endpoint and there is no reason to hand a scanner the path.
+- ✅ Theme toggle reusing `window.WBAITheme`, same markup as the listener app —
+  **on both pages**, including the login screen. The brief asked for the app's
+  own light/dark control; a door that can't be switched is not that.
+- ✅ Polling stops while the tab is hidden and refreshes on return. A studio left
+  open overnight would otherwise make ~2,900 requests nobody reads.
+- ✅ `:focus-visible` on the studio buttons — the accessibility bar the rest of
+  the app is held to.
+- ✅ `.env.example`, DEPLOYMENT.md, DEVELOPMENT.md, README.md and CLAUDE.md §5
+  updated. DEVELOPMENT.md matters specifically: the repo's rule is that it
+  documents only what is built and working, and as of today that includes
+  durable storage and the studio.
 
-**Definition of done**
-- `STUDIO_PASSWORD` unset → `/studio` is indistinguishable from an unknown path.
-- Wrong password → 401, and the 6th attempt is measurably slower than the 1st.
-- Forged/expired/truncated cookie → 401 from `/api/studio/*`.
-- `admin/studio.html` is **not** reachable by any path through `serveStatic`.
-- Editing `studio.js` changes the version reported by `/healthz`.
-- Server restarted and verified per CLAUDE.md §2 (`node --check`, kill, restart, `curl /healthz`).
+**Verified** — `test/studio/studio-tests.js`, 35 assertions against a real server
+process, all passing:
+- Disabled: `/studio` serves the listener app, `/api/studio/*` is not a studio
+  response, `POST /api/studio/login` is a plain 405, `/healthz` says nothing.
+- Enabled: login page served, assets stamped, `no-store` + `Vary: Cookie`.
+- Refused: no cookie, wrong password, empty body, tampered signature, expired
+  session, session signed with the wrong secret, unsigned session.
+- `admin/*.html` unreachable via five path shapes including `..` traversal.
+- Rate limiting asserted by effect (a `Retry-After` appears, and the *correct*
+  password is refused while locked) rather than by reading a counter.
+- `PUT` to the login route and `POST` to `/api/archive` are both still 405.
+- Rendered in headless Chrome, both themes and at 390px: no CSP violations, no
+  console errors, no horizontal scroll, login → dashboard through the real form.
+
+**Two things the tests did not catch, and what fixed them**
+
+1. The studio sent `storageDiag` wholesale and rendered **"undefined feeds"** to
+   the operator: `feedsOnDisk` lives on `feedsDiag`, and only `/healthz` knew to
+   fetch it. Every test passed — JSON omits an undefined key, so absence looks
+   like nothing at all. A screenshot found it in one second. Fixed at the class
+   level with a single `storageReport()` used by both endpoints, plus a test
+   that names each expected key and one that asserts the two endpoints report
+   *identical* key sets.
+2. Nothing here is provable by asserting structure. That is what §3a is about,
+   and it is why the suite pairs every refusal with the same request succeeding
+   under a valid session.
+
+**One accepted limitation, pinned by a test rather than left to be discovered:**
+sessions are stateless, so signing out clears the browser's cookie but cannot
+invalidate a value already copied off a device — it stays valid until it
+expires. That is the price of having no session store, which is deliberate
+(§3.2: this app's storage was unreliable for months). Rotating
+`STUDIO_PASSWORD` revokes everything at once and is the documented path.
+
+**Still to do on the deployment:** set `STUDIO_PASSWORD` in Coolify. Until then
+production behaves exactly as if the feature does not exist, which is the
+intended default.
 
 **Tests** — new `test/studio/` suite: unset-env behaviour, wrong password, backoff, cookie forgery, expiry, logout, direct-file-path probe, and a 401-on-every-API-route sweep. Per §3a, include one test that *strips* the cookie mid-session and requires the probe to notice — an auth suite that can't see failure is worse than none.
 
-### Phase 1b — durable storage — **CODE SHIPPED 2026-07-30; COOLIFY HALF OUTSTANDING**
+### Phase 1b — durable storage — **DONE, both halves, 2026-07-30**
 
 Built first, ahead of the gate, because it makes the template deployable and
-Phase 5 is unsafe without it. The local list below is done and verified. **The
-Coolify list is not, and per §5.1 that means the phase is not finished** — the
-mount has to be added in the Storages UI and confirmed across two deploys.
+Phase 5 is unsafe without it. Local *and* production verified — and per §5.1 it
+is the production half that made it finished. **The volume at
+`wbai.supersoul.top` now demonstrably persists across deploys**, for the first
+time since the problem was recorded on 2026-07-26. Evidence in the Coolify
+checklist below.
 
 - ✅ `DATA_DIR` env var; `SHOWINFO_PATH` / `PROGRAMS_PATH` / `FEEDS_PATH` derived
   from it and kept as overrides (§5.2). Plus `STATION_ID`, stamped into
@@ -495,15 +554,28 @@ failure mode this whole section exists to prevent.
   recovered from the seed, file rewritten valid. No stray `.tmp` left anywhere.
 - `DATA_DIR=<tmp>` put everything there and nothing in `./data`.
 
-*Coolify — proves the storage, and nothing above substitutes for it. **Not yet
-done; this is what is left of Phase 1b**:*
-- Persistent Storage added in the **Storages** UI: Volume Mount, name
-  `wbai-archive-data`, path `/app/data` (§5.3).
-- Deploy. `curl -s https://<host>/healthz` — `storage.mounted` is `true` and
-  `storage.volume` is `wbai-archive-data`, not 64 hex characters. If this fails,
-  stop here; it is already broken and no amount of waiting will change it.
-- Deploy again. `storage.instanceId` is **the same string as before**, and
-  `freshVolume` is `false`. That is the proof.
+*Coolify — proves the storage, and nothing above substitutes for it. All ✅ on
+`wbai.supersoul.top`, 2026-07-30:*
+- ✅ Persistent Storage added in the **Storages** UI: Volume Mount, path
+  `/app/data` (§5.3). Coolify prefixes the name with the resource id, so it
+  appears as `ug084sokwwsw08gowoo08ogs-wbai-archive-data` — still a *named*
+  volume, which is the only thing that matters.
+- ✅ Deploy 1: `mounted:true`, `anonymousVolume:false`. The first-deploy check
+  earned its keep — this is the reading that would have failed instantly, and
+  visibly, under the old anonymous-volume bug.
+- ✅ Deploy 2: `instanceId` **identical** (`0f623981-b387-4b60-a048-db9efdbcf1a1`
+  both times), `freshVolume:false`, `persistedSince` predating boot 2 by 231s.
+- ✅ Corroborating, and not something a marker could fake: `showinfoOnDisk`
+  0 → 49 and `feedsOnDisk` 0 → 122 across the two boots. Real cached data came
+  back.
+
+**An unplanned dividend.** Deploy 2 reported `notModified: 122` — every one of
+the 122 feeds answered `304 Not Modified`, because the `lastModified` values
+cached on the volume survived the deploy. Before this, each deploy re-downloaded
+all 122 feeds in full. WBAI runs a small Apache, which `FEED_CONCURRENCY`'s
+comment in `server.js` is already careful about; persistence turns every future
+deploy from 122 downloads into 122 conditional requests. The volume was framed
+as protecting *our* data. It also stops us hammering theirs.
 
 ### Phase 2 — the content dashboard (the mini app)
 

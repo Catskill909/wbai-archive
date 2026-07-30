@@ -23,6 +23,14 @@ does this for you.
    - `DATA_DIR` — **the only storage setting.** Everything the server persists
      lives under it, and it is the same string as the mount path in step 5.
      Defaults to `/app/data`; leave it alone.
+   - `STUDIO_PASSWORD` — enables the station view at `/studio`. **Leave it unset
+     and the feature does not exist**: the routes are never registered, so
+     `/studio` falls through like any other unknown path rather than showing a
+     login form to anyone who scans for one. Use 12+ characters. Rotating it
+     signs everyone out, which is the only revocation there is — see
+     [admin-page.md](admin-page.md) §3.
+   - `STUDIO_SECRET` / `STUDIO_SESSION_HOURS` — optional; see
+     [`.env.example`](../.env.example).
    - `NODE_ENV=production` — already set in the image.
    - `SEED_PATH` — the read-only starting set merged into the show-info cache at
      boot; default `/app/seed/showinfo.json`. Lives outside `DATA_DIR` on
@@ -214,6 +222,13 @@ A production count far below the seed's means the seed didn't ship — check tha
 Refresh the seed from a long-running instance with `npm run seed`, then commit.
 
 ### Coolify ignores the compose `volumes:` block
+
+> **RESOLVED on `wbai.supersoul.top`, 2026-07-30.** Adding Persistent Storage in
+> the Storages UI (step 5) fixed it. Two consecutive deploys reported the same
+> `storage.instanceId` with `freshVolume:false`, and `showinfoOnDisk`/
+> `feedsOnDisk` came back at 49/122 rather than 0/0. The history below is kept
+> because the diagnosis is the reusable part — every station standing up this
+> template will meet the same trap.
 
 **Confirmed on `wbai.supersoul.top`, 2026-07-26.** `docker-compose.yml` declares
 `wbai-data:/app/data`, but after a redeploy `/healthz` reported:

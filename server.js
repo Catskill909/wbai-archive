@@ -937,6 +937,33 @@ const INSTANCE_PATH = path.join(DATA_DIR, '.instance.json');
   }
 })();
 
+/**
+ * The storage report, in one place because it has two consumers — public
+ * /healthz and the studio — and they must not drift.
+ *
+ * They already did, immediately: the studio sent `storageDiag` wholesale and so
+ * reported "undefined feeds", because `feedsOnDisk` lives on feedsDiag and only
+ * /healthz knew to go and get it. The tests missed it (they assert the fields
+ * exist, and a missing field is simply absent from JSON); a screenshot of the
+ * rendered page caught it in a second. Hence one function.
+ */
+function storageReport() {
+  return {
+    dataDir: storageDiag.dataDir,
+    writable: storageDiag.writable,
+    mounted: storageDiag.mounted,
+    volume: storageDiag.volume,
+    anonymousVolume: storageDiag.anonymousVolume,
+    instanceId: storageDiag.instanceId,
+    persistedSince: storageDiag.persistedSince,
+    bootedAt: storageDiag.bootedAt,
+    freshVolume: storageDiag.freshVolume,
+    showinfoOnDisk: storageDiag.showinfoOnDisk,
+    showinfoNow: Object.keys(showInfo).length,
+    feedsOnDisk: feedsDiag.onDisk,
+  };
+}
+
 // One line in the log that answers "where is this station's data and is it
 // sticking?" — the question every new deploy of this template raises, and the
 // one nobody knows to go looking for until it has already cost them.
@@ -1487,14 +1514,31 @@ function fileVer(relFromPublic) {
 function appVersion() {
   return `${fileVer('/app.js')}.${fileVer('/styles.css')}.${fileVer('/theme-boot.js')}`;
 }
+// The studio's own assets, reported separately rather than folded into
+// appVersion(). A studio-only change must be visible on /healthz — otherwise
+// "the version didn't move, so the old image is still serving" (the rule in
+// DEPLOYMENT.md) would fire falsely on every studio deploy. Keeping them apart
+// also leaves appVersion()'s meaning — the listener bundle — unchanged.
+function studioVersion() {
+  return `${fileVer('/studio.js')}.${fileVer('/studio.css')}`;
+}
+
+/**
+ * Version-stamp every local stylesheet and script reference in an HTML document.
+ *
+ * This used to be three literal string replacements, one per known file, which
+ * worked precisely as long as nobody added a fourth. The studio adds two, and a
+ * missed stamp is not a small bug here: it is the never-stale guarantee (§1 of
+ * CLAUDE.md) silently not applying to the newest code in the repo — the exact
+ * failure that has cost this project the most time.
+ *
+ * Only same-origin paths are touched. An absolute URL does not start with `/`,
+ * so it never matches, and a path that already carries a query is skipped
+ * rather than double-stamped.
+ */
+const LOCAL_ASSET_RE = /(href|src)="(\/[A-Za-z0-9._\/-]+\.(?:css|js))"/g;
 function stampAssets(html) {
-  return html
-    .replace('href="/styles.css"', `href="/styles.css?v=${fileVer('/styles.css')}"`)
-    .replace('src="/app.js"', `src="/app.js?v=${fileVer('/app.js')}"`)
-    // theme-boot.js blocks the parser in <head>; a stale copy would mean the
-    // wrong theme on the first paint, which is exactly the class of bug the
-    // stamping exists to prevent.
-    .replace('src="/theme-boot.js"', `src="/theme-boot.js?v=${fileVer('/theme-boot.js')}"`);
+  return html.replace(LOCAL_ASSET_RE, (m, attr, file) => `${attr}="${file}?v=${fileVer(file)}"`);
 }
 
 // ------------------------------------------------- link previews (OpenGraph)
@@ -1632,15 +1676,289 @@ function sendJson(res, obj, status = 200, cacheSeconds = 0) {
   res.end(JSON.stringify(obj));
 }
 
+// -------------------------------------------------------------- the studio
+/**
+ * A password-gated area at /studio for the people who run the station. See
+ * docs/admin-page.md for the whole design; the load-bearing decisions are:
+ *
+ *   - **Unset password means the feature does not exist.** Not "returns 403" —
+ *     the routes are not registered at all, so /studio falls through to the
+ *     normal SPA fallback and is indistinguishable from any other unknown path.
+ *     That is the right default for a template other stations fork, and it
+ *     means a misconfigured deploy leaks nothing, not even the existence of a
+ *     login form.
+ *   - **Sessions are a signed cookie, with no server-side store.** This app's
+ *     persistence was unreliable for months (CLAUDE.md §4) and a session table
+ *     on a volume that may not be mounted would log people out at random.
+ *     Recomputing an HMAC needs no storage and survives a restart.
+ *   - **The key is derived from the password** unless STUDIO_SECRET overrides
+ *     it, which buys revocation for free: changing the password invalidates
+ *     every live session. With one shared password and no user list, that is
+ *     the only revocation mechanism there is, so it should be the obvious one.
+ */
+const STUDIO_PASSWORD = process.env.STUDIO_PASSWORD || '';
+const STUDIO_ENABLED = STUDIO_PASSWORD.length > 0;
+const STUDIO_SESSION_HOURS = Number(process.env.STUDIO_SESSION_HOURS) || 12;
+const STUDIO_DIR = path.join(__dirname, 'admin');
+const STUDIO_COOKIE = 'studio';
+
+// Domain-separated so this key can never collide with some other use of the
+// same secret later.
+const studioKey = crypto.createHash('sha256')
+  .update('wbai-studio-session\0' + (process.env.STUDIO_SECRET || STUDIO_PASSWORD))
+  .digest();
+
+if (STUDIO_ENABLED && STUDIO_PASSWORD.length < 12) {
+  // Loud, because a short shared password on a public URL is the whole security
+  // model failing quietly. Not fatal: refusing to boot would take the listener
+  // app down over an admin setting, which is a worse trade.
+  console.warn(`[studio] STUDIO_PASSWORD is ${STUDIO_PASSWORD.length} characters. ` +
+    'Use 12+ — this is one shared secret on a public URL.');
+}
+console.log(STUDIO_ENABLED
+  ? `[studio] enabled at /studio (sessions last ${STUDIO_SESSION_HOURS}h)`
+  : '[studio] disabled — set STUDIO_PASSWORD to enable');
+
+/** Constant-time compare of two strings of any length. Hashing first equalises
+ *  the lengths, so this leaks neither the password nor how long it is. */
+function secretEquals(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a)).digest();
+  const hb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+function studioSign(exp) {
+  return crypto.createHmac('sha256', studioKey).update(String(exp)).digest('base64url');
+}
+
+function studioIssue() {
+  const exp = Date.now() + STUDIO_SESSION_HOURS * 3600 * 1000;
+  return `${exp}.${studioSign(exp)}`;
+}
+
+function studioValid(raw) {
+  if (!raw || typeof raw !== 'string') return false;
+  const dot = raw.indexOf('.');
+  if (dot < 1) return false;
+  const exp = Number(raw.slice(0, dot));
+  if (!Number.isFinite(exp) || exp <= Date.now()) return false;
+  // Compare through the same hashing helper: the signature is attacker-supplied,
+  // so a naive === would leak how many leading bytes were right.
+  return secretEquals(raw.slice(dot + 1), studioSign(exp));
+}
+
+function parseCookies(header) {
+  const out = {};
+  (header || '').split(';').forEach((part) => {
+    const eq = part.indexOf('=');
+    if (eq < 1) return;
+    out[part.slice(0, eq).trim()] = decodeURIComponent(part.slice(eq + 1).trim());
+  });
+  return out;
+}
+
+function studioAuthed(req) {
+  return STUDIO_ENABLED && studioValid(parseCookies(req.headers.cookie)[STUDIO_COOKIE]);
+}
+
+/**
+ * Login rate limiting.
+ *
+ * One shared password is guessable at volume, so the login route needs a brake.
+ * In memory on purpose: it resets on restart (acceptable) and adds no storage
+ * dependency (important — see the note about sessions above).
+ *
+ * The client address comes from X-Forwarded-For, which is only trustworthy
+ * because this app is always deployed behind a proxy that sets it (Coolify's
+ * Traefik). Read directly from the socket instead and every request on
+ * production would look like it came from the proxy, bucketing the entire
+ * internet into one counter — one attacker could then lock out everybody.
+ */
+const loginFails = new Map();   // ip -> { n, until }
+const LOGIN_FREE_TRIES = 2;     // typos shouldn't cost a wait
+const LOGIN_MAX_WAIT_MS = 15 * 60 * 1000;
+
+function clientIp(req) {
+  const xff = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xff || req.socket.remoteAddress || 'unknown';
+}
+
+function loginWaitMs(ip) {
+  const rec = loginFails.get(ip);
+  if (!rec) return 0;
+  return Math.max(0, rec.until - Date.now());
+}
+
+function noteLoginFail(ip) {
+  const rec = loginFails.get(ip) || { n: 0, until: 0 };
+  rec.n++;
+  const over = Math.max(0, rec.n - LOGIN_FREE_TRIES);
+  rec.until = Date.now() + (over ? Math.min(2 ** over * 1000, LOGIN_MAX_WAIT_MS) : 0);
+  loginFails.set(ip, rec);
+  // An unbounded map keyed by attacker-controlled input is a memory-exhaustion
+  // vector, so prune expired entries once it gets large.
+  if (loginFails.size > 5000) {
+    const now = Date.now();
+    for (const [k, v] of loginFails) if (v.until <= now) loginFails.delete(k);
+  }
+}
+
+/** Read a small request body, refusing anything larger. The login route is the
+ *  only thing in this server that accepts a body at all. */
+function readBody(req, limit = 2048) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) { req.destroy(); return reject(new Error('body too large')); }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+// Studio responses must never be cached by a browser, a back-button, or
+// Traefik. `Vary: Cookie` says the response depends on who is asking, which is
+// what makes a shared cache safe even in principle.
+function sendStudioJson(res, obj, status = 200, extraHeaders = {}) {
+  const body = Buffer.from(JSON.stringify(obj), 'utf8');
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': body.length,
+    'Cache-Control': 'private, no-store',
+    'Vary': 'Cookie',
+    ...securityHeaders(),
+    ...extraHeaders,
+  });
+  res.end(body);
+}
+
+function sendStudioHtml(req, res, file) {
+  fs.readFile(path.join(STUDIO_DIR, file), 'utf8', (err, html) => {
+    if (err) {
+      console.error(`[studio] cannot read ${file}:`, err.message);
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      return res.end('studio unavailable');
+    }
+    // stampAssets, so the studio's own CSS/JS get the same never-stale
+    // guarantee the listener app has. Without it these files sit in the browser
+    // cache under a stable name — CLAUDE.md §1, the most expensive bug here.
+    const body = Buffer.from(stampAssets(html), 'utf8');
+    res.writeHead(200, {
+      'Content-Type': MIME['.html'],
+      'Content-Length': body.length,
+      'Cache-Control': 'private, no-store',
+      'Vary': 'Cookie',
+      'X-App-Version': appVersion(),
+      ...securityHeaders(),
+    });
+    res.end(body);
+  });
+}
+
+async function studioPost(req, res, pathOnly) {
+  if (pathOnly === '/api/studio/logout') {
+    return sendStudioJson(res, { ok: true }, 200, {
+      'Set-Cookie': `${STUDIO_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`,
+    });
+  }
+  // login
+  const ip = clientIp(req);
+  const wait = loginWaitMs(ip);
+  if (wait > 0) {
+    // Deliberately the same status and body as a wrong password: telling an
+    // attacker which of the two happened tells them their guesses are landing.
+    return sendStudioJson(res, { error: 'unauthorized' }, 401, {
+      'Retry-After': String(Math.ceil(wait / 1000)),
+    });
+  }
+  let password = '';
+  try {
+    const parsed = JSON.parse(await readBody(req));
+    password = (parsed && typeof parsed.password === 'string') ? parsed.password : '';
+  } catch (e) {
+    password = '';
+  }
+  if (!password || !secretEquals(password, STUDIO_PASSWORD)) {
+    noteLoginFail(ip);
+    return sendStudioJson(res, { error: 'unauthorized' }, 401);
+  }
+  loginFails.delete(ip);
+  // Secure would make the cookie unsettable over plain http://localhost in some
+  // browsers, so it follows the actual scheme rather than being hardcoded.
+  const https = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https'
+    || process.env.NODE_ENV === 'production';
+  const maxAge = STUDIO_SESSION_HOURS * 3600;
+  return sendStudioJson(res, { ok: true }, 200, {
+    'Set-Cookie': `${STUDIO_COOKIE}=${studioIssue()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}`
+      + (https ? '; Secure' : ''),
+  });
+}
+
+function studioApi(req, res, pathOnly) {
+  if (!studioAuthed(req)) return sendStudioJson(res, { error: 'unauthorized' }, 401);
+  if (pathOnly === '/api/studio/health') {
+    return sendStudioJson(res, {
+      station: STATION_ID,
+      version: appVersion(),
+      studioVersion: studioVersion(),
+      node: process.version,
+      startedAt: storageDiag.bootedAt,
+      uptimeSec: Math.round(process.uptime()),
+      storage: storageReport(),
+      feeds: {
+        held: Object.keys(feedStore).length,
+        lastHarvest: feedsDiag.lastHarvest,
+        notModified: feedsDiag.notModified,
+        failed: feedsDiag.failed,
+      },
+      counts: {
+        showinfo: Object.keys(showInfo).length,
+        programs: Object.keys(programCache.programs || {}).length,
+        feeds: Object.keys(feedStore).length,
+      },
+    });
+  }
+  return sendStudioJson(res, { error: 'not found' }, 404);
+}
+
 // --------------------------------------------------------------- the server
 
 const server = http.createServer(async (req, res) => {
+  const url = req.url || '/';
+  const pathOnly = url.split('?')[0];
+
+  // The blanket GET/HEAD rule stays; POST is opened for the studio's two auth
+  // routes and nothing else. A global `if (method === 'POST')` would be a much
+  // larger change than this feature needs.
+  if (req.method === 'POST') {
+    if (STUDIO_ENABLED && (pathOnly === '/api/studio/login' || pathOnly === '/api/studio/logout')) {
+      try {
+        return await studioPost(req, res, pathOnly);
+      } catch (e) {
+        return sendStudioJson(res, { error: 'bad request' }, 400);
+      }
+    }
+    res.writeHead(405, { 'Allow': 'GET, HEAD' });
+    return res.end('method not allowed');
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { 'Allow': 'GET, HEAD' });
     return res.end('method not allowed');
   }
 
-  const url = req.url || '/';
+  // Registered before serveStatic, which would otherwise answer /studio with
+  // the listener app (notFound() falls back to index.html for any path without
+  // an extension). When the studio is disabled these ifs are skipped entirely
+  // and that fallback is exactly what we want to happen.
+  if (STUDIO_ENABLED && (pathOnly === '/studio' || pathOnly === '/studio/')) {
+    return sendStudioHtml(req, res, studioAuthed(req) ? 'studio.html' : 'login.html');
+  }
+  if (STUDIO_ENABLED && pathOnly.startsWith('/api/studio/')) {
+    return studioApi(req, res, pathOnly);
+  }
 
   try {
     if (url === '/api/archive') {
@@ -1701,32 +2019,19 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, {
         ok: true,
         version: appVersion(),
+        // Separate from `version` so a studio-only deploy is still verifiable.
+        // Deliberately NOT reporting whether the studio is enabled: /healthz is
+        // public, and there is no reason to hand a scanner the path. Whether it
+        // is on is answered by visiting /studio, which is the same check but
+        // requires already knowing where to look.
+        studioVersion: studioVersion(),
         station: STATION_ID,
         // Answers "is persistent storage actually working?" from outside, which
-        // is the only place it can be answered — see identifyVolume(). Compare
-        // `instanceId` across a redeploy: same string means the same directory
-        // came back, a different one means it was replaced. `persistedSince`
-        // older than `bootedAt` means it outlived at least one deploy.
-        storage: {
-          dataDir: storageDiag.dataDir,
-          writable: storageDiag.writable,
-          // Answerable on the FIRST deploy, unlike instanceId below. false =
-          // no volume at all; true + a 64-hex `volume` = an anonymous one that
-          // a redeploy will replace. null = couldn't tell (not Linux).
-          mounted: storageDiag.mounted,
-          volume: storageDiag.volume,
-          anonymousVolume: storageDiag.anonymousVolume,
-          instanceId: storageDiag.instanceId,
-          persistedSince: storageDiag.persistedSince,
-          bootedAt: storageDiag.bootedAt,
-          // true = this boot found an empty data dir. Expected exactly once,
-          // on the very first deploy. Any later redeploy reporting true means
-          // the volume is not persisting.
-          freshVolume: storageDiag.freshVolume,
-          showinfoOnDisk: storageDiag.showinfoOnDisk,
-          showinfoNow: Object.keys(showInfo).length,
-          feedsOnDisk: feedsDiag.onDisk,
-        },
+        // is the only place it can be answered — see identifyVolume() and
+        // probeMount(). `mounted` is readable on the FIRST deploy: false = no
+        // volume at all, and a 64-hex `volume` = an anonymous one a redeploy
+        // will replace. `instanceId` unchanged across two deploys is the proof.
+        storage: storageReport(),
         // The app now publishes only what the feeds carry, so "how many feeds do
         // we hold" is the difference between a full archive and an empty one.
         // `held` at 0 with `lastHarvest` set means every fetch failed — the one

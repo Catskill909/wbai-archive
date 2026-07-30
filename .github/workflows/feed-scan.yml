@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'   # scan.js needs global fetch (18+). No dependencies to install.
+          node-version: '24'   # scan.js needs global fetch (18+). No dependencies to install.
 
       # The scanner reports what CHANGED, so it needs to remember the last run.
       # A rolling cache key with restore-keys means each run restores the newest
