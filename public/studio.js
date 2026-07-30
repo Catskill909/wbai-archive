@@ -182,10 +182,22 @@
         ['Show records', d.counts.showinfo],
       ]);
 
+      // The last full sweep, with its denominator. A bare running total of 304s
+      // is unreadable: two consecutive deploys reported 122 and then 0, both
+      // correct, because upstream regenerates every feed at once and a sweep
+      // either straddles that or doesn't. "122 asked · 122 unchanged" says
+      // something; "304s: 0" says nothing.
+      var sweep = d.feeds.lastSweep;
       facts('feedFacts', [
-        ['Last harvest', ago(d.feeds.lastHarvest)],
-        ['Unchanged (304)', d.feeds.notModified],
-        ['Failed', d.feeds.failed, d.feeds.failed ? 'is-bad' : ''],
+        ['Feeds held', d.feeds.held],
+        ['Last full sweep', sweep ? ago(sweep.at) : 'not yet this boot'],
+        ['That sweep', sweep
+          ? sweep.asked + ' asked · ' + sweep.notModified + ' unchanged · '
+            + (sweep.asked - sweep.notModified - sweep.failed) + ' refetched'
+          : '—'],
+        ['Failed in that sweep', sweep ? sweep.failed : '—',
+          (sweep && sweep.failed) ? 'is-bad' : ''],
+        ['Failures since boot', d.feeds.failed, d.feeds.failed ? 'is-bad' : ''],
       ]);
 
       facts('buildFacts', [

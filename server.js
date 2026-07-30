@@ -247,8 +247,56 @@ const FEED_CONCURRENCY = 5;   // a small station's Apache. Do not raise.
 
 // slug -> { lastModified, fetchedAt, channel:{...}, items:[...] }
 const feedStore = readJsonFile(FEEDS_PATH, {});
-const feedsDiag = { onDisk: Object.keys(feedStore).length, lastHarvest: 0, notModified: 0, failed: 0 };
-let feedsHarvestedAt = 0;
+/**
+ * Feed harvest diagnostics.
+ *
+ * `notModified` and `failed` are cumulative since boot. On their own they are
+ * close to meaningless, which was demonstrated the hard way: two consecutive
+ * production deploys reported 122 and then 0, and both readings were correct.
+ * A running total has no denominator — "122 unchanged" does not say out of how
+ * many, and "0 unchanged" reads like a failure when it is often the opposite.
+ *
+ * The reason those numbers swing is upstream, and worth writing down: WBAI
+ * regenerates **every** feed XML in one batch, so all 122 share a Last-Modified
+ * within a few seconds of each other (measured 2026-07-30: 23:04:54–23:04:57).
+ * A sweep that lands just after a regeneration therefore refetches all of them
+ * and legitimately records zero 304s; a sweep a minute earlier records 122.
+ * Neither is a fault, and no cumulative counter can tell you which happened.
+ *
+ * So `lastSweep` records one full sweep's own numbers, with the denominator
+ * included. That is what the studio shows, because it is the only form of this
+ * that answers a question.
+ */
+const feedsDiag = {
+  onDisk: Object.keys(feedStore).length,
+  lastHarvest: 0,
+  notModified: 0,
+  failed: 0,
+  lastSweep: null,   // { at, asked, notModified, failed } — set by harvestFeeds
+};
+/**
+ * When every held feed was last confirmed current. Drives the FEEDS_TTL sweep.
+ *
+ * This used to start at 0 on every boot, which meant `Date.now() - 0 > TTL` was
+ * trivially true and **a full 122-feed sweep ran on every single start** — even
+ * one seconds after the last. That was invisible while the data directory was
+ * being wiped each deploy anyway (there was nothing to reuse), and it became
+ * real waste the moment the volume started persisting: four redeploys in an
+ * afternoon meant ~488 requests to WBAI's Apache, nearly all of them 304s for
+ * feeds we already had and had just checked.
+ *
+ * `FEED_CONCURRENCY`'s comment says it plainly — this is a small station's
+ * server. So restore the clock from what survived on disk: the *oldest*
+ * fetchedAt we hold is, by definition, the last moment every feed was known
+ * current. Conservative in the right direction (a missing or ancient timestamp
+ * sweeps, which is the safe outcome), and it needs no change to the file format.
+ */
+let feedsHarvestedAt = (function restoreHarvestClock() {
+  const times = Object.values(feedStore)
+    .map((r) => (r && r.fetchedAt) || 0);
+  if (!times.length || times.some((t) => !t)) return 0;
+  return Math.min(...times);
+})();
 let feedsInFlight = null;
 
 function cdata(block, tag) {
@@ -317,7 +365,14 @@ async function fetchFeed(slug, force = false) {
     signal: AbortSignal.timeout(12000),
   });
 
-  if (res.status === 304) { feedsDiag.notModified++; return prev; }
+  // 304: the content is unchanged, but we just *verified* that — so move
+  // fetchedAt forward. It means "last confirmed current", not "last changed",
+  // which is what a freshness clock needs and is the only thing this field is
+  // used for (restoring feedsHarvestedAt at boot, below).
+  if (res.status === 304) {
+    feedsDiag.notModified++;
+    return prev ? Object.assign({}, prev, { fetchedAt: Date.now() }) : prev;
+  }
   if (!res.ok) return prev || null;
 
   const xml = Buffer.from(await res.arrayBuffer()).toString('utf8');
@@ -341,6 +396,10 @@ async function fetchFeed(slug, force = false) {
  * else.
  */
 async function harvestFeeds(slugs, full = true, force = false) {
+  // Snapshot the cumulative counters so this sweep's own numbers can be
+  // reported. See feedsDiag.lastSweep below for why a running total is not
+  // enough on its own.
+  const before = { notModified: feedsDiag.notModified, failed: feedsDiag.failed };
   let i = 0;
   const workers = Array.from({ length: Math.min(FEED_CONCURRENCY, slugs.length) }, async () => {
     while (i < slugs.length) {
@@ -357,6 +416,12 @@ async function harvestFeeds(slugs, full = true, force = false) {
   if (full) {
     feedsHarvestedAt = Date.now();
     feedsDiag.lastHarvest = feedsHarvestedAt;
+    feedsDiag.lastSweep = {
+      at: feedsHarvestedAt,
+      asked: slugs.length,
+      notModified: feedsDiag.notModified - before.notModified,
+      failed: feedsDiag.failed - before.failed,
+    };
   }
   writeJsonSoon(FEEDS_PATH, () => feedStore);
 }
@@ -1719,6 +1784,12 @@ console.log(STUDIO_ENABLED
   ? `[studio] enabled at /studio (sessions last ${STUDIO_SESSION_HOURS}h)`
   : '[studio] disabled — set STUDIO_PASSWORD to enable');
 
+// Says whether this boot inherited a usable harvest clock, i.e. whether it is
+// about to re-fetch 122 feeds from a small station's server or skip them.
+console.log(feedsHarvestedAt
+  ? `[feeds] ${Object.keys(feedStore).length} held, all confirmed current ${Math.round((Date.now() - feedsHarvestedAt) / 60000)}m ago — full sweep due in ${Math.max(0, Math.round((FEEDS_TTL - (Date.now() - feedsHarvestedAt)) / 60000))}m`
+  : '[feeds] no usable harvest clock on disk — a full sweep will run');
+
 /** Constant-time compare of two strings of any length. Hashing first equalises
  *  the lengths, so this leaks neither the password nor how long it is. */
 function secretEquals(a, b) {
@@ -1913,6 +1984,8 @@ function studioApi(req, res, pathOnly) {
         lastHarvest: feedsDiag.lastHarvest,
         notModified: feedsDiag.notModified,
         failed: feedsDiag.failed,
+        // The one with a denominator — see feedsDiag's header.
+        lastSweep: feedsDiag.lastSweep,
       },
       counts: {
         showinfo: Object.keys(showInfo).length,

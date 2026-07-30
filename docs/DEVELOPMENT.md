@@ -613,3 +613,25 @@ it. That is the default, and the right one for a template.
 CLAUDE.md §3a every refusal is paired with the same request *succeeding* under a
 valid session — a suite of pure refusals passes perfectly once the probe goes
 blind.
+
+### Feed harvest: two things that are easy to misread
+
+**`notModified` alone means nothing.** WBAI regenerates *every* feed XML in one
+batch — measured 2026-07-30, all 122 carried a `Last-Modified` inside a
+four-second window. A full sweep landing just after a regeneration therefore
+refetches all 122 and records **zero** 304s; the same sweep a minute earlier
+records 122. Two consecutive production deploys reported exactly that, and both
+were correct. A running total has no denominator, so `feedsDiag.lastSweep`
+records one sweep's own `{at, asked, notModified, failed}` and that is what the
+studio shows.
+
+**The sweep clock is restored from disk.** `feedsHarvestedAt` used to start at 0,
+making `Date.now() - 0 > FEEDS_TTL` trivially true, so a full 122-feed sweep ran
+on *every boot* — including a redeploy seconds after the last one. Harmless while
+the data directory was wiped each deploy (there was nothing to reuse), and real
+waste once the volume began persisting: four redeploys in an afternoon is ~488
+requests to a small station's Apache for feeds we already held. It is now seeded
+from the oldest `fetchedAt` in the restored feed store, and `fetchedAt` moves
+forward on a 304 — it means "last confirmed current", not "last changed", which
+is what a freshness clock needs. A missing or ancient timestamp sweeps, so the
+failure direction is the safe one. The boot log says which happened.

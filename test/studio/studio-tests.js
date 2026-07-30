@@ -192,6 +192,13 @@ async function run() {
     // Same fields, same shape, on the public endpoint — they are one function,
     // and this is what stops them drifting apart again.
     const publicStorage = (await (await get(PORT_ON, '/healthz')).json()).storage;
+    // `lastSweep` is null until a full sweep has run, which is correct and is
+    // exactly why the key must still be PRESENT — the dashboard branches on it,
+    // and an absent key and a null one are the same to `d.feeds.lastSweep` only
+    // by luck. Assert the contract, not today's value.
+    ok('feeds report carries lastSweep (null before the first full sweep)',
+      'lastSweep' in data.feeds, JSON.stringify(data.feeds));
+
     ok('/healthz and the studio report identical storage keys',
       JSON.stringify(Object.keys(publicStorage).sort())
       === JSON.stringify(Object.keys(data.storage).sort()),
