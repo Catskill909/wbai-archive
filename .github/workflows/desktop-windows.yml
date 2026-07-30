@@ -55,8 +55,10 @@ jobs:
         id: cfg
         shell: bash
         run: |
+          # Manual runs pass a station in the input box. A tag push has no
+          # input, so it builds this default. One station is not worth a
+          # repository variable; change the line when there's a reason to.
           STATION="${{ inputs.station }}"
-          if [ -z "$STATION" ]; then STATION="${{ vars.STATION }}"; fi
           if [ -z "$STATION" ]; then STATION="wbai"; fi
 
           PROFILE="desktop/src-tauri/stations/$STATION.json"

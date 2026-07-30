@@ -100,14 +100,16 @@ The Windows build runs in GitHub Actions:
 
 1. Go to **Settings → Secrets and variables → Actions → Variables**.
 2. Add a repository variable **`STATION_URL`** = that station's deployed URL.
-3. Optionally add **`STATION`** = the default profile slug (defaults to `wbai`).
 
-Without a URL the workflow **fails on purpose** rather than silently producing an
-app that points at localhost, and it fails just as deliberately if the named
-station has no profile — listing the ones that do.
+That's the only setting. Without it the workflow **fails on purpose** rather than
+silently producing an app that points at localhost, and it fails just as
+deliberately if the named station has no profile — listing the ones that do.
 
-Both are overridable per run from the workflow's input boxes, which is how you
-build a second station without touching repository settings.
+Which station a **tag push** builds is a one-word default in the workflow
+(`wbai`), not a repository variable — one station isn't worth a settings knob.
+**Manual runs** take both the station and the URL from input boxes, overriding
+the default and the variable, which is how you build a second station without
+touching repository settings at all.
 
 ## Step 5 — Produce a Windows build
 
