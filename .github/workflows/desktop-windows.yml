@@ -6,8 +6,8 @@ name: Desktop (Windows)
 #
 # One station per run. `station` picks the profile in
 # desktop/src-tauri/stations/, which supplies the product name, bundle
-# identifier and copyright; STATION_URL is that station's own deployment. Both
-# are baked in at compile time.
+# identifier and copyright, and its URL comes from desktop/stations.json. Both
+# are baked into the binary at compile time, so a URL change means a rebuild.
 
 on:
   workflow_dispatch:
@@ -18,8 +18,8 @@ on:
         default: "wbai"
         type: string
       app_url:
-        description: "URL the app window loads (e.g. https://archive.example.org)"
-        required: true
+        description: "Override the URL in desktop/stations.json (optional)"
+        required: false
         type: string
   push:
     tags:
@@ -67,10 +67,15 @@ jobs:
             exit 1
           fi
 
+          # The station's deployment, from desktop/stations.json unless this run
+          # supplied one. No repository variable: one value can't serve several
+          # stations, and a URL change deserves a commit.
           URL="${{ inputs.app_url }}"
-          if [ -z "$URL" ]; then URL="${{ vars.STATION_URL }}"; fi
           if [ -z "$URL" ]; then
-            echo "::error::No app URL. Set the repository variable STATION_URL, or run this workflow manually and supply one."
+            URL=$(node -p "(require('./desktop/stations.json')['$STATION']||{}).url||''")
+          fi
+          if [ -z "$URL" ]; then
+            echo "::error::No URL for station '$STATION'. Add one to desktop/stations.json, or supply it in this workflow's input box."
             exit 1
           fi
 
@@ -92,7 +97,7 @@ jobs:
         env:
           STATION_URL: ${{ steps.cfg.outputs.value }}
           STATION_NAME: ${{ steps.cfg.outputs.name }}
-        run: npm run build -- --bundles nsis --config stations/${{ steps.cfg.outputs.station }}.json
+        run: npm run build -- --bundles nsis --config src-tauri/stations/${{ steps.cfg.outputs.station }}.json
 
       - uses: actions/upload-artifact@v4
         with:

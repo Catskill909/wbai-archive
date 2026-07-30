@@ -1,14 +1,20 @@
 # Station profiles
 
 One file per station. Each is a **partial** `tauri.conf.json`, merged over the
-base by `tauri build --config stations/<slug>.json`, so it carries only what
+base by `tauri build --config src-tauri/stations/<slug>.json`, so it carries only what
 differs between stations: the name, the bundle identifier, the store copy and
 the copyright line.
 
 ```bash
-STATION_URL=https://archive.wbai.org STATION_NAME="WBAI 99.5 FM Archive" \
-  npm run build -- --config stations/wbai.json
+STATION=wbai
+STATION_URL=$(node -p "require('./stations.json')['$STATION'].url") \
+STATION_NAME=$(node -p "require('./src-tauri/stations/$STATION.json').productName") \
+  npm run build -- --config src-tauri/stations/$STATION.json
 ```
+
+The URL comes from `desktop/stations.json`; the name comes from the profile. Both
+are read rather than typed so that a local build and a CI build point at the same
+deployment.
 
 The base `tauri.conf.json` is deliberately **not** shippable on its own — its
 identifier is `org.example.stationarchive` and its product name says
@@ -39,7 +45,7 @@ than quietly ship one station's app under another's name.
    `src-tauri/installer/<slug>/`. Then point the profile's
    `bundle.windows.nsis.headerImage` / `sidebarImage` and
    `bundle.macOS.dmg.background` at those files, as `wbai.json` does.
-5. Point `STATION_URL` at that station's own deployment.
+5. **Add its URL to `desktop/stations.json`** — the deployment the window loads.
 
 ## Who can sign what
 

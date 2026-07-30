@@ -8,11 +8,14 @@ Native macOS and Windows builds of the web app, from `desktop/`.
 > building needs a Rust toolchain that still isn't installed. Treat every step
 > below as untested until one build succeeds.
 >
-> What *is* independently verified: the icons are 32-bit RGBA with the required
-> `.ico` layers, the NSIS bitmaps are 24-bit BMPs (checked with a second parser),
-> every asset path in the merged config resolves to a file on disk, and the
-> artwork generator refuses to emit a blank sheet. What is not: that NSIS, Finder
-> and `codesign` accept any of it. That is what the first build is for.
+> What *is* independently verified: **the Tauri CLI accepts the merged config**
+> (`tauri build --config src-tauri/stations/wbai.json` now fails only on the
+> missing cargo, and a deliberately bogus key was confirmed to fail *earlier* than
+> that, so validation really is happening); the icons are 32-bit RGBA with the
+> required `.ico` layers; the NSIS bitmaps are 24-bit BMPs, checked with a second
+> parser; every asset path in the merged config resolves to a file on disk; and
+> the artwork generator refuses to emit a blank sheet. What is not: that NSIS,
+> Finder and `codesign` accept any of it. That is what the first build is for.
 
 ## What it is
 
@@ -61,7 +64,7 @@ selected. To develop against a real station's identity, pass its profile the sam
 way a release build does:
 
 ```bash
-STATION_NAME="WBAI 99.5 FM Archive" npm run dev -- --config stations/wbai.json
+STATION_NAME="WBAI 99.5 FM Archive" npm run dev -- --config src-tauri/stations/wbai.json
 ```
 
 ## Step 3 — Build a macOS release
@@ -71,9 +74,14 @@ STATION_NAME="WBAI 99.5 FM Archive" npm run dev -- --config stations/wbai.json
 
 ```bash
 cd desktop
-STATION_URL=https://archive.wbai.org STATION_NAME="WBAI 99.5 FM Archive" \
-  npm run build -- --config stations/wbai.json
+STATION=wbai
+STATION_URL=$(node -p "require('./stations.json')['$STATION'].url") \
+STATION_NAME=$(node -p "require('./src-tauri/stations/$STATION.json').productName") \
+  npm run build -- --config src-tauri/stations/$STATION.json
 ```
+
+Reading both values from the files means a local build and a CI build point at
+the same place; typing the URL by hand is how they drift.
 
 Output lands in `src-tauri/target/release/bundle/` (`dmg/` and `macos/`).
 
@@ -98,18 +106,25 @@ Step 6 is what to do about that.
 The Windows build runs in GitHub Actions:
 `.github/workflows/desktop-windows.yml`.
 
-1. Go to **Settings → Secrets and variables → Actions → Variables**.
-2. Add a repository variable **`STATION_URL`** = that station's deployed URL.
+**There is nothing to configure.** No repository variables, no secrets. Each
+station's deployment lives in [`desktop/stations.json`](../desktop/stations.json),
+in git:
 
-That's the only setting. Without it the workflow **fails on purpose** rather than
-silently producing an app that points at localhost, and it fails just as
-deliberately if the named station has no profile — listing the ones that do.
+```json
+{ "wbai": { "url": "https://wbai.supersoul.top" } }
+```
+
+That is a deliberate choice over an Actions variable: one variable cannot serve
+several stations, and when a host changes, a commit records when and why. The URL
+is compiled into the binary either way, so a change means a rebuild — there is no
+setting to flip.
+
+The workflow **fails on purpose** rather than guessing: no profile for the named
+station (listing the ones that exist), or no URL for it, and the run stops.
 
 Which station a **tag push** builds is a one-word default in the workflow
-(`wbai`), not a repository variable — one station isn't worth a settings knob.
-**Manual runs** take both the station and the URL from input boxes, overriding
-the default and the variable, which is how you build a second station without
-touching repository settings at all.
+(`wbai`). **Manual runs** take the station from an input box, and can override
+the URL from a second one for a throwaway build against staging.
 
 ## Step 5 — Produce a Windows build
 
@@ -118,8 +133,8 @@ Either:
 - **Push a tag** — `git tag v1.0.0 && git push origin v1.0.0`, which builds the
   default station, or
 - **Run it manually** — Actions → *Desktop (Windows)* → *Run workflow*, giving a
-  station slug and a URL in the input boxes (these override the repository
-  variables). This is the per-station path.
+  station slug. This is the per-station path. The URL box is optional and only
+  overrides `stations.json` for that one run.
 
 Download the NSIS `.exe` from the run's artifacts — named
 `station-archive-windows-<slug>`, so builds for different stations don't collide. The workflow builds with
@@ -263,7 +278,7 @@ export APPLE_ID="you@example.com"            # your Apple ID, as a team member
 export APPLE_PASSWORD="abcd-efgh-ijkl-mnop"  # your app-specific password
 export APPLE_TEAM_ID="TEAMID"                # theirs
 STATION_URL=https://archive.wbai.org STATION_NAME="WBAI 99.5 FM Archive" \
-  npm run build -- --config stations/wbai.json
+  npm run build -- --config src-tauri/stations/wbai.json
 ```
 
 The API-key alternative is `APPLE_API_KEY`, `APPLE_API_ISSUER` and

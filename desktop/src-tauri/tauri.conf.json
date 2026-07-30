@@ -1,6 +1,5 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "_comment": "Station-neutral base. Every real build merges a profile over this: tauri build --config stations/<slug>.json — see stations/README.md. The placeholder name and identifier below are meant to be conspicuous, so a build that forgot the profile is obvious instead of shipping one station's app under another's identity.",
   "productName": "UNCONFIGURED Station Archive",
   "version": "1.0.0",
   "identifier": "org.example.stationarchive",

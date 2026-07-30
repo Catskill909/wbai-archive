@@ -13,7 +13,7 @@ use tauri::{Url, WebviewUrl, WebviewWindowBuilder};
 /// deployment for a release build, or `npm start` on localhost while developing.
 ///
 /// One station per build. Set at compile time:
-///     STATION_URL=https://archive.wbai.org npm run build -- --config stations/wbai.json
+///     STATION_URL=https://archive.wbai.org npm run build -- --config src-tauri/stations/wbai.json
 const APP_URL: &str = match option_env!("STATION_URL") {
     Some(url) => url,
     None => "http://localhost:8080",

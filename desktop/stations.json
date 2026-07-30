@@ -1,0 +1,23 @@
+{
+  "_note": [
+    "Which deployment each station's desktop app points at. Not a Tauri config —",
+    "tauri.conf.json rejects unknown keys, so this can't live in the station",
+    "profiles under src-tauri/stations/ and sits here instead.",
+    "",
+    "The URL is a station's own running instance of the web app: the desktop app",
+    "is a window onto it, and every listing, audio file and image still goes",
+    "through that server's proxies. It is NOT where installers are downloaded",
+    "from.",
+    "",
+    "It lives in git rather than in an Actions variable for two reasons: one",
+    "variable cannot serve N stations, and when a host changes, a commit records",
+    "when and why. A manual workflow run can still override it from the input box",
+    "for a one-off build.",
+    "",
+    "Baked in at compile time — changing a URL means rebuilding, not a setting."
+  ],
+
+  "wbai": {
+    "url": "https://wbai.supersoul.top"
+  }
+}
