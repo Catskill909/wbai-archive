@@ -2874,6 +2874,36 @@
     measure();
   })();
 
+  // ---------------- Leaving for somewhere else ----------------
+  // Every outbound link — the sheet's Show website / Facebook / Twitter pills,
+  // the RSS badges, the whole station menu — is marked target="_blank". On a
+  // desktop that is right: the tab strip is visible, the tab you left is one
+  // click away, and whatever is playing keeps playing in it.
+  //
+  // On a phone none of that holds, and the result is a one-way door. The new
+  // tab has no history of its own, so its back arrow is dead; there is no tab
+  // strip, so the tab you came from is hidden behind a numbered button most
+  // people never press. Tapping a show's website reads as the app vanishing.
+  //
+  // So on touch devices we navigate in place instead. That puts this page in
+  // the next one's history and makes the system Back gesture — the one
+  // affordance everybody already uses — come straight back here. Returning is
+  // cheap: the browser usually restores the page from its back/forward cache,
+  // and when it doesn't, `pagehide` has already stored the playback position
+  // (see resumeRemember) and ?show= reopens the sheet that was up.
+  var leaveInPlace = window.matchMedia('(hover:none) and (pointer:coarse)');
+  document.addEventListener('click', function(e){
+    if(!leaveInPlace.matches) return;
+    // never override the browser's own new-tab modifiers, and never fight a
+    // more specific handler that has already claimed this click
+    if(e.defaultPrevented || e.button !== 0) return;
+    if(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var a = e.target.closest && e.target.closest('a[target="_blank"][href]');
+    if(!a) return;
+    e.preventDefault();
+    location.href = a.href;
+  });
+
   document.getElementById('linkNoticeClose').addEventListener('click', function(){
     document.getElementById('linkNotice').hidden = true;
   });
