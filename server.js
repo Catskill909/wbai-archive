@@ -1065,6 +1065,11 @@ async function getNowPlaying() {
       // unescapeHtml also trims, so the client can render them with textContent
       name: unescapeHtml(cur.sh_name),
       dj: unescapeHtml(cur.sh_djname),
+      // The key every description in /api/showinfo is filed under. Forwarded so
+      // the live player's "About this show" panel can look up the prose and the
+      // links for whatever is on air — the same join the archive sheet does,
+      // which until now had no way to name the on-air show.
+      altid: clean(cur.sh_altid),
       // The playlist feed carries whatever track is on air — for any show, music
       // or talk (an intro song, a bed, a clip). Forwarded so the live player can
       // show a now-playing line, and cleared the moment the feed clears it.

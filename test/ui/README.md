@@ -23,6 +23,27 @@ Port **9224** — `test/live-stream` owns 9222, `test/touch` owns 9223.
 | `row-tap-tests.js` | every dead zone in a list row opens the info sheet, and the play column still doesn't |
 | `reload-tests.js` | state that has to survive a reload |
 | `outlink-tests.js` | tapping an external link on a touch device leaves a way back: one tab, not two, and Back lands on the app — while a fine pointer still gets its new tab |
+| `live-info-tests.js` | the live player's artwork as a control: the hover hint, the "About this show" panel, its prose/links, the player it covers, and the shows it refuses to offer |
+
+### A dispatched Escape stops the browser rendering
+
+Found while writing `live-info-tests.js`, and it will bite any suite that
+measures geometry: **one `Input.dispatchKeyEvent` Escape (`keyDown` or
+`rawKeyDown`) permanently stops this headless browser producing frames for every
+document navigated afterwards.** `document.timeline.currentTime` stays `null`,
+so CSS transitions freeze at their **from** value and `Page.captureScreenshot`
+hangs instead of returning.
+
+It is silent poison, because a frozen page still lays out and still answers
+`getBoundingClientRect()` — with numbers that look plausible. Measured: with an
+Escape first, the phone live-player sheet reports `top:924` in a 780px viewport
+(its off-screen start); without one, `top:180`.
+
+Two rules follow, both visible in `live-info-tests.js`:
+
+1. Any section that presses Escape goes **last**.
+2. Before trusting a rect after a navigation, assert the clock is running
+   (`requireClock()`), so a reordering fails loudly rather than quietly.
 
 ### What headless Chrome cannot see
 

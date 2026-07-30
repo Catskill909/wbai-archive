@@ -356,3 +356,57 @@ built behavior into [DEVELOPMENT.md](DEVELOPMENT.md).
 - Looks correct and reachable-by-thumb from 320px up, in light and dark, with and
   without reduced motion.
 - No new network endpoints, no new dependencies, no change to archive playback.
+
+---
+
+## 12. "About this show" — added 2026-07-30
+
+The card names the on-air show; this is where its prose lives. **The artwork is
+the control.** Tapping it opens `#lpInfo` — a dialog layered over the player with
+the show's description, host, and links (website, Facebook, Twitter).
+
+### Why the artwork and not a badge
+
+The first build put an ⓘ badge in the artwork's bottom-right corner. It worked
+and was rejected on sight: the card is a *centred stack*, and a control parked in
+one corner is the one thing in it that isn't symmetrical. The tile itself carries
+the affordance instead:
+
+- **Fine pointer:** hovering shows a centred glass pill — ⓘ SHOW INFO — at the
+  bottom of the art, plus a slight dim on the image. Centred, so the symmetry
+  survives; quick (.14s), so it reads as a response to the cursor.
+- **Touch:** nothing is shown. Tapping the art opens the panel — a thing you
+  find, which is the trade accepted for keeping the card clean.
+- **Keyboard:** `:focus-visible` shows the same hint on every device.
+- **Nothing to show:** the `<button>` is `disabled`, not hidden — the card needs
+  its artwork either way. That also drops it out of the dialog's Tab cycle and
+  kills the hint, so it never offers what it can't do.
+
+### Where the prose comes from
+
+No new endpoint. `/api/nowplaying` now forwards the on-air show's `altid`, which
+is the key everything else is already filed under, and the panel makes the same
+join the archive sheet makes:
+
+1. `/api/showinfo[altid]` — the on-air harvest. Most specific, so it wins.
+2. `/api/showinfo/<altid>` — per-show lookup, fired for any on-air show whose
+   description the harvest is missing. This is what usually turns the artwork
+   into a control for a show the harvest has never met.
+3. `/api/programs` — wbai.org's directory, matched on title. Fetched lazily on
+   the first panel open (~120KB), so it can only *fill in* a panel that was
+   already openable, never make one openable. That is deliberate: (2) covers the
+   gap far more cheaply.
+
+### Behaviour worth keeping
+
+- A schedule rollover **repaints an open panel, never closes it** — whoever
+  opened it is reading it. If the new show has no prose, it says so.
+- The failure alert wins: a stream error while the panel is up closes the panel
+  first, so two `aria-modal` dialogs never fight over one `inert` player.
+- The panel body owns its own scroll (`align-items:stretch` + `min-height:0` on
+  the body — percentage `max-height` against a `max-height`-clamped flex parent
+  does nothing, and a long description spilled out of the panel).
+
+Covered end to end by `test/ui/live-info-tests.js` (54 assertions). Read that
+file's header before editing it: one dispatched Escape stops headless Chrome
+rendering for the rest of the session, which is why its Escape section is last.

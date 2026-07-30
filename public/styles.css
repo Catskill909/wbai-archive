@@ -450,12 +450,51 @@
     font-size:.68rem; font-weight:800; color:var(--accent);
   }
   .lp-art{
+    position:relative;
     width:min(300px, 64vw); aspect-ratio:1; border-radius:14px; overflow:hidden; flex:none;
     background:url("/assets/icon-256.png") center/cover no-repeat;
     box-shadow:0 18px 44px -16px color-mix(in srgb, var(--accent) 40%, rgba(0,0,0,.7));
   }
   .lp-art img{width:100%;height:100%;object-fit:cover; display:none;}
   .lp-art img.loaded{display:block;}
+  /* The tile is a <button> (it opens the show's description), so undo the parts
+     of that a button brings with it. Nothing about its resting appearance
+     changes — the centred stack is the design, and a control that announces
+     itself in the corner of the art was the thing that broke it. */
+  button.lp-art{
+    padding:0; border:none; display:block; cursor:pointer;
+    -webkit-appearance:none; appearance:none;
+    font:inherit; color:inherit; text-align:inherit;
+  }
+  button.lp-art:disabled{cursor:default;}      /* nothing to show for this one */
+  button.lp-art:focus-visible{outline:2px solid var(--accent); outline-offset:3px;}
+  /* The hint: a small glass pill that names the affordance, and only where there
+     is a pointer to name it to. Quick in (.14s), so it reads as a response to
+     the cursor rather than an animation. */
+  .lp-art-hint{
+    position:absolute; left:50%; bottom:10px; z-index:1;
+    display:inline-flex; align-items:center; gap:.32rem; white-space:nowrap;
+    padding:.32rem .62rem; border-radius:999px;
+    background:color-mix(in srgb, #000 62%, transparent);
+    -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+    border:1px solid rgba(255,255,255,.24); color:#fff;
+    font-family:var(--font-display); text-transform:uppercase;
+    letter-spacing:.08em; font-size:.62rem; font-weight:800;
+    opacity:0; pointer-events:none;
+    transform:translate(-50%, 6px);
+    transition:opacity .14s ease, transform .14s ease;
+  }
+  .lp-art-hint svg{width:13px; height:13px;}
+  @media (hover:hover) and (pointer:fine){
+    button.lp-art:hover:not(:disabled) .lp-art-hint{opacity:1; transform:translate(-50%, 0);}
+    /* a touch of dim under the pill, so the whole tile reads as the target */
+    button.lp-art:hover:not(:disabled) img{filter:brightness(.88);}
+  }
+  /* Keyboard reaches it on every device, hover or not. */
+  button.lp-art:focus-visible:not(:disabled) .lp-art-hint{opacity:1; transform:translate(-50%, 0);}
+  @media (prefers-reduced-motion:reduce){
+    .lp-art-hint{transition-duration:.01s; transform:translate(-50%, 0);}
+  }
   .lp-meta{text-align:center; min-width:0; width:100%;}
   .lp-title{font-family:var(--font-display); font-weight:800; font-size:1.5rem; line-height:1.15; margin:0;}
   .lp-host{margin:.3rem 0 0; font-size:.9rem; color:var(--ink-dim);}
@@ -623,6 +662,82 @@
   @media (prefers-reduced-motion:reduce){
     .lp-alert, .lp-alert-scrim{animation-duration:.01s;}
     .lp-alert-btn:active{transform:none;}
+  }
+
+  /* ---- "About this show" panel ------------------------------------------
+     Same layered-dialog construction as the alert (own scrim, own focus trap,
+     lives outside the player so nothing clips it), but neutral rather than
+     danger-tinted, and it owns its own scroll: a description can run to a dozen
+     paragraphs. It sits UNDER the alert's z-index on purpose — if the stream
+     fails while this is open, the failure is the more urgent thing. */
+  .lp-info-scrim{
+    position:fixed; inset:0; z-index:182;
+    background:color-mix(in srgb, #000 50%, transparent);
+    animation:lpScrimIn .2s ease both;
+  }
+  .lp-info-scrim[hidden]{display:none;}
+  .lp-info{
+    position:fixed; z-index:183; left:50%; top:50%;
+    overscroll-behavior:contain;
+    width:min(440px, 92vw); max-height:min(82dvh, 620px);
+    /* stretch, not flex-start: the body has to inherit the height this box gets
+       clamped to, or `overflow-y:auto` on it has nothing to overflow and a long
+       description spills out of the panel instead of scrolling inside it. The
+       close button opts out with align-self. */
+    display:flex; align-items:stretch; gap:.5rem;
+    padding:1.3rem 1.35rem; border-radius:18px; text-align:left;
+    color:var(--ink);
+    background:
+      radial-gradient(120% 60% at 100% -10%, color-mix(in srgb, var(--accent-2) 14%, transparent), transparent 62%),
+      var(--surface-2);
+    border:1px solid var(--outline-strong);
+    box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
+    animation:lpAlertIn .26s cubic-bezier(.2,0,.2,1) both;
+  }
+  .lp-info[hidden]{display:none;}
+  /* The scroll lives on the body, not the dialog, so the close button stays put
+     while a long description moves under it. */
+  .lp-info-body{flex:1 1 auto; min-width:0; min-height:0; overflow-y:auto; overscroll-behavior:contain;}
+  .lp-info-eyebrow{
+    display:block; font-family:var(--font-display); text-transform:uppercase;
+    letter-spacing:.1em; font-size:.62rem; font-weight:800; color:var(--accent-2);
+  }
+  .lp-info-title{
+    margin:.3rem 0 0; font-family:var(--font-display); font-weight:800;
+    font-size:1.16rem; line-height:1.2;
+  }
+  .lp-info-host{margin:.25rem 0 0; font-size:.84rem; color:var(--ink-dim);}
+  .lp-info-desc{margin:.7rem 0 0; font-size:.88rem; line-height:1.6; color:var(--ink-dim); white-space:pre-line;}
+  .lp-info-note{margin:.7rem 0 0; font-size:.84rem; color:var(--ink-faint);}
+  .lp-info-host[hidden], .lp-info-desc[hidden], .lp-info-note[hidden]{display:none;}
+  .lp-info-links{display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; margin-top:.9rem;}
+  .lp-info-links:empty{display:none;}
+  .lp-info-close{
+    flex:none; align-self:flex-start;
+    width:28px; height:28px; margin:-.15rem -.3rem 0 0; padding:0;
+    display:flex; align-items:center; justify-content:center;
+    border:none; border-radius:50%; cursor:pointer;
+    background:transparent; color:var(--ink-faint);
+    transition:background .15s ease, color .15s ease;
+  }
+  .lp-info-close svg{width:14px; height:14px;}
+  @media (hover:hover) and (pointer:fine){
+    .lp-info-close:hover{background:var(--surface-hover); color:var(--ink);}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .lp-info, .lp-info-scrim{animation-duration:.01s;}
+  }
+  /* Phones: a bottom sheet, like every other panel this app opens there. */
+  @media (max-width:560px){
+    .lp-info{
+      left:0; right:0; top:auto; bottom:0; width:100%;
+      max-height:82dvh;
+      border-radius:var(--phone-sheet-radius) var(--phone-sheet-radius) 0 0;
+      border-bottom:none;
+      padding:1.2rem 1.25rem calc(1.2rem + env(safe-area-inset-bottom,0px));
+      animation:lpInfoSheetIn .26s cubic-bezier(.2,0,.2,1) both;
+    }
+    @keyframes lpInfoSheetIn{ from{opacity:.4; transform:translateY(14%);} to{opacity:1; transform:none;} }
   }
 
   /* Phones: a tall sheet from the bottom edge, stopping short of the top. It

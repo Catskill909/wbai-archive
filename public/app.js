@@ -1099,6 +1099,11 @@
     lpAlert.hidden = lpAlertScrim.hidden = !want;
     lpAlert.setAttribute('aria-hidden', want ? 'false' : 'true');
     if(want){
+      // A stream that dies while the description is being read: the failure is
+      // the more urgent of the two dialogs, and stacking them would leave two
+      // aria-modals fighting over one inert player. Closed first so the focus
+      // capture below sees the player, not the panel.
+      closeLiveInfo();
       // Capture focus BEFORE inerting the player — inert blurs whatever is
       // focused inside it, and by then there is nothing left to remember.
       var focused = document.activeElement;
@@ -1133,6 +1138,141 @@
     hideLiveAlert();
     setLiveNote('Tap play to try again');
   }
+
+  // ---- "About this show". The card names the on-air show; this is where the
+  // prose lives. Two sources, the same join the archive sheet makes: the on-air
+  // harvest (/api/showinfo, keyed by the altid the now-playing feed carries) and
+  // wbai.org's programme directory (/api/programs, matched on the title). The
+  // harvest is the more specific of the two, so it wins.
+  //
+  // Anything neither source knows is left out rather than rendered empty — and
+  // if they know nothing at all, the artwork simply isn't a control (see
+  // paintLiveInfo): no hint on hover, nothing to tap, nothing in the Tab cycle.
+  var lpInfoBtn = document.getElementById('lpInfoBtn');   // = the artwork tile
+  var lpInfoPanel = document.getElementById('lpInfo');
+  var lpInfoScrim = document.getElementById('lpInfoScrim');
+  var lpInfoClose = document.getElementById('lpInfoClose');
+  var lpInfoBody = document.getElementById('lpInfoBody');
+  var lpInfoTitle = document.getElementById('lpInfoTitle');
+  var lpInfoHost = document.getElementById('lpInfoHost');
+  var lpInfoDesc = document.getElementById('lpInfoDesc');
+  var lpInfoNote = document.getElementById('lpInfoNote');
+  var lpInfoLinks = document.getElementById('lpInfoLinks');
+
+  // showInfo / programs / programFor / safeUrl all belong to the show-info sheet
+  // further down this file. They are declared with `var` and `function` in the
+  // same scope, so they are reachable from here — but this runs during the very
+  // first paint too (the built-in snapshot), before those initialisers have run,
+  // hence the guards.
+  function liveShowFacts(){
+    if(!liveCurrent) return null;
+    var altid = liveCurrent.altid || '';
+    var info = (altid && showInfo && showInfo[altid]) || {};
+    var prog = (typeof programFor === 'function' && programFor(liveCurrent.name)) || {};
+    return {
+      title: liveCurrent.name || 'WBAI 99.5 FM',
+      host: liveCurrent.dj || info.dj || prog.host || '',
+      desc: info.desc || prog.desc || info.shortdesc || '',
+      site: safeUrl(info.url || prog.url),
+      facebook: safeUrl(info.facebook || prog.facebook),
+      twitter: safeUrl(prog.twitter)
+    };
+  }
+  // A title and a host are already on the card; the artwork is only worth making
+  // tappable when opening it would add something.
+  function liveHasFacts(f){ return !!(f && (f.desc || f.site || f.facebook || f.twitter)); }
+
+  function paintLiveInfoPanel(f){
+    lpInfoTitle.textContent = f.title;
+    if(f.host){ lpInfoHost.textContent = 'with ' + f.host; lpInfoHost.hidden = false; }
+    else { lpInfoHost.hidden = true; }
+    if(f.desc){ lpInfoDesc.textContent = f.desc; lpInfoDesc.hidden = false; }
+    else { lpInfoDesc.hidden = true; }
+    // Only reachable when the schedule rolls over onto a show we hold links but
+    // no prose for, while the panel is open. Better than an empty panel.
+    lpInfoNote.hidden = !!f.desc;
+    var links = '';
+    if(f.site) links += sheetLinkHtml(f.site, svgLink(),
+      '<span class="link-wide">Show website</span><span class="link-narrow">Website</span>');
+    if(f.facebook) links += sheetLink(f.facebook, svgFacebook(), 'Facebook');
+    if(f.twitter) links += sheetLink(f.twitter, svgLink(), 'Twitter');
+    lpInfoLinks.innerHTML = links;
+  }
+
+  // Called whenever the on-air snapshot changes and whenever a lazy source
+  // lands: shows or hides the badge, and repaints the panel if it is open.
+  function paintLiveInfo(){
+    var f = liveShowFacts();
+    // Disabled rather than hidden: the artwork IS the control, and the card
+    // needs its artwork either way. Disabled also takes it out of the dialog's
+    // Tab cycle and kills the hover hint, so it stops offering what it can't do.
+    lpInfoBtn.disabled = !liveHasFacts(f);
+    // An open panel is repainted, never closed — not even when the schedule
+    // rolls over onto a show we hold nothing for. Whoever opened this is reading
+    // it; taking it off the screen mid-sentence is worse than the note that says
+    // there is no description yet. (Which is why closeLiveInfo can't assume the
+    // artwork it must hand focus back to is still able to take it.)
+    if(f && !lpInfoPanel.hidden) paintLiveInfoPanel(f);
+  }
+
+  var lpInfoReturnFocus = null;
+  function openLiveInfo(){
+    if(!lpInfoPanel.hidden) return;
+    var f = liveShowFacts();
+    if(!liveHasFacts(f)) return;
+    paintLiveInfoPanel(f);
+    // The directory is ~120KB of prose, so it is fetched on a deliberate tap
+    // rather than with the page. The panel is already painted from the harvest;
+    // this fills in whatever the harvest was missing when it lands.
+    if(typeof ensurePrograms === 'function') ensurePrograms().then(paintLiveInfo);
+    var focused = document.activeElement;
+    lpInfoReturnFocus = (focused && livePlayer.contains(focused)) ? focused : lpInfoBtn;
+    lpInfoPanel.hidden = lpInfoScrim.hidden = false;
+    lpInfoPanel.setAttribute('aria-hidden', 'false');
+    lpInfoBtn.setAttribute('aria-expanded', 'true');
+    lpInfoBody.scrollTop = 0;
+    // aria-modal means what is behind must be unreachable — including the player
+    // this is sitting on top of. Same contract as the failure alert.
+    livePlayer.setAttribute('inert', '');
+    document.addEventListener('keydown', onLiveInfoKey);
+    lpInfoClose.focus();
+  }
+  function closeLiveInfo(){
+    if(lpInfoPanel.hidden) return;
+    lpInfoPanel.hidden = lpInfoScrim.hidden = true;
+    lpInfoPanel.setAttribute('aria-hidden', 'true');
+    lpInfoBtn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('keydown', onLiveInfoKey);
+    // Never hand `inert` back while the alert still wants it: a failure that
+    // arrived while this was open closed it (see paintLiveAlert), and the alert
+    // is the dialog that owns the player now.
+    if(lpAlert.hidden) livePlayer.removeAttribute('inert');
+    if(lpAlertReturnFocus) return;         // the alert will place focus itself
+    // Normally the artwork this was opened from — but a rollover can have
+    // disabled it while the panel was up, and focusing a disabled element just
+    // drops focus on the floor. Play is always there.
+    var back = lpInfoReturnFocus;
+    if(!back || back.disabled || back.hidden || !back.offsetParent) back = lpToggle;
+    if(back && back.focus) back.focus();
+    lpInfoReturnFocus = null;
+  }
+  // Escape closes this panel only — the player behind it stays open. Runs ahead
+  // of the player's own handler, which bails while this is up.
+  function onLiveInfoKey(e){
+    if(e.key === 'Escape'){ e.stopPropagation(); closeLiveInfo(); return; }
+    if(e.key !== 'Tab') return;
+    var f = [].filter.call(
+      lpInfoPanel.querySelectorAll('a[href], button:not([disabled])'),
+      function(el){ return el.offsetParent !== null; }
+    );
+    if(!f.length) return;
+    var first = f[0], last = f[f.length-1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  }
+  lpInfoBtn.addEventListener('click', openLiveInfo);
+  lpInfoClose.addEventListener('click', closeLiveInfo);
+  lpInfoScrim.addEventListener('click', closeLiveInfo);
 
   function clearLiveWatchdog(){
     if(liveWatchdog){ clearTimeout(liveWatchdog); liveWatchdog = null; }
@@ -1485,6 +1625,11 @@
       lpSongText.textContent = song && artist ? (song + ' · ' + artist) : (song || artist);
       lpSong.hidden = false;
     } else { lpSong.hidden = true; }
+    // A show the on-air harvest has never caught a description for still has one
+    // at archive2, resolved per show on demand. Cheap and asked at most once per
+    // altid (see ensureShowDetail); paintLiveInfo runs again when it lands.
+    if(liveCurrent.altid && typeof ensureShowDetail === 'function') ensureShowDetail(liveCurrent.altid);
+    paintLiveInfo();
   }
 
   // ---- Modal open / close, mirroring the info sheet's lifecycle.
@@ -1559,6 +1704,7 @@
 
   function closeLivePlayer(){
     if(!livePlayer.classList.contains('show')) return;
+    closeLiveInfo();       // the description belongs to the card it was opened from
     // The card can only collapse toward a bar that is on screen to be measured;
     // closing mid-connect (bar not docked yet) just closes.
     if(liveWillMinimize() && !playerBar.hidden) runMinimize(livePlayer);
@@ -1575,6 +1721,7 @@
   }
   function onLivePlayerKey(e){
     if(!lpAlert.hidden) return;          // the alert dialog owns the keyboard
+    if(!lpInfoPanel.hidden) return;      // so does the about-this-show panel
     if(e.key === 'Escape'){ closeLivePlayer(); return; }
     if(e.key !== 'Tab') return;
     var f = [].filter.call(
@@ -2190,6 +2337,9 @@
         // repaint only if this is still the sheet on screen
         var same = rowById(sheetRowId);
         if(same && same.sho === altid && sheet.classList.contains('show')) paintSheet(same);
+        // the live player asks for the on-air show too — its badge and panel are
+        // painted from the same record
+        paintLiveInfo();
       })
       .catch(function(){ /* non-fatal: the sheet keeps what it had */ });
   }

@@ -342,9 +342,24 @@
   </button>
   <div class="lp-badge" id="lpBadge"><span class="on-air-dot" aria-hidden="true"></span>On Air · WBAI 99.5 FM</div>
 
-  <div class="lp-art" aria-hidden="true">
+  <!-- The artwork IS the way into the show's description — no badge pinned to its
+       corner. The card is a centred stack, and anything parked in one corner of
+       the art broke that symmetry; a tile that quietly responds to a pointer
+       doesn't. A hover hint names the affordance where there is a pointer to
+       hover with; on a touch screen it stays something you find by tapping.
+       Disabled (not hidden) whenever we hold nothing to show — the art still has
+       to be there — which also drops it out of the dialog's Tab cycle. -->
+  <button class="lp-art" id="lpInfoBtn" type="button" disabled
+          aria-haspopup="dialog" aria-controls="lpInfo" aria-expanded="false"
+          aria-label="About this show">
     <img id="lpArt" alt="">
-  </div>
+    <span class="lp-art-hint" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6h.01"/>
+      </svg>
+      Show info
+    </span>
+  </button>
 
   <div class="lp-meta">
     <h2 class="lp-title" id="lpTitle">WBAI 99.5 FM</h2>
@@ -401,6 +416,35 @@
     </div>
   </div>
   <button class="lp-alert-dismiss" id="lpAlertClose" type="button" aria-label="Dismiss this message">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+</div>
+
+<!-- "About this show" — the on-air show's description and links, opened from the
+     info badge on the live player's artwork. app.js fills it by joining the
+     now-playing show's altid against the same two sources the archive sheet
+     uses: /api/showinfo (the on-air harvest) and /api/programs (wbai.org's
+     directory).
+
+     Out here rather than inside #livePlayer for the reason documented on the
+     alert above: the player is a fixed, transformed, scrolling box, so a child
+     is clipped at its edge — and a show description is exactly the thing that
+     runs long enough to need its own scroll. -->
+<div class="lp-info-scrim" id="lpInfoScrim" hidden></div>
+<div class="lp-info" id="lpInfo" role="dialog" aria-modal="true"
+     aria-labelledby="lpInfoTitle" aria-hidden="true" hidden>
+  <div class="lp-info-body" id="lpInfoBody">
+    <span class="lp-info-eyebrow">About the show</span>
+    <h2 class="lp-info-title" id="lpInfoTitle">WBAI 99.5 FM</h2>
+    <p class="lp-info-host" id="lpInfoHost" hidden></p>
+    <p class="lp-info-desc" id="lpInfoDesc" hidden></p>
+    <p class="lp-info-note" id="lpInfoNote" hidden>No description for this show yet.</p>
+    <div class="lp-info-links" id="lpInfoLinks"></div>
+  </div>
+  <!-- After the body, so it lands top-RIGHT like every other close in the app.
+       It is still the first thing focus lands on when the panel opens (app.js
+       focuses it by id), so nothing about the keyboard order depends on this. -->
+  <button class="lp-info-close" id="lpInfoClose" type="button" aria-label="Close show info" title="Close">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
   </button>
 </div>
