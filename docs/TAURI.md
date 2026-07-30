@@ -168,16 +168,50 @@ identity, so the account that signs a station's app has to be that station's.
    generated it exports the pair as a `.p12` (Keychain Access → right-click the
    certificate → Export) and hands it over.
 
+   Beware the near-miss: a **"Distribution Managed"** certificate is an *Apple
+   Distribution* cert for the App Store, cloud-managed, with the private key held
+   by Apple. It cannot sign a `.dmg` and cannot be exported. An account can be
+   full of certificates and still have nothing that works here.
+
 3. **If there's genuinely no usable certificate, only the Account Holder can make
    one — Admin is not enough.** Apple's documented path for an Admin is
    *cloud-managed* certificates, which **do not help here**: cloud signing only
    works through the Xcode Organizer archive-and-distribute workflow, and Tauri's
    bundler shells out to `codesign` against a local keychain identity instead.
 
-   So their Account Holder creates it (Xcode → Settings → Accounts → Manage
-   Certificates → **+** → Developer ID Application, a few minutes on their
-   machine), exports the `.p12`, and passes it to whoever builds. Treat that file
-   as a live credential: never in the repo, revoked when the engagement ends.
+   **Use the CSR route, not the Xcode route.** The private key is created by
+   whoever generates the *signing request*, not by whoever creates the
+   certificate. So the developer generates it, and the Account Holder — who is
+   often an executive with no developer tools and no reason to acquire any — only
+   uploads a file and downloads another, in a browser:
+
+   1. **You:** Keychain Access → Certificate Assistant → **Request a Certificate
+      From a Certificate Authority**. Enter the client's contact email, leave CA
+      Email blank, choose **Saved to disk**, key size 2048, algorithm RSA. This
+      writes `CertificateSigningRequest.certSigningRequest` and puts a fresh
+      private key in *your* login keychain.
+   2. **Account Holder:** developer.apple.com → Certificates, Identifiers &
+      Profiles → Certificates → **+** → **Developer ID Application** → upload the
+      `.certSigningRequest` → Continue → **Download** the `.cer` → send it back.
+      No Xcode, no Keychain Access, no password to share, roughly three minutes.
+   3. **You:** double-click the `.cer`. It pairs with the private key already in
+      your keychain, and `security find-identity -v -p codesigning` starts listing
+      the identity.
+
+   This beats a `.p12` handoff on every axis: nothing secret crosses the wire, no
+   shared password, and no one has to walk a non-technical executive through
+   exporting key material. The Xcode route is only simpler when the Account Holder
+   is *already* a developer on a Mac with Xcode installed.
+
+   **Never ask for their Apple ID credentials** as a shortcut. Account sharing
+   breaks Apple's agreement, and the whole point of the CSR flow is that it
+   doesn't need it.
+
+   **Then close the loop on custody.** The CSR route leaves the only copy of the
+   private key on the developer's machine, which is convenient now and a liability
+   later. Export a `.p12` backup and give it to the client for their records, so
+   the certificate outlives the engagement — and note that revoking it in the
+   portal is how they cut off a departing contractor.
 
    While you're in the portal as Admin, check **Identifiers** too — an account
    with existing station apps has a bundle-ID convention, and the desktop app
@@ -202,8 +236,10 @@ identity, so the account that signs a station's app has to be that station's.
    of that same file is `APPLE_CERTIFICATE` if macOS ever moves into CI.
 4. **Note the signing identity and Team ID.**
    `security find-identity -v -p codesigning` prints
-   `Developer ID Application: Pacifica Foundation (TEAMID)` once the `.p12` is
-   imported — which doubles as proof the private key came across.
+   `Developer ID Application: Pacifica Foundation (TEAMID)` once the `.cer` is
+   installed — which doubles as proof the certificate found its private key. If it
+   still reports `0 valid identities found`, the certificate is there and the key
+   isn't; nothing will sign until that's resolved.
 5. **Create a notarization credential.** This part *doesn't* need their Account
    Holder: notarytool authorizes on team membership, so your own Apple ID plus an
    app-specific password (appleid.apple.com → Sign-In and Security) plus **their**
