@@ -73,6 +73,20 @@ const RETURN_TO_TAB = `document.dispatchEvent(new Event('visibilitychange'));
   const openModal = async () => { await p.click('#onAirBtn'); await sleep(400); };
   const closeModal = async () => { await p.click('#lpClose'); await sleep(400); };
   const tap = async (sel, ms = 8000) => { await p.click(sel); await sleep(ms); };
+  // What the docked bar's toggle is ACTUALLY showing — the rendered glyph, not
+  // the class that is supposed to produce it (CLAUDE.md §3a). `pause` is read off
+  // the path data, so a swapped icon can't pass as one.
+  const barToggle = () => p.eval(`
+    if(document.getElementById('playerBar').hidden) return { glyph: 'no-bar' };
+    var b = document.getElementById('playerToggle');
+    var vis = function(el){ return !!el && getComputedStyle(el).display !== 'none'; };
+    var svg = b.querySelector('svg'), spin = b.querySelector('.spinner');
+    var glyph = 'none';
+    if(vis(svg)) glyph = /^M7 5h4/.test(svg.querySelector('path').getAttribute('d')) ? 'pause' : 'play';
+    if(vis(spin)) glyph = 'spinner';
+    return { glyph: glyph, loadingClass: b.classList.contains('loading'),
+             status: (document.getElementById('playerStatus').textContent || '').trim() };
+  `);
 
   console.log(`\n########  autoplay policy: ${STRICT ? 'user-gesture-required (worst case / iOS-like)' : 'Chrome default'}  ########`);
 
@@ -223,6 +237,39 @@ const RETURN_TO_TAB = `document.dispatchEvent(new Event('visibilitychange'));
   check('retry cleared the card', v.alertShown === false, v.alertTitle);
   check('retry is playing again', v.currentTime > 0.5, `currentTime=${v.currentTime}s`);
   check('one socket open', s.open === 1, `open=${s.open}`);
+
+  // Runs LAST on purpose: it opens a connection, and every earlier section
+  // asserts on exact connection counts.
+  console.log('\n=== S9: the docked bar spins while connecting, like the modal ===');
+  await mark('S9 bar connect state');
+  await closeModal();                          // the bar owns the stream now
+  await tap('#playerToggle', 1500);            // stop from the bar
+  check('bar shows play after stopping', (await barToggle()).glyph === 'play',
+    JSON.stringify(await barToggle()));
+  // What the listener sees between the tap and the first audible frame. Read the
+  // rendered glyph, not the class: a `.loading` class whose CSS never landed
+  // would still be "set" and still show a pause icon over silence.
+  await p.click('#playerToggle');
+  let sawSpinner = null, sawPause = null;
+  for (let i = 0; i < 60; i++) {               // up to 15s, same budget as a play
+    const b = await barToggle();
+    if (b.glyph === 'spinner' && sawSpinner === null) sawSpinner = i * 250;
+    if (b.glyph === 'pause') { sawPause = i * 250; break; }
+    await sleep(250);
+  }
+  check('the bar spun while connecting', sawSpinner !== null,
+    sawSpinner === null ? 'never spun' : `spinner at ${sawSpinner}ms`);
+  check('it reached pause once audio was running', sawPause !== null,
+    sawPause === null ? 'never played' : `pause at ${sawPause}ms`);
+  check('spinner came before pause, i.e. no pause icon over silence',
+    sawSpinner !== null && sawPause !== null && sawSpinner < sawPause,
+    `spinner ${sawSpinner}ms, pause ${sawPause}ms`);
+  // The loop breaks on the first frame the pause icon appears, which is also the
+  // first frame of audio — give it a beat before asking whether it kept going.
+  await sleep(1500);
+  v = await probe();
+  check('audio really is advancing behind the pause icon', v.currentTime > 0.5,
+    `currentTime=${v.currentTime}s`);
 
   console.log('\n=== Page health ===');
   check('no uncaught exceptions in the page', pageErrors.length === 0, pageErrors.join(' | ') || 'none');

@@ -715,9 +715,17 @@
   function refreshToggleIcon(){
     // Live has no "paused element" to read — a stopped stream has no element at
     // all — so the bar reads the intent flag the live section owns.
-    var playing = (barMode === 'live')
+    // Between the tap and the first audible frame the button spins rather than
+    // showing pause: `audio.paused` is false the instant play() is called, and
+    // liveWanted is intent, so both would otherwise claim playback that hasn't
+    // started. Same states the modal and the card buttons already show.
+    var loading = (barMode === 'live') ? liveLoading : !!loadingMp3;
+    var playing = !loading && ((barMode === 'live')
       ? !!liveWanted
-      : (!audio.paused && !audio.ended);
+      : (!audio.paused && !audio.ended));
+    playerToggle.classList.toggle('loading', loading);
+    playerToggle.setAttribute('aria-label',
+      loading ? 'Loading' : (playing ? 'Pause' : 'Play'));
     playerIcon.outerHTML = playing
       ? '<svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
       : '<svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
@@ -898,7 +906,16 @@
     // can leave a paused archive track in nowPlaying, so check the mode first.
     if(barMode === 'live'){ toggleLive(); return; }
     if(nowPlaying.mp3){
-      if(audio.paused) audio.play().catch(function(){}); else audio.pause();
+      if(audio.paused){
+        // Resuming is not instant either — the element may have to refill before
+        // it makes a sound — so it gets the same spinner as a fresh play. The
+        // `playing` / `pause` handlers clear the flag.
+        loadingMp3 = nowPlaying.mp3;
+        audio.play().catch(function(){});
+        updatePlayButtons();
+      } else {
+        audio.pause();
+      }
       return;
     }
     if(liveEngaged) toggleLive();
@@ -985,6 +1002,9 @@
   var liveAudio = null;
   var liveWanted = false;
   var liveEngaged = false;
+  // Connecting or rebuffering: wanted, but not yet audible. Drives the spinner
+  // on both the modal button and the docked bar's toggle.
+  var liveLoading = false;
   // The outgoing connection during a drift handover — still playing, still
   // audible, kept alive until its replacement proves it works. See resyncLive().
   var livePrev = null;
@@ -1030,7 +1050,13 @@
     paintLiveCloseBtn();
   }
 
-  function setLiveLoading(on){ lpToggle.classList.toggle('loading', on); }
+  // The docked bar shows the same connect state as the modal, so the flag has to
+  // outlive the class on lpToggle — the bar reads it in refreshToggleIcon().
+  function setLiveLoading(on){
+    liveLoading = !!on;
+    lpToggle.classList.toggle('loading', liveLoading);
+    if(barMode === 'live') refreshToggleIcon();
+  }
 
   // ---- What the close button promises. Closing the modal has never stopped the
   // stream — it hands it to the docked bar — but an ✕ says "this ends", and

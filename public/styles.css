@@ -1972,6 +1972,17 @@
     cursor:pointer;
   }
   .player-toggle svg{width:18px;height:18px;}
+  /* Connect state, same contract as .lp-toggle: spinner replaces the glyph
+     while we are waiting for audio, so the bar never shows a pause icon over
+     silence. */
+  .player-toggle.loading svg{display:none;}
+  .player-toggle .spinner{display:none;}
+  .player-toggle.loading .spinner{
+    display:block; width:18px;height:18px; border-radius:50%;
+    border:2px solid rgba(255,255,255,.35); border-top-color:#fff;
+    animation:spin .7s linear infinite;
+  }
+  @media (prefers-reduced-motion:reduce){ .player-toggle.loading .spinner{animation-duration:1.4s;} }
   .player-art{
     width:44px; height:44px; border-radius:9px; flex:none; overflow:hidden;
     /* station icon shows if the playing show has no artwork */
@@ -2589,6 +2600,7 @@
     .player-skip{ width: 44px; height: 44px; }
     .player-toggle{ width: 48px; height: 48px; }
     .player-toggle svg{ width: 20px; height: 20px; }
+    .player-toggle.loading .spinner{ width: 20px; height: 20px; }
 
     /* pills and text buttons — give them a real vertical target */
     .on-air-btn, .appbar-actions .btn-donate, .refresh-pill, .lp-alert-btn,
