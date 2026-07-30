@@ -189,35 +189,64 @@ const RETURN_TO_TAB = `document.dispatchEvent(new Event('visibilitychange'));
   check('audio recovered and is advancing', v.currentTime > 0.5, `currentTime=${v.currentTime}s`);
   check('no orphaned sockets', s.open === 1, `open=${s.open}`);
 
-  console.log('\n=== S7: drift — a 60s stall must not leave the listener behind live ===');
-  await mark('S7 stall 60s');
+  console.log('\n=== S7: THE SILENT STALL — a stream that dies without saying so ===');
+  console.log('    A network that vanishes underneath a listener does not close the');
+  console.log('    socket and does not fire `error` — the bytes just stop arriving.');
+  console.log('    The station stalling with the connection still open is the same');
+  console.log('    event from the element\'s side: `waiting`, and then nothing, ever.');
+  console.log('    (Reported 2026-07-30 — a USB-tethered iPhone unplugged mid-stream:');
+  console.log('    ERR_NETWORK_CHANGED, no `error`, and the spinner span indefinitely.)');
+  await mark('S7 silent stall');
   const before = await stats();
   await ctl('/ctl/stall?on=1');
-  console.log('    (station stalled 60s — drift threshold is 45s)');
-  await sleep(60000);
+
+  console.log('    (station stalled — the first rebuild is due ~8s in)');
+  await sleep(22000);
   const mid = await probe();
-  check('drift is measured while stalled', mid.drift >= 45, `drift=${mid.drift}s`);
-  check('no failure card for a stall (the socket is still open)', mid.alertShown === false, mid.alertTitle);
+  const during = await stats();
+  check('no failure card while it is still trying', mid.alertShown === false, mid.alertTitle);
+  check('it is rebuilding the connection, not waiting forever',
+    during.total > before.total, `${during.total - before.total} rebuild attempt(s)`);
+  // The original bug was not just that it never recovered — it was that it never
+  // SAID anything. An unexplained spinner is indistinguishable from a hang.
+  check('it says what it is doing rather than spinning silently',
+    /reconnect/i.test(mid.note || ''), JSON.stringify(mid.note));
+
+  console.log('    (holding the stall out to ~60s — drift threshold is 45s)');
+  await sleep(40000);
+  const late = await probe();
+  check('drift is measured across the stall', late.drift >= 45, `drift=${late.drift}s`);
+  check('still no failure card at 60s (inside the give-up budget)',
+    late.alertShown === false, late.alertTitle);
+
+  // The point of the section: the bytes come back and NOTHING touches the page —
+  // no tap, no tab switch, no visibility event, no gesture of any kind. Audio has
+  // to return on its own. That is precisely what did not happen on the iPhone.
   await ctl('/ctl/stall?on=0');
-  await sleep(4000);
-  await p.eval(RETURN_TO_TAB);
-  await sleep(9000);
+  await sleep(25000);
   s = await stats(); v = await probe();
+  check('audio came back with no user gesture at all',
+    v.paused === false && v.currentTime > 0.5, `paused=${v.paused} currentTime=${v.currentTime}s`);
+  check('no failure card', v.alertShown === false, v.alertTitle);
+  check('exactly one socket open (every abandoned rebuild was cleaned up)',
+    s.open === 1, `open=${s.open}`);
+  check('exactly one live element left in the DOM', v.liveElements === 1, `count=${v.liveElements}`);
   if (STRICT) {
-    // No user gesture behind a drift resync, so play() is refused outright here.
-    // The requirement is that this costs the listener nothing.
-    check('handover was refused but audio survived', v.liveElements >= 1, `count=${v.liveElements}`);
-    check('still playing (old connection handed back)', v.paused === false, `paused=${v.paused}`);
-    check('no failure card from a refused background handover', v.alertShown === false, v.alertTitle);
-    check('exactly one socket open (no orphan)', s.open === 1, `open=${s.open}`);
+    // Every rebuild here is refused by the autoplay policy, so recovery comes
+    // from the ORIGINAL connection resuming. The requirement is that all those
+    // refusals cost the listener nothing.
+    check('recovered on the handed-back connection', v.drift >= 45, `drift=${v.drift}s`);
   } else {
-    check('a fresh connection replaced the stalled one', s.total === before.total + 1,
-      `total=${s.total} (was ${before.total})`);
-    check('exactly one socket open after the handover', s.open === 1, `open=${s.open}`);
-    check('drift reset to ~0 — back at the live edge', v.drift !== null && v.drift < 10, `drift=${v.drift}s`);
-    check('audio advancing on the new connection', v.currentTime > 0.5, `currentTime=${v.currentTime}s`);
-    check('no failure card', v.alertShown === false, v.alertTitle);
+    check('and a resync put it back at the live edge', v.drift !== null && v.drift < 15,
+      `drift=${v.drift}s`);
   }
+  // The visibility/focus resync path still exists; make sure returning to the tab
+  // on top of an already-recovered stream does not disturb it.
+  await p.eval(RETURN_TO_TAB);
+  await sleep(3000);
+  s = await stats(); v = await probe();
+  check('returning to the tab afterwards changes nothing', v.paused === false && s.open === 1,
+    `paused=${v.paused} open=${s.open}`);
 
   console.log('\n=== S8: dead station → failure card, then retry recovers ===');
   await mark('S8 station down');
@@ -270,6 +299,38 @@ const RETURN_TO_TAB = `document.dispatchEvent(new Event('visibilitychange'));
   v = await probe();
   check('audio really is advancing behind the pause icon', v.currentTime > 0.5,
     `currentTime=${v.currentTime}s`);
+
+  console.log('\n=== S10: a stall that never ends becomes a failure, not a forever-spinner ===');
+  console.log('    S7 proves recovery when the bytes come back. This proves the other');
+  console.log('    branch: when they never do, the rebuild loop is bounded and the');
+  console.log('    listener is told, instead of watching a spinner until they give up.');
+  await mark('S10 give-up');
+  await openModal();                           // the card lives inside the modal
+  v = await probe();
+  if (v.paused !== false) { await tap('#lpToggle'); }
+  await ctl('/ctl/stall?on=1');
+  console.log('    (station stalled indefinitely — give-up budget is 90s)');
+  // Sampled at 60s: still inside the budget, so it must still be trying — this is
+  // what stops the section from passing on a player that simply failed instantly.
+  await sleep(60000);
+  const trying = await probe();
+  check('at 60s it is still trying, not yet failed', trying.alertShown === false, trying.alertTitle);
+  await sleep(45000);
+  s = await stats(); v = await probe();
+  check('the spinner did NOT spin forever — a failure card was shown',
+    v.alertShown === true, v.alertTitle);
+  check('the card offers a way out, not a dead end',
+    await p.eval(`return !document.getElementById('lpAlertRetry').hidden;`), 'retry visible');
+  check('the dead element was thrown away', v.liveElements === 0, `count=${v.liveElements}`);
+  check('and its socket with it', s.open === 0, `open=${s.open}`);
+  // And the way out works: the station comes back, the listener taps once.
+  await ctl('/ctl/stall?on=0');
+  await p.click('#lpAlertRetry');
+  await sleep(9000);
+  s = await stats(); v = await probe();
+  check('Try again recovers', v.alertShown === false && v.currentTime > 0.5,
+    `card=${v.alertShown} currentTime=${v.currentTime}s`);
+  check('one socket open after the retry', s.open === 1, `open=${s.open}`);
 
   console.log('\n=== Page health ===');
   check('no uncaught exceptions in the page', pageErrors.length === 0, pageErrors.join(' | ') || 'none');

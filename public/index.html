@@ -242,22 +242,45 @@
     </div>
 
     <nav class="menu-nav">
+      <!-- Every item carries a leading glyph. They are inline SVG (no icon font,
+           no sprite request) and inherit currentColor so the hover/theme rules
+           in styles.css reach them without a second colour system. -->
       <div class="menu-group">
         <h2>Listen</h2>
         <ul>
-          <li><a href="https://wbai.org/listen-live/" target="_blank" rel="noopener noreferrer">Listen live</a></li>
-          <li><a href="https://wbai.org/schedule/" target="_blank" rel="noopener noreferrer">Schedule</a></li>
-          <li><a href="https://wbai.org/programlist/" target="_blank" rel="noopener noreferrer">Programs A–Z</a></li>
-          <li><a href="https://wbai.org/archive/" target="_blank" rel="noopener noreferrer">Full archive</a></li>
+          <li><a href="https://wbai.org/schedule/" target="_blank" rel="noopener noreferrer">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 9.6h17M8 3.4v3.2M16 3.4v3.2"/></svg>
+            <span>Schedule</span></a></li>
+          <li><a href="https://wbai.org/programlist/" target="_blank" rel="noopener noreferrer">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6.8h10.5M9 12h10.5M9 17.2h10.5M4.6 6.8h.01M4.6 12h.01M4.6 17.2h.01"/></svg>
+            <span>Programs A–Z</span></a></li>
+          <li><a href="https://play.google.com/store/apps/details?id=app.pacifica.wbai" target="_blank" rel="noopener noreferrer">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 12a6 6 0 0 1 12 0"/><path d="M6 12v5.4A1.6 1.6 0 0 0 7.6 19h8.8a1.6 1.6 0 0 0 1.6-1.6V12z"/><path d="M8.2 7.2 6.8 4.8M15.8 7.2l1.4-2.4M9.8 9.6h.01M14.2 9.6h.01"/></svg>
+            <span>WBAI Android App</span></a></li>
+          <!-- Not a link on purpose: nothing to point it at yet. A disabled <a>
+               is still tab-focusable and still looks tappable, so this is a
+               plain span carrying its own "soon" badge. -->
+          <li><span class="menu-soon">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.5 12.7c0-2.1 1.7-3.1 1.8-3.2-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.7-3.1.7-.6 0-1.6-.7-2.7-.7-1.4 0-2.7.8-3.4 2.1-1.4 2.5-.4 6.1 1 8.1.7 1 1.5 2.1 2.6 2 1 0 1.4-.7 2.7-.7 1.2 0 1.6.7 2.7.6 1.1 0 1.8-1 2.5-2 .8-1.1 1.1-2.2 1.1-2.3 0 0-2.2-.8-2.2-3zM14.4 6.3c.6-.7 1-1.7.9-2.7-.9 0-2 .6-2.6 1.3-.6.6-1.1 1.6-.9 2.6.9.1 1.9-.5 2.6-1.2z"/></svg>
+            <span>WBAI Apple App</span>
+            <span class="menu-badge">Soon</span></span></li>
         </ul>
       </div>
       <div class="menu-group">
         <h2>Station</h2>
         <ul>
-          <li><a href="https://wbai.org/about.html" target="_blank" rel="noopener noreferrer">About WBAI</a></li>
-          <li><a href="https://wbai.org/mission.html" target="_blank" rel="noopener noreferrer">Mission</a></li>
-          <li><a href="https://wbai.org/pacifica.html" target="_blank" rel="noopener noreferrer">Pacifica Foundation</a></li>
-          <li><a href="https://wbai.org/news/" target="_blank" rel="noopener noreferrer">News</a></li>
+          <li><a href="https://wbai.org/about.html" target="_blank" rel="noopener noreferrer">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11.2v5M12 7.8h.01"/></svg>
+            <span>About WBAI</span></a></li>
+          <li><a href="https://wbai.org/mission.html" target="_blank" rel="noopener noreferrer">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.2"/><path d="M12 12h.01"/></svg>
+            <span>Mission</span></a></li>
+          <li><a href="https://wbai.org/pacifica.html" target="_blank" rel="noopener noreferrer">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.6 12h16.8"/><path d="M12 3.5c2.2 2.4 3.4 5.3 3.4 8.5S14.2 18.1 12 20.5c-2.2-2.4-3.4-5.3-3.4-8.5S9.8 5.9 12 3.5z"/></svg>
+            <span>Pacifica Foundation</span></a></li>
+          <li><a href="https://wbai.org/news/" target="_blank" rel="noopener noreferrer">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h9A1.5 1.5 0 0 1 16 6.5V19H6a2 2 0 0 1-2-2z"/><path d="M16 9h2.5A1.5 1.5 0 0 1 20 10.5V17a2 2 0 0 1-2 2h-2"/><path d="M7.2 8.6h5.6M7.2 12h5.6M7.2 15.4h3.6"/></svg>
+            <span>News</span></a></li>
         </ul>
       </div>
       <div class="menu-group">
@@ -268,10 +291,18 @@
                fallback if that listener never runs, and it keeps
                open-in-new-tab / copy-link working from the context menu. -->
           <li><a href="https://wbai.org/donate/" id="menuDonate" target="_blank" rel="noopener noreferrer"
-                 aria-haspopup="dialog" aria-controls="donateModal">Donate</a></li>
-          <li><a href="https://wbai.org/volunteers-interns.php" target="_blank" rel="noopener noreferrer">Volunteer</a></li>
-          <li><a href="https://wbai.org/contact.php" target="_blank" rel="noopener noreferrer">Contact</a></li>
-          <li><a href="https://wbai.org" target="_blank" rel="noopener noreferrer">wbai.org</a></li>
+                 aria-haspopup="dialog" aria-controls="donateModal">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.2s-7.3-4.4-7.3-9.3A4.1 4.1 0 0 1 12 8.3a4.1 4.1 0 0 1 7.3 2.6c0 4.9-7.3 9.3-7.3 9.3z"/></svg>
+            <span>Donate</span></a></li>
+          <li><a href="https://wbai.org/volunteers-interns.php" target="_blank" rel="noopener noreferrer">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 19.8v-1.6a3.4 3.4 0 0 0-3.4-3.4H6.9a3.4 3.4 0 0 0-3.4 3.4v1.6"/><circle cx="9.35" cy="8" r="3.4"/><path d="M20.5 19.8v-1.6a3.4 3.4 0 0 0-2.6-3.3M15.7 4.8a3.4 3.4 0 0 1 0 6.4"/></svg>
+            <span>Volunteer</span></a></li>
+          <li><a href="https://wbai.org/contact.php" target="_blank" rel="noopener noreferrer">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="m4.6 8.2 6.3 4.5a2 2 0 0 0 2.2 0l6.3-4.5"/></svg>
+            <span>Contact</span></a></li>
+          <li><a href="https://wbai.org" target="_blank" rel="noopener noreferrer">
+            <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4.5h5.5V10M19.3 4.7 11.6 12.4"/><path d="M18.2 14v4.6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-10a2 2 0 0 1 2-2h4.6"/></svg>
+            <span>wbai.org</span></a></li>
         </ul>
       </div>
     </nav>
@@ -279,7 +310,7 @@
     <div class="menu-foot">
       <p>A service of the Pacifica Foundation · built by KPFTx</p>
       <p>WBAI 99.5 FM · New York, NY</p>
-      <p class="menu-note">Unofficial redesign of the WBAI archive, not affiliated with or endorsed by WBAI or the Pacifica Foundation. Show listings, artwork, audio, and on-air data are proxied live from WBAI’s own systems (archive2.wbai.org and confessor2.wbai.org); Listen Live, Donate, and every station link go to the real <a href="https://wbai.org" target="_blank" rel="noopener noreferrer">wbai.org</a>.</p>
+      <p class="menu-note">Unofficial redesign of the WBAI archive, not affiliated with or endorsed by WBAI or the Pacifica Foundation. Show listings, artwork, audio, and on-air data are proxied live from WBAI’s own systems (archive2.wbai.org and confessor2.wbai.org); Donate and every station link go to the real <a href="https://wbai.org" target="_blank" rel="noopener noreferrer">wbai.org</a>.</p>
     </div>
   </div>
 </aside>
