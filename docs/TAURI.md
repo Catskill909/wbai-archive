@@ -123,6 +123,26 @@ Open Anyway, which is not a thing you can ask a listener to do.
    (Manual route: a CSR from Keychain Access, uploaded under Certificates,
    Identifiers & Profiles.) Requires the Account Holder role, and these are
    capped at 5 per account — don't spend them experimenting.
+
+   **Not an App ID.** Registering an identifier under *Identifiers* does nothing
+   for this. App IDs exist to bind a bundle ID to provisioning profiles and
+   capabilities (push, iCloud, App Groups) — that's App Store, TestFlight and
+   Mac App Store territory. Direct distribution is signed with a certificate and
+   cleared by notarization; Apple's own instructions for a Developer ID
+   certificate never mention registering an identifier first. Our
+   `io.github.catskill909.wbaiarchive` only has to be *well-formed*, not
+   registered. Creating an App ID anyway is harmless and inert.
+
+   Skip **Developer ID Installer** too — that signs `.pkg` files, and we ship a
+   `.dmg`.
+
+   **The private key is the part you can lose.** A `.cer` with no matching
+   private key in your keychain cannot sign anything, and Apple cannot reissue
+   the key — only the certificate. The Xcode route keeps both together
+   automatically. Once it's there, export the pair as a `.p12` (Keychain Access →
+   right-click the certificate → Export) and keep it with its password: that file
+   is your only migration path to another Mac, and base64 of it is
+   `APPLE_CERTIFICATE` if macOS ever moves into CI.
 3. **Note your signing identity and Team ID.**
    `security find-identity -v -p codesigning` prints
    `Developer ID Application: Your Name (TEAMID)`.
