@@ -101,10 +101,19 @@ A test that has never failed has never been shown to work.
 
 ## 4. PROD IS NOT YOUR LAPTOP — read its state, don't infer it
 
-Local runs write `data/` straight to disk and keep it forever. Containers don't:
-their filesystem is rebuilt from the image every deploy, and a volume declared in
-`docker-compose.yml` is a *request*, not proof one is mounted. Coolify has been
-observed ignoring it (confirmed 2026-07-26 — see `docs/DEPLOYMENT.md`).
+Local runs write `DATA_DIR` (`./data`) straight to disk and keep it forever.
+Containers don't: their filesystem is rebuilt from the image every deploy, and a
+volume declared in `docker-compose.yml` is a *request*, not proof one is mounted.
+Coolify has been observed ignoring it (confirmed 2026-07-26 — see
+`docs/DEPLOYMENT.md`). A Dockerfile `VOLUME` line is worse than useless here: with
+no explicit mount it creates a fresh anonymous volume per container, which looks
+like persistence until the next deploy. It has been removed for that reason.
+
+**Storage is the one area where a local pass is not weak evidence — it is no
+evidence.** There is no container boundary on your laptop, so nothing that can
+fail in production exists to fail locally: every storage check passes by
+construction. Local proves the code path runs. Only a redeploy proves the
+storage. Both belong in every definition of done, on separate lines.
 
 This bit us once already: descriptions worked locally and were blank in
 production, because `/api/showinfo` is harvested only while a show is on air and
@@ -112,13 +121,18 @@ prod's cache started empty every deploy. Diagnosis took a while because every
 obvious number looked fine.
 
 **So when local and production disagree, measure production — don't reason about
-it.** `curl -s https://<host>/healthz` reports the live bundle version and what
-was on disk at boot:
+it.** `curl -s https://<host>/healthz` reports the live bundle version and the
+data dir's identity:
 
 - `version` must change after a deploy, or the old image is still serving.
-- `storage.showinfoOnDisk` is the *only* field that proves persistent storage
-  works. `storage.showinfoNow` reads healthy either way (the seed fills it) — it
-  diagnoses nothing.
+- `storage.instanceId` **unchanged across a redeploy** is what proves persistent
+  storage works — same id, same directory. A new id means the volume was
+  replaced. One reading proves nothing; compare two deploys.
+- `storage.freshVolume` is true when the boot found an empty data dir. Correct
+  exactly once, on the first deploy; true later means it isn't persisting.
+- `storage.showinfoOnDisk` is supporting detail, not the diagnostic — it counts
+  records, and counts move for unrelated reasons. `storage.showinfoNow` reads
+  healthy either way (the seed fills it) and diagnoses nothing at all.
 
 Same instinct as §1: don't conclude anything about code you haven't proven is the
 code that ran.

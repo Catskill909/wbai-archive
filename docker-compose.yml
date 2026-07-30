@@ -8,11 +8,22 @@ services:
     environment:
       - PORT=8080
       - NODE_ENV=production
+      # One directory for everything the server persists; same string as the
+      # mount below. See .env.example.
+      - DATA_DIR=/app/data
+      - STATION_ID=wbai
     ports:
       - "8080:8080"
     volumes:
-      # keeps the harvested show-info cache across redeploys
-      - wbai-data:/app/data
+      # Keeps the caches (and, later, the analytics rollups) across redeploys.
+      #
+      # This works under plain `docker compose`. It has been observed NOT to be
+      # honoured by Coolify, which is how this deployment spent weeks silently
+      # rebuilding its data dir on every deploy — so on Coolify configure the
+      # mount in the UI (Storages -> Volume Mount -> /app/data) and treat this
+      # block as documentation. Either way, confirm with /healthz rather than
+      # assuming: `storage.instanceId` must not change across a redeploy.
+      - wbai-archive-data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 30s
@@ -21,4 +32,4 @@ services:
       start_period: 10s
 
 volumes:
-  wbai-data:
+  wbai-archive-data:

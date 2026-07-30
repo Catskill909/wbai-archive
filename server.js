@@ -17,16 +17,40 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 8080;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const SHOWINFO_PATH = process.env.SHOWINFO_PATH || path.join(__dirname, 'data', 'showinfo.json');
+
+/**
+ * Everything this server persists lives under ONE directory, and that directory
+ * is named by ONE variable.
+ *
+ * This repo is a template other Pacifica stations deploy, so the number of
+ * things an operator can get wrong is a design constraint, not a detail. One
+ * `DATA_DIR` means one env var, and it is the same string as the volume's mount
+ * path — there is nothing to keep in sync. The three per-file variables below
+ * still work as escape hatches for anyone who needs to split the files up, but
+ * DEPLOYMENT.md documents only DATA_DIR.
+ *
+ * Local vs production, because this is the one place a laptop cannot reproduce
+ * a container (docs/admin-page.md §5.1): locally this is `./data` in the repo,
+ * an ordinary directory that survives everything. In production it is a mount
+ * point, and whether it survives a redeploy is a fact about the deployment that
+ * only /healthz can answer. Never conclude anything about that from a local run.
+ */
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+// Which station this deployment is. Only stamped into data files for now, so a
+// volume that gets restored or attached to the wrong app is caught rather than
+// silently merged. The full per-station configuration story is ROADMAP.md item 4.
+const STATION_ID = process.env.STATION_ID || 'wbai';
+const SHOWINFO_PATH = process.env.SHOWINFO_PATH || path.join(DATA_DIR, 'showinfo.json');
 // Read-only starting set for the harvest cache, baked into the image. Lives
 // outside the data dir on purpose: a mounted volume shadows whatever the image
 // put at /app/data, so a seed placed there would never be seen. See the merge
 // below and docs/ARCHITECTURE.md.
 const SEED_PATH = process.env.SEED_PATH || path.join(__dirname, 'seed', 'showinfo.json');
-const PROGRAMS_PATH = process.env.PROGRAMS_PATH || path.join(__dirname, 'data', 'programs.json');
+const PROGRAMS_PATH = process.env.PROGRAMS_PATH || path.join(DATA_DIR, 'programs.json');
 const PROGRAMS_TTL = 24 * 60 * 60 * 1000;
 
 const UPSTREAM = {
@@ -211,7 +235,7 @@ function parseArchive(html, photoMap) {
  * carries as `<enclosure url>` and `<guid>`. It is exact — no date rounding, no
  * slug aliasing (`dn` has a feed, `demnow` does not, and they are different shows).
  */
-const FEEDS_PATH = process.env.FEEDS_PATH || path.join(__dirname, 'data', 'feeds.json');
+const FEEDS_PATH = process.env.FEEDS_PATH || path.join(DATA_DIR, 'feeds.json');
 // Backstop only. New episodes and newly-added feeds are picked up per-scrape by
 // refreshStaleFeeds/catchUpFeeds, so this blind sweep exists purely to catch
 // edits that do NOT move a feed's newest date — a corrected description, a
@@ -656,25 +680,106 @@ function readJsonFile(file, fallback) {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
     return (parsed && typeof parsed === 'object') ? parsed : fallback;
   } catch (e) {
+    // A truncated file lands here and is silently discarded, which is right for
+    // a cache but would be invisible for anything that matters — so say it out
+    // loud when the file exists and simply didn't parse.
+    if (e instanceof SyntaxError) {
+      console.warn(`[cache] ${path.basename(file)} is unreadable, starting empty:`, e.message);
+    }
     return fallback;
   }
 }
 
+/**
+ * Write JSON so that a crash can never leave a half-written file.
+ *
+ * `writeFileSync` straight over the live file truncates it first: a crash, a
+ * full disk or a container killed mid-write leaves valid-looking bytes that are
+ * not valid JSON, and `readJsonFile` above then throws the whole file away at
+ * the next boot. Harmless for a cache we can re-fetch — but the same helper is
+ * what a month of analytics counters will use (docs/admin-page.md §5.5), and
+ * that is not re-fetchable. Write to a sibling temp file, fsync it, then rename:
+ * rename is atomic within a filesystem, so a reader sees the old file or the new
+ * one and never a partial one.
+ */
+function writeJsonAtomic(file, data) {
+  const tmp = `${file}.tmp`;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeFileSync(fd, JSON.stringify(data));
+    // Without this the rename can be durable while the contents are not.
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, file);
+}
+
 const saveTimers = new Map();
+const savePending = new Map();   // file -> getData, for the shutdown flush
 function writeJsonSoon(file, getData, delayMs = 10000) {
+  savePending.set(file, getData);
   if (saveTimers.has(file)) return;
-  const t = setTimeout(() => {
-    saveTimers.delete(file);
-    try {
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(getData()));
-    } catch (e) {
-      console.warn(`[cache] ${path.basename(file)} running memory-only:`, e.message);
-    }
-  }, delayMs);
+  const t = setTimeout(() => flushFile(file), delayMs);
+  // Deliberately unref'd: a pending cache write must not hold the process open.
+  // That is also precisely why flushOnExit() below exists — see its comment.
   if (t.unref) t.unref();
   saveTimers.set(file, t);
 }
+
+function flushFile(file) {
+  const timer = saveTimers.get(file);
+  if (timer) clearTimeout(timer);
+  saveTimers.delete(file);
+  const getData = savePending.get(file);
+  if (!getData) return;
+  savePending.delete(file);
+  try {
+    writeJsonAtomic(file, getData());
+  } catch (e) {
+    console.warn(`[cache] ${path.basename(file)} running memory-only:`, e.message);
+  }
+}
+
+/**
+ * Flush every queued write before the process goes away.
+ *
+ * `writeJsonSoon` debounces by ten seconds and unrefs its timer, so until now a
+ * shutdown inside that window simply dropped the write. Locally that is invisible
+ * — you restart by hand, rarely mid-debounce, and the data dir is the same one
+ * either way. In production it happens on EVERY redeploy: Coolify stops the
+ * container with SIGTERM, and Node's default action for an unhandled SIGTERM is
+ * to exit immediately. Ten seconds of harvest was lost each time, which nobody
+ * noticed because the caches refill themselves.
+ *
+ * The analytics rollups planned in docs/admin-page.md §5.5 are the reason this
+ * is now a bug worth fixing rather than a curiosity: those counters cannot be
+ * re-derived from anywhere, and "we lose whatever happened since the last flush,
+ * on every deploy" is not an acceptable property for them.
+ *
+ * Synchronous on purpose. There is no time budget to negotiate with here — the
+ * writes are a few hundred KB and the alternative is racing the SIGKILL that
+ * follows.
+ */
+let shuttingDown = false;
+function flushOnExit(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const files = [...savePending.keys()];
+  if (files.length) console.log(`[storage] flushing ${files.length} pending write(s) before exit`);
+  files.forEach(flushFile);
+  if (signal) {
+    // Restore the default disposition rather than calling process.exit(), so the
+    // exit status is the one the supervisor expects from a signalled process.
+    process.removeAllListeners(signal);
+    process.kill(process.pid, signal);
+  }
+}
+process.on('SIGTERM', () => flushOnExit('SIGTERM'));
+process.on('SIGINT', () => flushOnExit('SIGINT'));
+// Covers the ordinary "ran out of work and exited" path, which no signal fires for.
+process.on('beforeExit', () => flushOnExit(null));
 
 const showInfo = readJsonFile(SHOWINFO_PATH, {});
 let showInfoUpdated = Object.keys(showInfo).length ? Date.now() : 0;
@@ -688,16 +793,26 @@ let showInfoUpdated = Object.keys(showInfo).length ? Date.now() : 0;
  * survived on disk rather than what the seed has just put in memory.
  */
 const storageDiag = {
+  dataDir: DATA_DIR,
   // records read out of the data dir at boot; >0 means a previous run's cache
   // outlived its container, which is exactly what a working volume looks like
   showinfoOnDisk: Object.keys(showInfo).length,
   writable: false,
+  bootedAt: Date.now(),
+  // filled in by probeMount() below: is anything mounted here at all, and if so
+  // what. null means "couldn't tell" (no /proc — i.e. not Linux), not "no".
+  mounted: null,
+  volume: null,
+  anonymousVolume: null,
+  // filled in by identifyVolume() below
+  instanceId: null,
+  persistedSince: 0,
+  freshVolume: true,
 };
 (function probeDataDir() {
-  const dir = path.dirname(SHOWINFO_PATH);
-  const probe = path.join(dir, '.write-probe');
+  const probe = path.join(DATA_DIR, '.write-probe');
   try {
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(probe, String(Date.now()));
     storageDiag.writable = true;
   } catch (e) {
@@ -706,6 +821,136 @@ const storageDiag = {
     try { fs.unlinkSync(probe); } catch (e) { /* nothing to clean up */ }
   }
 })();
+
+/**
+ * Give the volume an identity, so "is persistent storage actually working?" is
+ * something production can be ASKED rather than inferred.
+ *
+ * `showinfoOnDisk` was the previous answer and it is a weak one: it counts
+ * records, and a count can be non-zero or zero for reasons that have nothing to
+ * do with the mount. This writes one small file the first time it sees an empty
+ * data dir and never touches it again. Two fields then settle the question from
+ * outside, with no waiting and no reasoning:
+ *
+ *   persistedSince  older than this process => the directory outlived a deploy
+ *   instanceId      unchanged across a deploy => it is the SAME directory
+ *
+ * The second one is the load-bearing check. Docker's `VOLUME` instruction with
+ * no explicit mount silently creates a fresh anonymous volume per container, so
+ * data appears to persist right up until the next deploy — the exact symptom
+ * this deployment showed on 2026-07-26 (CLAUDE.md §4). A changed instanceId
+ * names that failure instead of leaving it to be deduced.
+ *
+ * And the reason it has to be measured in production at all: locally none of
+ * this can fail. `./data` is an ordinary directory that survives every restart
+ * because there is no container boundary to survive. A local pass proves the
+ * code runs, never that the storage works. See docs/admin-page.md §5.1.
+ */
+/**
+ * Ask the kernel whether anything is actually mounted at DATA_DIR.
+ *
+ * The instance marker below is the authoritative check, but it is inherently
+ * retrospective: it can only tell you the directory survived *a previous
+ * deploy*, so the first deploy after configuring a volume proves nothing — an
+ * empty new volume and no volume at all look identical from inside. That is a
+ * miserable feedback loop for a template someone is standing up for the first
+ * time.
+ *
+ * /proc/self/mountinfo answers the other half immediately. If DATA_DIR is not a
+ * mount point, it is the container's own writable layer and the data is
+ * guaranteed to be discarded — knowable on deploy number one, with no history.
+ * And when it IS a mount, the source path usually names the Docker volume,
+ * which is how an *anonymous* volume gets caught: Docker names those with 64
+ * hex characters, and an anonymous volume is the failure this project actually
+ * had (see the Dockerfile's note about the removed `VOLUME` line).
+ *
+ * Best-effort by design. Linux-only — there is no /proc on macOS, so a local
+ * run reports `null`, which is the honest answer rather than a misleading one.
+ * The mount source is also not guaranteed to carry the volume name on every
+ * storage driver. Nothing here is load-bearing: a null or unrecognised result
+ * means "ask the instance marker instead", never "something is wrong".
+ */
+// `info` is injectable so the parser can be tested off a Linux box — there is no
+// /proc on macOS, and shipping an unverified parser to production to find out is
+// exactly the habit this project has rules about. See test/storage/.
+function probeMount(dir, info) {
+  const out = { mounted: null, volume: null, anonymousVolume: null };
+  if (info === undefined) {
+    try {
+      info = fs.readFileSync('/proc/self/mountinfo', 'utf8');
+    } catch (e) {
+      return out;   // not Linux, or /proc not visible. Unknown, not false.
+    }
+  }
+  out.mounted = false;
+  for (const line of info.split('\n')) {
+    const f = line.split(' ');
+    if (f.length < 5) continue;
+    // fields: id parent major:minor root mountPoint ... (spaces are \040-escaped)
+    const mountPoint = f[4].replace(/\\040/g, ' ');
+    if (mountPoint !== dir) continue;
+    out.mounted = true;
+    const m = f[3].match(/\/volumes\/([^/]+)\/_data/);
+    if (m) {
+      out.volume = m[1];
+      // Docker names anonymous volumes with a 64-char hex id. A human-chosen
+      // name is what a configured, persistent mount looks like.
+      out.anonymousVolume = /^[0-9a-f]{64}$/.test(m[1]);
+    }
+  }
+  return out;
+}
+Object.assign(storageDiag, probeMount(DATA_DIR));
+
+const INSTANCE_PATH = path.join(DATA_DIR, '.instance.json');
+(function identifyVolume() {
+  if (!storageDiag.writable) return;
+  const prev = readJsonFile(INSTANCE_PATH, null);
+  if (prev && prev.id) {
+    storageDiag.instanceId = prev.id;
+    storageDiag.persistedSince = prev.firstBoot || 0;
+    storageDiag.freshVolume = false;
+    return;
+  }
+  // No marker. That means either a genuinely empty data dir, or a volume that
+  // predates this code — and the difference matters, because the deploy that
+  // introduces the marker would otherwise report `freshVolume:true` on a
+  // perfectly healthy volume and send someone chasing a bug that isn't there.
+  // Existing cache files are the evidence: they were written by an earlier run,
+  // so the directory demonstrably survived one. Date the volume from the oldest
+  // of them rather than from now.
+  const inherited = [SHOWINFO_PATH, PROGRAMS_PATH, FEEDS_PATH]
+    .map((f) => { try { return fs.statSync(f).mtimeMs; } catch (e) { return 0; } })
+    .filter(Boolean);
+  const rec = {
+    id: crypto.randomUUID(),
+    firstBoot: inherited.length ? Math.round(Math.min(...inherited)) : Date.now(),
+    station: STATION_ID,
+  };
+  try {
+    writeJsonAtomic(INSTANCE_PATH, rec);
+    storageDiag.instanceId = rec.id;
+    storageDiag.persistedSince = rec.firstBoot;
+    storageDiag.freshVolume = inherited.length === 0;
+  } catch (e) {
+    console.warn('[storage] could not write the instance marker:', e.message);
+  }
+})();
+
+// One line in the log that answers "where is this station's data and is it
+// sticking?" — the question every new deploy of this template raises, and the
+// one nobody knows to go looking for until it has already cost them.
+console.log(
+  `[storage] ${DATA_DIR} — ${storageDiag.writable ? 'writable' : 'NOT WRITABLE'}, ` +
+  (storageDiag.mounted === false
+    ? 'NO VOLUME MOUNTED (container layer only — everything here dies with this container), '
+    : storageDiag.anonymousVolume
+      ? `ANONYMOUS VOLUME ${storageDiag.volume.slice(0, 12)}… (replaced on every deploy — configure a named mount), `
+      : storageDiag.volume ? `volume "${storageDiag.volume}", ` : '') +
+  (storageDiag.freshVolume
+    ? 'fresh (no previous data found; on a redeploy this means the volume did NOT persist)'
+    : `persisting since ${new Date(storageDiag.persistedSince).toISOString()} (instance ${storageDiag.instanceId})`)
+);
 
 /**
  * A show's record can only be harvested while that show is on the air, so a
@@ -1456,10 +1701,28 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, {
         ok: true,
         version: appVersion(),
-        // Answers "is the volume mounted?" without having to infer it from a
-        // redeploy: showinfoOnDisk > 0 means a previous run's cache survived.
+        station: STATION_ID,
+        // Answers "is persistent storage actually working?" from outside, which
+        // is the only place it can be answered — see identifyVolume(). Compare
+        // `instanceId` across a redeploy: same string means the same directory
+        // came back, a different one means it was replaced. `persistedSince`
+        // older than `bootedAt` means it outlived at least one deploy.
         storage: {
+          dataDir: storageDiag.dataDir,
           writable: storageDiag.writable,
+          // Answerable on the FIRST deploy, unlike instanceId below. false =
+          // no volume at all; true + a 64-hex `volume` = an anonymous one that
+          // a redeploy will replace. null = couldn't tell (not Linux).
+          mounted: storageDiag.mounted,
+          volume: storageDiag.volume,
+          anonymousVolume: storageDiag.anonymousVolume,
+          instanceId: storageDiag.instanceId,
+          persistedSince: storageDiag.persistedSince,
+          bootedAt: storageDiag.bootedAt,
+          // true = this boot found an empty data dir. Expected exactly once,
+          // on the very first deploy. Any later redeploy reporting true means
+          // the volume is not persisting.
+          freshVolume: storageDiag.freshVolume,
           showinfoOnDisk: storageDiag.showinfoOnDisk,
           showinfoNow: Object.keys(showInfo).length,
           feedsOnDisk: feedsDiag.onDisk,
@@ -1505,7 +1768,14 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`WBAI Archive server listening on :${PORT}`);
-  refreshProgramsIfStale();
-});
+// Only listen when run as a program. `require()`ing this file — which the
+// storage tests do, to reach probeMount without a Linux box — must not bind a
+// port or start the background harvests hanging off the listen callback.
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`WBAI Archive server listening on :${PORT}`);
+    refreshProgramsIfStale();
+  });
+}
+
+module.exports = { probeMount };

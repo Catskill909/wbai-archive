@@ -3,6 +3,8 @@ npm-debug.log
 .DS_Store
 .env
 .env.*
+# ...but the documented template of it is committed
+!.env.example
 *.log
 # harvested show-info cache (rebuilt from the live feed)
 data/

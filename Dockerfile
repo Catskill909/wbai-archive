@@ -15,11 +15,18 @@ COPY public ./public
 # the whole schedule to rotate past the on-air feed.
 COPY seed ./seed
 
-# Writable spot for the harvested show-info cache. Mount a volume here to keep
-# it across redeploys; without one the app relearns from the live feed, starting
-# from the seed above.
+# Writable spot for everything the server persists (DATA_DIR, default /app/data).
+#
+# There is deliberately NO `VOLUME ["/app/data"]` here. That instruction sounds
+# like it asks for persistence and does the opposite when no explicit mount is
+# supplied: Docker then creates an *anonymous* volume, a new one per container,
+# so data survives restarts and is thrown away on the next deploy — invisible in
+# any UI, and the exact symptom this deployment showed (CLAUDE.md §4, and
+# docs/admin-page.md §5.3). Persistence comes from an explicit mount instead:
+# Coolify → Storages → Volume Mount → /app/data. Verify with /healthz; do not
+# assume. Without a mount the app still runs and relearns from the live feed,
+# starting from the seed above.
 RUN mkdir -p /app/data && chown node:node /app/data
-VOLUME ["/app/data"]
 
 ENV NODE_ENV=production
 ENV PORT=8080
