@@ -660,7 +660,8 @@
 
 .th-sort {
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -681,17 +682,26 @@
 
 /* Every sortable column says so. Before this, only the active one carried an
    arrow and the other six read as plain labels — the table was sortable and
-   looked like it wasn't. The glyph box is a fixed width so switching columns
-   never re-flows the header row. */
+   looked like it wasn't.
+   Filled triangles rather than arrow glyphs (↑↓): at header size a stroked
+   arrow is a few grey pixels and the direction is genuinely hard to read,
+   which is the whole job of the mark. The glyph box is a fixed width so
+   switching columns never re-flows the header row. */
 .th-sort::after {
-  content: "\2195";           /* ↕ — sortable, not currently sorted */
+  content: "\21C5";           /* ⇅ — sortable, not currently sorted */
   display: inline-block;
-  width: 0.9em;
+  width: 1.1em;
+  font-size: 1.05em;
+  line-height: 1;
   text-align: center;
-  opacity: 0.4;
+  opacity: 0.55;
 }
-.th-sort:hover::after { opacity: 0.75; }
+.th-sort:hover::after { opacity: 0.85; }
 th[aria-sort] .th-sort { color: var(--ink); }
-th[aria-sort] .th-sort::after { opacity: 1; }
-th[aria-sort="descending"] .th-sort::after { content: "\2193"; }   /* ↓ */
-th[aria-sort="ascending"] .th-sort::after { content: "\2191"; }    /* ↑ */
+th[aria-sort] .th-sort::after {
+  opacity: 1;
+  font-size: 0.85em;          /* triangles carry more ink than the ⇅ */
+  color: var(--accent-2);
+}
+th[aria-sort="descending"] .th-sort::after { content: "\25BC"; }   /* ▼ */
+th[aria-sort="ascending"] .th-sort::after { content: "\25B2"; }    /* ▲ */
