@@ -119,6 +119,187 @@
       });
     }
 
+    /* ---------------- chart primitives ----------------
+     *
+     * Bars and meters are plain HTML: CSS handles the ellipsis on a long show
+     * title, the responsive width, and the theme, none of which SVG gives for
+     * free. Only the 72-column histogram is SVG, where the geometry is the
+     * whole job. Widths are set through the CSSOM (`--pct`), which the app's
+     * CSP allows — it blocks style attributes parsed from markup, not the
+     * style object. app.js has done the same since long before this page.
+     */
+
+    var TIP = document.getElementById('chartTip');
+
+    function showTip(ev, valueText, labelText) {
+      TIP.textContent = '';
+      TIP.appendChild(el('div', 'chart-tip-value', valueText));
+      // textContent, never innerHTML: show titles are upstream data.
+      TIP.appendChild(el('div', 'chart-tip-label', labelText));
+      TIP.hidden = false;
+      moveTip(ev);
+    }
+    function moveTip(ev) {
+      if (TIP.hidden) return;
+      var pad = 14;
+      var r = TIP.getBoundingClientRect();
+      // Point coordinates come from the pointer, or from the element's own box
+      // when this was triggered by keyboard focus rather than a mouse.
+      var x = (ev && ev.clientX) || 0, y = (ev && ev.clientY) || 0;
+      if (!x && ev && ev.target && ev.target.getBoundingClientRect) {
+        var b = ev.target.getBoundingClientRect();
+        x = b.left + b.width / 2; y = b.top;
+      }
+      // Keep it on screen — a tooltip clipped by the viewport is worse than none.
+      var left = Math.min(Math.max(pad, x + pad), window.innerWidth - r.width - pad);
+      var top = y - r.height - pad;
+      if (top < pad) top = y + pad * 1.6;
+      TIP.style.setProperty('--x', left + 'px');
+      TIP.style.setProperty('--y', top + 'px');
+    }
+    function hideTip() { TIP.hidden = true; }
+
+    /**
+     * Ranked horizontal bars. One colour for every bar, on purpose: these
+     * categories are nominal, so shading by value would encode the bar's length
+     * a second time and spend the only free channel saying nothing new.
+     *
+     * rows: [{ label, value, display }]
+     */
+    function barChart(node, rows, unit) {
+      node.textContent = '';
+      var max = rows.reduce(function (m, r) { return Math.max(m, r.value); }, 0) || 1;
+      rows.forEach(function (r) {
+        var row = el('div', 'bar-row');
+        row.tabIndex = 0;
+        // The row carries the whole reading for assistive tech; the tooltip is
+        // an enhancement on top, never the only route to the number.
+        row.setAttribute('aria-label', r.label + ': ' + r.display + ' ' + unit);
+        var label = el('div', 'bar-label', r.label);
+        label.title = r.label;          // native tooltip when the text is clipped
+        var track = el('div', 'bar-track');
+        var fill = el('div', 'bar-fill' + (r.value > 0 ? ' bar-fill--nonzero' : ''));
+        fill.style.setProperty('--pct', (r.value / max) * 100 + '%');
+        track.appendChild(fill);
+        row.appendChild(label);
+        row.appendChild(track);
+        row.appendChild(el('div', 'bar-value', r.display));
+        function show(ev) { showTip(ev, r.display + ' ' + unit, r.label); }
+        row.addEventListener('pointerenter', show);
+        row.addEventListener('pointermove', moveTip);
+        row.addEventListener('pointerleave', hideTip);
+        row.addEventListener('focus', show);
+        row.addEventListener('blur', hideTip);
+        node.appendChild(row);
+      });
+    }
+
+    /** A ratio against a limit. Ordered, so the ramp is legitimate here. */
+    function meters(node, rows) {
+      node.textContent = '';
+      rows.forEach(function (r, i) {
+        var wrap = el('div', 'meter');
+        var head = el('div', 'meter-head');
+        head.appendChild(el('span', 'meter-name', r.label));
+        head.appendChild(el('span', 'meter-num',
+          r.value + ' / ' + r.of + '  ·  ' + Math.round((r.value / r.of) * 100) + '%'));
+        var track = el('div', 'meter-track');
+        var fill = el('div', 'meter-fill' + (i ? ' meter-fill--' + (i + 1) : ''));
+        fill.style.setProperty('--pct', (r.value / r.of) * 100 + '%');
+        track.appendChild(fill);
+        wrap.appendChild(head);
+        wrap.appendChild(track);
+        node.appendChild(wrap);
+      });
+    }
+
+    var SVG_NS = 'http://www.w3.org/2000/svg';
+    function svgEl(tag, attrs) {
+      var n = document.createElementNS(SVG_NS, tag);
+      for (var k in attrs) if (attrs.hasOwnProperty(k)) n.setAttribute(k, attrs[k]);
+      return n;
+    }
+
+    /**
+     * Episodes per day. Columns rather than a line: these are counts of
+     * discrete things on discrete days, and a line would draw slopes between
+     * days that never happened.
+     *
+     * Days with nothing are drawn as a faint baseline tick rather than left
+     * blank, so an empty day is visibly a measured zero and not a rendering
+     * gap. Rendered at measured pixel width so the type stays the right size
+     * instead of scaling with a viewBox.
+     */
+    function columnChart(node, days) {
+      node.textContent = '';
+      if (!days.length) return;
+      var w = Math.max(280, Math.round(node.getBoundingClientRect().width));
+      var h = 170, padB = 22, padT = 14;
+      var max = days.reduce(function (m, d) { return Math.max(m, d.episodes); }, 0) || 1;
+      var slot = w / days.length;
+      var barW = Math.max(2, Math.min(24, slot - 2));   // 2px gap; capped thickness
+      var peak = days.reduce(function (m, d) { return d.episodes > m.episodes ? d : m; }, days[0]);
+      var empty = days.filter(function (d) { return !d.episodes; }).length;
+
+      var svg = svgEl('svg', {
+        width: w, height: h, viewBox: '0 0 ' + w + ' ' + h,
+        role: 'img',
+        // 72 focusable columns would be a tab trap; one honest summary is
+        // better, and every underlying number is in the table above.
+        'aria-label': 'Episodes per day, ' + days[0].day + ' to ' + days[days.length - 1].day
+          + '. Peak ' + peak.episodes + ' on ' + peak.day + '. '
+          + empty + ' of ' + days.length + ' days have none.',
+      });
+
+      svg.appendChild(svgEl('line', {
+        x1: 0, y1: h - padB, x2: w, y2: h - padB, class: 'chart-axis',
+      }));
+
+      days.forEach(function (d, i) {
+        var x = i * slot + (slot - barW) / 2;
+        var plot = h - padB - padT;
+        var barH = d.episodes ? Math.max(2, (d.episodes / max) * plot) : 2;
+        svg.appendChild(svgEl('rect', {
+          x: x.toFixed(2), y: (h - padB - barH).toFixed(2),
+          width: barW.toFixed(2), height: barH.toFixed(2),
+          rx: Math.min(2, barW / 2),
+          class: d.episodes ? 'chart-col' : 'chart-col--empty',
+        }));
+        // Hit target spans the whole slot, so the pointer only has to be
+        // nearest — a 3px column is not something anyone can aim at.
+        var hit = svgEl('rect', {
+          x: (i * slot).toFixed(2), y: 0, width: slot.toFixed(2), height: h - padB,
+          class: 'chart-hit',
+        });
+        function show(ev) {
+          showTip(ev, d.episodes + (d.episodes === 1 ? ' episode' : ' episodes'), d.day);
+        }
+        hit.addEventListener('pointerenter', show);
+        hit.addEventListener('pointermove', moveTip);
+        hit.addEventListener('pointerleave', hideTip);
+        svg.appendChild(hit);
+      });
+
+      // Only the ends and the peak are labelled. A tick under all 72 would be
+      // unreadable, and the tooltip carries the rest.
+      [[0, days[0].day], [days.length - 1, days[days.length - 1].day]].forEach(function (p, n) {
+        var t = svgEl('text', {
+          x: n === 0 ? 0 : w, y: h - 6, class: 'chart-tick',
+          'text-anchor': n === 0 ? 'start' : 'end',
+        });
+        t.textContent = p[1].slice(5);
+        svg.appendChild(t);
+      });
+      var pk = svgEl('text', {
+        x: Math.min(w - 4, Math.max(4, days.indexOf(peak) * slot + slot / 2)),
+        y: padT - 3, class: 'chart-tick', 'text-anchor': 'middle',
+      });
+      pk.textContent = 'peak ' + peak.episodes;
+      svg.appendChild(pk);
+
+      node.appendChild(svg);
+    }
+
     function ago(ms) {
       if (!ms) return 'never';
       var s = Math.max(0, Math.round((Date.now() - ms) / 1000));
@@ -211,7 +392,170 @@
       main.setAttribute('aria-busy', 'false');
     }
 
+    /* ---------------- the archive stats ---------------- */
+
+    var stats = null;                 // kept for re-render on resize and sort
+    var sortKey = 'seconds', sortAsc = false;
+
+    function num(n) { return Number(n).toLocaleString(); }
+    function hours(sec) { return Math.round(sec / 3600); }
+
+    function renderStats(d) {
+      stats = d;
+      var gb = d.totals.bytes / 1e9;
+
+      var kpis = document.getElementById('kpis');
+      kpis.textContent = '';
+      [
+        [num(d.totals.feeds), '', 'Shows'],
+        [num(d.totals.episodes), '', 'Episodes'],
+        [num(d.totals.hours), 'h', 'Audio held'],
+        [gb.toFixed(1), 'GB', 'Total size'],
+        [num(d.totals.categories), '', 'Categories'],
+        [num(d.window.days), 'd', 'Window'],
+      ].forEach(function (k) {
+        var tile = el('div', 'kpi');
+        var v = el('div', 'kpi-value', k[0]);
+        if (k[1]) v.appendChild(el('span', 'kpi-unit', k[1]));
+        tile.appendChild(v);
+        tile.appendChild(el('div', 'kpi-label', k[2]));
+        kpis.appendChild(tile);
+      });
+
+      // One decimal below 10h: the thin end is where fractions of an hour are
+      // the whole difference between one show and the next.
+      function hrs(sec) {
+        var h = sec / 3600;
+        return h < 10 ? h.toFixed(1) : String(Math.round(h));
+      }
+      var capped = d.episodeSpread.length ? d.episodeSpread[0] : { count: 0 };
+      document.getElementById('atCap').textContent = capped.count;
+      document.getElementById('capOf').textContent = d.totals.feeds;
+
+      barChart(document.getElementById('thinnest'), d.thinnest.map(function (s) {
+        return { label: s.title, value: s.seconds, display: hrs(s.seconds) };
+      }), 'hours');
+
+      barChart(document.getElementById('episodeSpread'), d.episodeSpread.map(function (e) {
+        return {
+          label: e.episodes + (e.episodes === 1 ? ' episode' : ' episodes'),
+          value: e.count,
+          display: num(e.count),
+        };
+      }), 'shows');
+
+      document.getElementById('catCount').textContent = d.totals.categories;
+      barChart(document.getElementById('categories'), d.categories.map(function (c) {
+        return { label: c.name, value: c.episodes, display: num(c.episodes) };
+      }), 'episodes');
+
+      barChart(document.getElementById('durations'), d.durations.map(function (b) {
+        return { label: b.label, value: b.episodes, display: num(b.episodes) };
+      }), 'episodes');
+
+      columnChart(document.getElementById('perDay'), d.perDay);
+
+      var c = d.coverage;
+      meters(document.getElementById('coverage'), [
+        { label: 'Shows with a harvested description', value: c.withDescription, of: c.feeds },
+        { label: 'Shows matched to the program directory', value: c.withDirectory, of: c.feeds },
+        { label: 'Directory programs with a feed', value: c.withDirectory, of: c.directoryPrograms },
+      ]);
+
+      // Collapsed by default. Naming the gaps is the point — a count nobody can
+      // act on is decoration — but 35 slugs unfurled is a wall of text that
+      // buries the three ratios above it. <details> is native, keyboard
+      // operable and announced correctly, with no JS behind it.
+      var gaps = document.getElementById('gaps');
+      gaps.textContent = '';
+      [
+        [c.noDescription, 'no harvested description yet',
+          'Harvested only while a show is on air, so these fill in as the schedule turns.'],
+        [c.noDirectory, 'no match in the program directory',
+          'The feed title and the wbai.org program name differ, or the show is not listed there.'],
+      ].forEach(function (g) {
+        if (!g[0].length) return;
+        var d = document.createElement('details');
+        d.className = 'gap-list';
+        var s = document.createElement('summary');
+        s.appendChild(el('strong', '', g[0].length + ' shows'));
+        s.appendChild(document.createTextNode(' with ' + g[1]));
+        d.appendChild(s);
+        d.appendChild(el('p', 'gap-why', g[2]));
+        d.appendChild(el('p', 'gap-slugs', g[0].join(', ')));
+        gaps.appendChild(d);
+      });
+
+      renderTable();
+    }
+
+    function renderTable() {
+      if (!stats) return;
+      var q = (document.getElementById('showFilter').value || '').toLowerCase().trim();
+      var rows = stats.shows.filter(function (s) {
+        return !q || s.title.toLowerCase().indexOf(q) >= 0 || s.slug.indexOf(q) >= 0;
+      });
+      rows.sort(function (a, b) {
+        var x = a[sortKey], y = b[sortKey];
+        var r = (typeof x === 'string') ? x.localeCompare(y) : x - y;
+        return sortAsc ? r : -r;
+      });
+
+      var body = document.getElementById('showTableBody');
+      body.textContent = '';
+      rows.forEach(function (s) {
+        var tr = document.createElement('tr');
+        tr.appendChild(el('td', 'show-title', s.title));
+        var slug = el('td', 'num', s.slug);
+        tr.appendChild(slug);
+        tr.appendChild(el('td', 'num', num(s.episodes)));
+        tr.appendChild(el('td', 'num', String(hours(s.seconds))));
+        tr.appendChild(el('td', 'num', s.newest
+          ? new Date(s.newest * 1000).toISOString().slice(0, 10) : '—'));
+        body.appendChild(tr);
+      });
+
+      document.getElementById('tableCount').textContent =
+        rows.length === stats.shows.length
+          ? rows.length + ' shows'
+          : rows.length + ' of ' + stats.shows.length + ' shows';
+
+      // aria-sort belongs on exactly one header at a time.
+      [].forEach.call(document.querySelectorAll('.th-sort'), function (b) {
+        if (b.getAttribute('data-sort') === sortKey) {
+          b.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending');
+        } else b.removeAttribute('aria-sort');
+      });
+    }
+
+    [].forEach.call(document.querySelectorAll('.th-sort'), function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-sort');
+        // Same column toggles direction; a new column starts descending for
+        // numbers and ascending for text, which is what each reads best as.
+        if (k === sortKey) sortAsc = !sortAsc;
+        else { sortKey = k; sortAsc = (k === 'title' || k === 'slug'); }
+        renderTable();
+      });
+    });
+    document.getElementById('showFilter').addEventListener('input', renderTable);
+
+    // The histogram is sized in real pixels, so it has to be rebuilt when the
+    // box changes. Debounced — a resize drag fires this continuously.
+    var resizeTimer = null;
+    window.addEventListener('resize', function () {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () {
+        if (stats) columnChart(document.getElementById('perDay'), stats.perDay);
+      }, 150);
+    });
+
     function load() {
+      fetch('/api/studio/stats', { headers: { 'Accept': 'application/json' } })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (d) { if (d) renderStats(d); })
+        .catch(function () { /* the health panel below reports the outage */ });
+
       fetch('/api/studio/health', { headers: { 'Accept': 'application/json' } })
         .then(function (res) {
           // Any 401 means the session went away underneath us — expired, or the

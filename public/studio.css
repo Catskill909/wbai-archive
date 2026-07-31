@@ -90,10 +90,26 @@
    ones on a phone; there is no third case worth a breakpoint. */
 @media (min-width: 52rem) {
   .studio-main { grid-template-columns: 1fr 1fr; align-items: start; }
-  .studio-section:first-child { grid-column: 1 / -1; }
+  /* Full-width rows for the panels that need the space: the KPI strip, the
+     72-column histogram, and the table.
+     ONLY inside this query. `grid-column: 1 / -1` resolves -1 against the
+     EXPLICIT grid, and below this breakpoint there are no explicit columns —
+     so declared globally it stretched these sections to 619px inside a 390px
+     phone viewport and clipped every panel on the right. The document did not
+     scroll, which is why it looked fine to a scrollWidth check and only showed
+     up in a screenshot. */
+  .studio-section--wide { grid-column: 1 / -1; }
 }
 
 .studio-section {
+  /* Grid items default to `min-width: auto`, which means "never shrink below
+     your content's minimum" — and the content here includes a 122-row table of
+     nowrap cells. That floor propagated up and sized the whole grid column to
+     619px inside a 390px phone, clipping every panel on the right. The document
+     never scrolled sideways, so a scrollWidth check called it clean; only a
+     screenshot showed it. `min-width: 0` lets the item shrink so the table's own
+     `overflow: auto` can do the scrolling instead. */
+  min-width: 0;
   background: var(--surface-1);
   border: 1px solid var(--outline);
   border-radius: 12px;
@@ -312,3 +328,253 @@
 @media (prefers-reduced-motion: reduce) {
   .studio-btn, .studio-btn--primary:hover { transition: none; }
 }
+
+/* ============================================================== charts
+ *
+ * Everything here is layout and geometry. The only colour is `--accent` and the
+ * ink tokens, both inherited from styles.css, so the charts follow the theme
+ * for the same reason the rest of the page does.
+ *
+ * ONE HUE, DELIBERATELY. Every bar in a chart is the same colour. Shows,
+ * categories and length buckets are nominal — they have no order — so shading
+ * them by value would double-encode the bar's own length as colour and spend
+ * the only free channel on information already on screen. The one place a ramp
+ * is correct is the coverage meters, where the steps *are* ordered.
+ */
+
+/* Ramp steps for the ordered case, as opacities over the surface.
+ *
+ * They differ per theme and are NOT a mirror of each other: fading toward a
+ * dark surface loses contrast, so the dark steps have to stay much closer to
+ * full. These four values were checked with the palette validator against each
+ * theme's own surface — the dark set at light/light was below the 2:1 floor and
+ * was re-stepped until it passed. Don't "simplify" them to one pair. */
+:root { --ramp-2: 0.80; --ramp-3: 0.62; }
+@media (prefers-color-scheme: light) { :root { --ramp-2: 0.70; --ramp-3: 0.45; } }
+:root[data-theme="dark"]  { --ramp-2: 0.80; --ramp-3: 0.62; }
+:root[data-theme="light"] { --ramp-2: 0.70; --ramp-3: 0.45; }
+
+/* ------------------------------------------------------------- KPI row */
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.kpi {
+  background: var(--surface-2);
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  padding: 0.8rem 0.9rem;
+}
+
+.kpi-value {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  /* Tabular figures so a row of numbers lines up rather than shimmying. */
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-unit { font-size: 0.95rem; color: var(--ink-dim); margin-left: 0.15rem; }
+
+.kpi-label {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* --------------------------------------------------------- ranked bars */
+
+.bars { display: grid; gap: 0.45rem; }
+
+/* label | track | value. The label column is capped so one long show title
+   can't starve every bar of length. */
+.bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 9rem) 1fr minmax(2.5rem, max-content);
+  align-items: center;
+  gap: 0.6rem;
+  /* The whole row is the hit target, not just the painted bar — a 6px bar for a
+     small value is a pinpoint nobody hits. */
+  padding: 0.1rem 0;
+  border-radius: 6px;
+}
+
+.bar-row:hover, .bar-row:focus-visible { background: var(--surface-hover); outline: none; }
+.bar-row:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+
+.bar-label {
+  font-size: 0.82rem;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-track { height: 1.1rem; display: flex; align-items: center; }
+
+.bar-fill {
+  height: 0.75rem;                 /* thin mark; the row's leftover is air */
+  width: var(--pct, 0%);
+  background: var(--accent);
+  /* Rounded at the data end, square at the baseline. */
+  border-radius: 0 4px 4px 0;
+}
+
+/* A non-zero value never renders as nothing — but a ZERO must render as
+   nothing. Applying a min-width unconditionally drew a mark for "no episodes in
+   this bucket", which reads as a small quantity rather than an absence. */
+.bar-fill--nonzero { min-width: 2px; }
+
+.bar-value {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  text-align: right;
+}
+
+/* ------------------------------------------------------------ meters */
+
+.meters { display: grid; gap: 0.9rem; }
+.meter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+.meter-name { color: var(--ink-dim); }
+.meter-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.meter-track {
+  margin-top: 0.3rem;
+  height: 0.55rem;
+  border-radius: 4px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.meter-fill { height: 100%; width: var(--pct, 0%); background: var(--accent); border-radius: 4px; }
+.meter-fill--2 { opacity: var(--ramp-2); }
+.meter-fill--3 { opacity: var(--ramp-3); }
+
+.gaps { margin-top: 1.1rem; display: grid; gap: 0.5rem; }
+
+.gap-list { font-size: 0.85rem; color: var(--ink-faint); line-height: 1.5; }
+.gap-list > summary {
+  cursor: pointer;
+  color: var(--ink-dim);
+  padding: 0.3rem 0;
+  /* The default triangle is the affordance; don't remove it without replacing
+     it, or the row stops looking openable. */
+}
+.gap-list > summary:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.gap-list strong { color: var(--ink); font-weight: 600; }
+.gap-why { margin: 0.2rem 0 0.4rem; max-width: 46ch; }
+.gap-slugs {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------- svg charts */
+
+.chart { width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; }
+
+.chart-col { fill: var(--accent); }
+.chart-col--empty { fill: var(--outline); }
+.chart-axis { stroke: var(--outline); stroke-width: 1; }
+.chart-tick {
+  fill: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.chart-hit { fill: transparent; }
+.chart-hit:focus-visible { fill: var(--surface-hover); outline: none; }
+
+/* --------------------------------------------------------- tooltip */
+
+.chart-tip {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  background: var(--surface-3);
+  border: 1px solid var(--outline-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  max-width: 16rem;
+  left: var(--x, 0);
+  top: var(--y, 0);
+}
+/* Value leads, label follows — the reader already knows which bar they are on. */
+.chart-tip-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.chart-tip-label { color: var(--ink-dim); }
+
+/* ----------------------------------------------------------- table */
+
+.studio-field--inline { max-width: 18rem; margin-bottom: 0.85rem; }
+
+/* The table is both the widest and the tallest thing on the page — 122 rows put
+   the operational panels ~10,000px below the fold. It scrolls inside its own box
+   in both directions: sideways so the document never does, and vertically so the
+   page stays a page. The header sticks so the columns stay named while scrolling. */
+.table-wrap {
+  overflow: auto;
+  max-height: 26rem;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--outline);
+}
+
+.studio-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-1);
+  z-index: 1;
+}
+
+.studio-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.studio-table th, .studio-table td {
+  text-align: left;
+  padding: 0.4rem 0.6rem 0.4rem 0;
+  border-bottom: 1px solid var(--outline);
+  white-space: nowrap;
+}
+.studio-table th { font-weight: 600; }
+.studio-table .num, .studio-table td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.studio-table tbody tr:hover { background: var(--surface-hover); }
+.studio-table td.show-title { white-space: normal; min-width: 12rem; }
+
+.th-sort {
+  font: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  background: none;
+  border: 0;
+  padding: 0.2rem 0;
+  cursor: pointer;
+}
+.th-sort:hover { color: var(--ink); }
+.th-sort:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.th-sort[aria-sort="descending"]::after { content: " ↓"; }
+.th-sort[aria-sort="ascending"]::after { content: " ↑"; }
+.th-sort[aria-sort] { color: var(--ink); }

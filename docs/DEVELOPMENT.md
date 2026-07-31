@@ -609,10 +609,43 @@ it. That is the default, and the right one for a template.
   is layout only — every colour is a token. Adding a colour literal there breaks
   the theming; don't.
 
-`test/studio/studio-tests.js` drives a real server process (`npm test`). Per
-CLAUDE.md §3a every refusal is paired with the same request *succeeding* under a
-valid session — a suite of pure refusals passes perfectly once the probe goes
-blind.
+Behind the gate is the stats dashboard: `GET /api/studio/stats` computes
+everything from the feed cache the listener app already holds, so the two can
+never disagree. Charts are hand-rolled — bars and meters as plain HTML (CSS
+handles ellipsis, reflow and theme), SVG only for the 72-column histogram where
+geometry is the job. Widths go through the CSSOM (`--pct`), which the CSP allows.
+
+Three data facts shaped it, and each is a trap worth knowing before editing:
+
+- **Ranked "top shows" is meaningless here.** Upstream caps every feed at five
+  episodes and 83 of 122 shows sit at the cap, so a top-12 is a twelve-way tie.
+  The panel shows the *thin* end instead, and a test pins the sort direction.
+- **`programs` and `feeds` are different key spaces** — normalised title vs
+  archive slug. Intersecting them directly yields 3, by coincidence. Coverage is
+  three separate ratios, never a funnel.
+- **`perDay` includes empty days.** The gaps are the finding; a sparse series
+  would close them up.
+
+One hue for every bar: these categories are nominal, so shading by value would
+double-encode the bar's own length. The coverage meters are the one ordered case
+and use a validated ramp whose steps differ per theme — fading toward a *dark*
+surface loses contrast, so the dark steps stay much closer to full.
+
+**Tests.** `test/studio/studio-tests.js` drives a real server process
+(`npm test`), against a small fixed feed fixture so the stats assertions have
+something real to be wrong about rather than passing vacuously on an empty
+archive. Per CLAUDE.md §3a every refusal is paired with the same request
+*succeeding* under a valid session — a suite of pure refusals passes perfectly
+once the probe goes blind.
+
+`test/studio/run.sh` is the layout suite, and it exists because the dashboard
+shipped with every panel clipped on the right at phone widths while **every**
+non-visual check stayed green: HTTP tests, no console errors, no CSP violations,
+and `scrollWidth === clientWidth`, because the overflow was hidden rather than
+scrolled. Grid items default to `min-width: auto`, so the section holding the
+122-row table would not shrink below the table's min-content width and sized the
+whole column to 619px inside a 390px viewport. If you add a wide child to a grid
+item here, `min-width: 0` is the thing you need.
 
 ### Feed harvest: two things that are easy to misread
 

@@ -1,7 +1,7 @@
 # The Studio — a private view for the people who run this thing
 
-**Status: Phases 1b and 1 are built and verified (2026-07-30). Phases 2–5 are
-still proposals.** Per [ROADMAP.md](ROADMAP.md)'s rule this file describes
+**Status: Phases 1b, 1 and 2 are built and verified (2026-07-30). Phases 3–5
+are still proposals.** Per [ROADMAP.md](ROADMAP.md)'s rule this file describes
 intent, so treat everything below Phase 1 as a plan rather than a description —
 each phase says which it is.
 
@@ -577,20 +577,56 @@ comment in `server.js` is already careful about; persistence turns every future
 deploy from 122 downloads into 122 conditional requests. The volume was framed
 as protecting *our* data. It also stops us hammering theirs.
 
-### Phase 2 — the content dashboard (the mini app)
+### Phase 2 — the content dashboard — **BUILT 2026-07-30**
 
-The visible deliverable. All of it from data already on disk (§2.2).
+`GET /api/studio/stats`, computed from the feed cache the listener app already
+holds, so the dashboard and the site can never disagree. ~600 items; no cache of
+its own.
 
-**Panels**
-- **KPI row** — feeds held, episodes in window, total hours, total GB, categories, oldest/newest air date.
-- **Top shows** — ranked horizontal bars by hours in window, and by episode count.
-- **Category mix** — must survive the 56%/0.2% spread noted in §2.2.
-- **Air-date histogram** — episodes per day across the retention window; makes gaps and the weekly rhythm visible at a glance.
-- **Duration distribution** — how many shows are 30/60/120 minutes.
-- **Coverage** — the 149 / 122 / 115 disagreement, drawn as a funnel: programs known → programs with a feed → programs with harvested detail. Clicking a segment lists the missing ones. This is the panel that will actually change someone's behaviour.
-- **Search + sortable table** of every feed: slug, title, items, hours, newest episode, last fetch, last-modified.
+**Panels** — KPI row (shows, episodes, hours, GB, categories, window), thinnest
+coverage, episodes held per show, episodes by category, episodes by air date,
+episode length, coverage meters, and a sortable/filterable table of all 122
+feeds.
 
-**Definition of done** — renders correctly in both themes and follows the toggle live; usable at 375 px; no layout shift on load; every number reproducible by hand from `data/*.json`.
+**Three things the data forced, each a correction to this plan**
+
+1. **"Top shows by hours" was built and thrown away.** Upstream caps every feed
+   at five episodes and 83 of 122 shows sit at the cap, so the top twelve are a
+   twelve-way tie at 10.01h — twelve identical bars. The chart is now
+   **Thinnest coverage**, the ascending end, where a show with one episode has
+   either just launched, airs rarely, or has a feed that stopped publishing. A
+   test asserts the sort direction so nobody "fixes" it back.
+2. **The 149 → 122 → 115 funnel in §2.2 does not exist.** `programs` is keyed by
+   normalised title, `feeds` and `showinfo` by archive slug; intersecting them
+   directly yields 3, by coincidence. Those three numbers count three different
+   things, and drawing them as a funnel would assert a containment that is not
+   there. Coverage is three separate meters, each against its own denominator,
+   with the title-join's imprecision stated on the page.
+3. **Empty days are emitted, not skipped.** `perDay` covers every day in the
+   window including the 28 with nothing, because the gaps are the finding. A
+   sparse series would have silently closed them up.
+
+**Colour** — one hue for every bar. Shows, categories and length buckets are
+nominal, so shading by value would encode the bar's own length twice and spend
+the only free channel on nothing. The single place a ramp is legitimate is the
+coverage meters, where the steps are ordered — and those opacities were run
+through the palette validator per theme. The dark set failed first (fading
+toward a dark surface *loses* contrast, so the light end sat below the 2:1
+floor) and was re-stepped until it passed. The two sets are deliberately not
+mirrors of each other.
+
+**One bug worth recording, because nothing caught it.** Every panel was clipped
+on the right at phone widths. HTTP tests green, no console errors, no CSP
+violations, and `scrollWidth === clientWidth` — the page did not scroll
+sideways, because the overflow was hidden rather than scrolled. Only a
+screenshot showed it. Cause: grid items default to `min-width: auto`, so the
+section holding the 122-row table refused to shrink below the table's
+min-content width and sized the whole column to 619px inside a 390px viewport.
+Fixed with `min-width: 0`; `test/studio/run.sh` now measures six widths for
+anything painted outside the viewport that is not inside a scroll container,
+and **section 3 of it restores the bug and requires the probe to report it** —
+an overflow test that has never seen overflow is indistinguishable from a blind
+one (CLAUDE.md §3a).
 
 ### Phase 3 — operational health
 

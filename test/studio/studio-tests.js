@@ -40,8 +40,43 @@ function ok(label, cond, detail) {
   if (!cond && detail !== undefined) console.log(`        ${detail}`);
 }
 
-function startServer(port, env) {
+/**
+ * A tiny, fixed archive written into the server's data dir before it boots.
+ *
+ * Without it the test server starts empty and every stats assertion passes
+ * vacuously — `perDay` is `[]`, so "does it include empty days?" is answered by
+ * an empty array rather than by the behaviour. Two shows, a deliberate two-day
+ * hole between the 3rd and the 6th, and known durations either side of a bucket
+ * boundary, so the histogram, the buckets and the totals all have something real
+ * to be wrong about.
+ */
+const DAY = 86400;
+const D0 = Math.floor(Date.UTC(2026, 0, 1) / 1000);   // fixed: no clock dependence
+const FIXTURE = {
+  alpha: {
+    lastModified: 'Thu, 01 Jan 2026 00:00:00 GMT',
+    fetchedAt: Date.now(),
+    channel: { title: 'Alpha Show' },
+    items: [
+      { mp3: 'a1', bytes: 1e6, title: 'a1', dt: D0, durationSec: 3600, category: 'News' },
+      { mp3: 'a2', bytes: 1e6, title: 'a2', dt: D0 + DAY, durationSec: 3600, category: 'News' },
+      // gap: D0+2 and D0+3 have nothing
+      { mp3: 'a3', bytes: 1e6, title: 'a3', dt: D0 + 4 * DAY, durationSec: 7800, category: 'News' },
+    ],
+  },
+  beta: {
+    lastModified: 'Thu, 01 Jan 2026 00:00:00 GMT',
+    fetchedAt: Date.now(),
+    channel: { title: 'Beta Show' },
+    items: [
+      { mp3: 'b1', bytes: 1e6, title: 'b1', dt: D0 + 4 * DAY, durationSec: 1500, category: 'Music' },
+    ],
+  },
+};
+
+function startServer(port, env, fixture) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wbai-studio-'));
+  if (fixture) fs.writeFileSync(path.join(dataDir, 'feeds.json'), JSON.stringify(fixture));
   const child = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
     env: Object.assign({}, process.env, { PORT: String(port), DATA_DIR: dataDir }, env),
@@ -113,7 +148,7 @@ async function run() {
   }
 
   // ----------------------------------------------------------------- enabled
-  const on = startServer(PORT_ON, { STUDIO_PASSWORD: PASSWORD });
+  const on = startServer(PORT_ON, { STUDIO_PASSWORD: PASSWORD }, FIXTURE);
   try {
     await waitReady(PORT_ON);
 
@@ -207,6 +242,57 @@ async function run() {
       /no-store/.test(health.headers.get('cache-control') || '')
       && /cookie/i.test(health.headers.get('vary') || ''),
       `cache-control=${health.headers.get('cache-control')}`);
+
+    // -- the stats endpoint ---------------------------------------------------
+    const statsNoCookie = await get(PORT_ON, '/api/studio/stats');
+    ok('no cookie: stats is 401', statsNoCookie.status === 401, `status ${statsNoCookie.status}`);
+
+    const statsRes = await get(PORT_ON, '/api/studio/stats', authed);
+    const stats = await statsRes.json();
+    ok('with a session: stats returns data', statsRes.status === 200 && !!stats.totals,
+      `status ${statsRes.status}`);
+
+    const wantStats = ['generated', 'window', 'totals', 'thinnest', 'episodeSpread',
+      'categories', 'perDay', 'durations', 'coverage', 'shows'];
+    const missingStats = wantStats.filter((k) => !(k in stats));
+    ok('stats carries every block the dashboard renders', missingStats.length === 0,
+      `missing: ${missingStats.join(', ')}`);
+
+    // The histogram's whole claim is that it shows empty days. If the server
+    // emitted only the days that have episodes, the chart would silently close
+    // the gaps up and read as a continuous schedule.
+    const spanDays = stats.window.newest && stats.window.oldest
+      ? Math.round((stats.window.newest - stats.window.oldest) / 86400) + 1 : 0;
+    ok('perDay covers the whole window, not just populated days',
+      stats.perDay.length === spanDays && spanDays === 5,
+      `perDay ${stats.perDay.length} vs span ${spanDays}`);
+    ok('perDay reports the fixture\'s deliberate 2-day hole as zeros',
+      stats.perDay.filter((d) => d.episodes === 0).length === 2,
+      JSON.stringify(stats.perDay));
+    ok('perDay counts are right where the fixture has episodes',
+      stats.perDay[0].episodes === 1 && stats.perDay[4].episodes === 2,
+      JSON.stringify(stats.perDay.map((d) => d.episodes)));
+
+    // `thinnest` is ascending on purpose — a descending list is a 12-way tie at
+    // the episode cap and tells the reader nothing. If someone "fixes" it to a
+    // top-N later, this fails and points at the comment explaining why.
+    const asc = stats.thinnest.every((s, i, a) => i === 0 || a[i - 1].seconds <= s.seconds);
+    ok('thinnest is ascending and excludes empty feeds',
+      asc && stats.thinnest.every((s) => s.episodes > 0),
+      JSON.stringify(stats.thinnest.map((s) => s.episodes)));
+
+    ok('coverage ratios never exceed their denominators',
+      stats.coverage.withDescription <= stats.coverage.feeds
+      && stats.coverage.withDirectory <= stats.coverage.feeds
+      && stats.coverage.withDirectory <= stats.coverage.directoryPrograms,
+      JSON.stringify(stats.coverage).slice(0, 120));
+
+    // Duration buckets must account for every episode exactly once; a bug here
+    // silently invents or loses episodes and nothing else would notice.
+    const bucketed = stats.durations.reduce((n, b) => n + b.episodes, 0);
+    ok('every episode lands in exactly one duration bucket',
+      bucketed + stats.totals.unknownDuration === stats.totals.episodes,
+      `${bucketed} + ${stats.totals.unknownDuration} vs ${stats.totals.episodes}`);
 
     const dash = await get(PORT_ON, '/studio', authed);
     const dashHtml = await dash.text();

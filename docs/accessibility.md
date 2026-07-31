@@ -37,7 +37,7 @@ The codebase is in good shape. Confirmed present:
 | Landmark structure | `<header>`, `<main>`, `<nav>`, `<aside>` used semantically |
 | Visually-hidden `<h1>` for document outline | `index.html:60`, `.visually-hidden` `styles.css:115` |
 | Focus-visible rings | global `:focus-visible` `styles.css:120`, plus per-control rules |
-| Reduced-motion support | 13 `@media (prefers-reduced-motion:reduce)` blocks in `styles.css` |
+| Reduced-motion support | 23 `@media (prefers-reduced-motion: reduce)` blocks in `styles.css` (as of 2026-07-30) |
 | Modal focus trap + return focus | live player `app.js:1003–1043`, sheet `:1662–1725`, menu `:1769–1798`, lightbox `:1343–1359` |
 | `Escape` closes every overlay | menu, sheet, lightbox, live player, category menu |
 | Custom listbox w/ keyboard | category dropdown: Arrow/Home/End/Escape, `role="listbox"`/`option`, `aria-selected` (`app.js:137–187`) |

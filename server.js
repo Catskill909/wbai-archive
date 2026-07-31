@@ -1968,8 +1968,157 @@ async function studioPost(req, res, pathOnly) {
   });
 }
 
+/**
+ * Everything the stats dashboard draws, computed from what is already in memory.
+ * ~600 feed items, so this is microseconds and needs no cache of its own.
+ *
+ * One honesty note that shaped the shape of this payload. `programs` is keyed by
+ * normalised **title**; `feeds` and `showinfo` are keyed by archive **slug**.
+ * They are different key spaces — intersecting them directly yields 3, by
+ * coincidence. So "149 programs → 122 feeds → 115 records" is NOT a funnel: it
+ * is three counts of three different things, and drawing it as one would imply a
+ * containment that does not exist. Coverage is therefore reported as separate
+ * ratios, each against its own denominator, and the directory match is done by
+ * normalised title with its imprecision stated rather than hidden.
+ */
+const DURATION_BUCKETS = [
+  { label: 'under 30m', max: 1800 },
+  { label: '30–60m', max: 3600 },
+  { label: '60–90m', max: 5400 },
+  { label: '90–120m', max: 7200 },
+  { label: 'over 2h', max: Infinity },
+];
+
+function studioStats() {
+  const entries = Object.entries(feedStore);
+  const catMap = new Map();
+  const dayMap = new Map();
+  const durations = DURATION_BUCKETS.map((b) => ({ label: b.label, episodes: 0 }));
+  const shows = [];
+  let episodes = 0, seconds = 0, bytes = 0, unknownDuration = 0;
+  let oldest = Infinity, newest = 0;
+
+  for (const [slug, rec] of entries) {
+    const items = (rec && rec.items) || [];
+    let showSeconds = 0, showBytes = 0, showNewest = 0;
+    for (const it of items) {
+      episodes++;
+      const d = it.durationSec || 0;
+      seconds += d; showSeconds += d;
+      bytes += it.bytes || 0; showBytes += it.bytes || 0;
+      if (it.dt) {
+        if (it.dt < oldest) oldest = it.dt;
+        if (it.dt > newest) newest = it.dt;
+        if (it.dt > showNewest) showNewest = it.dt;
+        const day = new Date(it.dt * 1000).toISOString().slice(0, 10);
+        dayMap.set(day, (dayMap.get(day) || 0) + 1);
+      }
+      const cat = it.category || 'Uncategorised';
+      const c = catMap.get(cat) || { episodes: 0, seconds: 0 };
+      c.episodes++; c.seconds += d;
+      catMap.set(cat, c);
+      // A missing duration is counted as unknown rather than silently dropped
+      // into the smallest bucket, which would invent short episodes.
+      if (d > 0) {
+        for (let i = 0; i < DURATION_BUCKETS.length; i++) {
+          if (d < DURATION_BUCKETS[i].max) { durations[i].episodes++; break; }
+        }
+      } else unknownDuration++;
+    }
+    shows.push({
+      slug,
+      title: (rec && rec.channel && rec.channel.title) || slug,
+      episodes: items.length,
+      seconds: showSeconds,
+      bytes: showBytes,
+      newest: showNewest,
+      fetchedAt: (rec && rec.fetchedAt) || 0,
+    });
+  }
+
+  // Every day across the window, including the empty ones — a gap in the
+  // schedule is exactly the thing this chart exists to make visible, and a
+  // sparse series would quietly close it up.
+  const perDay = [];
+  if (newest && oldest !== Infinity) {
+    const DAY = 86400000;
+    const start = Date.UTC(...new Date(oldest * 1000).toISOString().slice(0, 10).split('-').map((n, i) => (i === 1 ? +n - 1 : +n)));
+    const end = Date.UTC(...new Date(newest * 1000).toISOString().slice(0, 10).split('-').map((n, i) => (i === 1 ? +n - 1 : +n)));
+    for (let t = start; t <= end; t += DAY) {
+      const day = new Date(t).toISOString().slice(0, 10);
+      perDay.push({ day, episodes: dayMap.get(day) || 0 });
+    }
+  }
+
+  const programs = programCache.programs || {};
+  const programKeys = new Set(Object.keys(programs));
+  const noDescription = [];
+  const noDirectory = [];
+  for (const [slug, rec] of entries) {
+    if (!showInfo[slug]) noDescription.push(slug);
+    if (!programKeys.has(normTitle(rec && rec.channel && rec.channel.title))) noDirectory.push(slug);
+  }
+
+  return {
+    generated: Date.now(),
+    window: {
+      oldest: oldest === Infinity ? 0 : oldest,
+      newest,
+      days: perDay.length,
+    },
+    totals: {
+      feeds: entries.length,
+      episodes,
+      hours: Math.round(seconds / 3600),
+      bytes,
+      categories: catMap.size,
+      programs: programKeys.size,
+      showinfo: Object.keys(showInfo).length,
+      unknownDuration,
+    },
+    /**
+     * The THIN end, not the top.
+     *
+     * A "top shows by hours" chart was built first and was worthless: upstream
+     * caps every feed at 5 episodes, 83 of 122 shows sit at that cap, and the
+     * top twelve are a twelve-way tie at 10.01h — twelve identical bars. The
+     * informative end is the other one. A show with a single episode in the
+     * window either just launched, airs rarely, or has a feed that has stopped
+     * publishing, and that last case is worth someone looking at.
+     */
+    thinnest: shows.slice()
+      .filter((s) => s.episodes > 0)
+      .sort((a, b) => a.seconds - b.seconds)
+      .slice(0, 12),
+    // How many shows hold how many episodes. Says in one glance what the tie
+    // above says the long way round.
+    episodeSpread: [...shows.reduce((m, s) => m.set(s.episodes, (m.get(s.episodes) || 0) + 1), new Map())]
+      .map(([episodes, count]) => ({ episodes, count }))
+      .sort((a, b) => b.episodes - a.episodes),
+    categories: [...catMap.entries()]
+      .map(([name, v]) => ({ name, episodes: v.episodes, hours: Math.round(v.seconds / 3600) }))
+      .sort((a, b) => b.episodes - a.episodes),
+    perDay,
+    durations,
+    coverage: {
+      feeds: entries.length,
+      withDescription: entries.length - noDescription.length,
+      withDirectory: entries.length - noDirectory.length,
+      directoryPrograms: programKeys.size,
+      // Named, not just counted — a number nobody can act on is decoration.
+      noDescription: noDescription.slice(0, 60),
+      noDirectory: noDirectory.slice(0, 60),
+    },
+    shows: shows.sort((a, b) => a.title.localeCompare(b.title)),
+  };
+}
+
 function studioApi(req, res, pathOnly) {
   if (!studioAuthed(req)) return sendStudioJson(res, { error: 'unauthorized' }, 401);
+  if (pathOnly === '/api/studio/stats') {
+    refreshProgramsIfStale();
+    return sendStudioJson(res, studioStats());
+  }
   if (pathOnly === '/api/studio/health') {
     return sendStudioJson(res, {
       station: STATION_ID,

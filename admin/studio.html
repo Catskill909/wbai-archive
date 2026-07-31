@@ -51,9 +51,100 @@
 
 <main class="studio-main" id="main" aria-busy="true">
 
-  <!-- Phase 1 is the gate, not the dashboard. What is behind it is deliberately
-       plain: enough to prove a session works and to answer the operational
-       questions we already have answers for. The stats app is Phase 2. -->
+  <!-- What's in the archive right now. Every number here is computed from the
+       feed cache the app already holds, so it is the same data the listener
+       app publishes — not a second source that can disagree with it. -->
+
+  <section class="studio-section studio-section--wide">
+    <h2 class="studio-h2">The archive right now</h2>
+    <p class="studio-note">
+      Upstream keeps a rolling window — at most five episodes per show — so this
+      is a current inventory, not a running total. It goes down as well as up.
+    </p>
+    <div class="kpi-row" id="kpis"></div>
+  </section>
+
+  <section class="studio-section">
+    <h2 class="studio-h2">Thinnest coverage</h2>
+    <p class="studio-note">
+      The 12 shows with the least audio in the window. Deliberately the bottom
+      of the ranking, not the top: upstream caps every feed at five episodes and
+      <span id="atCap">—</span> of <span id="capOf">—</span> shows sit at that
+      cap, so the top is a flat tie and says nothing. A show with a single
+      episode has either just launched, airs rarely, or has a feed that stopped
+      publishing — and only the last is a problem.
+    </p>
+    <div class="bars" id="thinnest"></div>
+  </section>
+
+  <section class="studio-section">
+    <h2 class="studio-h2">Episodes held per show</h2>
+    <p class="studio-note">The same thing counted directly.</p>
+    <div class="bars" id="episodeSpread"></div>
+  </section>
+
+  <section class="studio-section">
+    <h2 class="studio-h2">Episodes by category</h2>
+    <p class="studio-note">All <span id="catCount">—</span> categories upstream assigns.</p>
+    <div class="bars" id="categories"></div>
+  </section>
+
+  <section class="studio-section studio-section--wide">
+    <h2 class="studio-h2">Episodes by air date</h2>
+    <p class="studio-note">
+      Every day in the window, including the empty ones — the gaps are the
+      point. Each show holds only its five most recent episodes, so a daily show
+      covers five days and a monthly one covers five months. That is why the
+      right-hand side is dense and the left is sparse and broken: what survives
+      out there is a handful of infrequent shows, not a full schedule.
+    </p>
+    <div class="chart" id="perDay"></div>
+  </section>
+
+  <section class="studio-section">
+    <h2 class="studio-h2">Episode length</h2>
+    <div class="bars" id="durations"></div>
+  </section>
+
+  <section class="studio-section">
+    <h2 class="studio-h2">Coverage</h2>
+    <p class="studio-note">
+      How complete the data behind each feed is. These are three separate
+      ratios, not a funnel: the program directory is keyed by title and the
+      feeds by archive slug, so a show can be missing from one and present in
+      the other. The title match is approximate for that reason.
+    </p>
+    <div class="meters" id="coverage"></div>
+    <div class="gaps" id="gaps"></div>
+  </section>
+
+  <section class="studio-section studio-section--wide">
+    <h2 class="studio-h2">Every feed</h2>
+    <p class="studio-note">
+      The same numbers as above, without the charts — sortable, and searchable
+      by show or slug.
+    </p>
+    <label class="studio-field studio-field--inline">
+      <span class="studio-field-label">Filter</span>
+      <input class="studio-input" id="showFilter" type="search"
+             placeholder="show or slug" autocomplete="off">
+    </label>
+    <div class="table-wrap">
+      <table class="studio-table" id="showTable">
+        <thead>
+          <tr>
+            <th><button class="th-sort" type="button" data-sort="title">Show</button></th>
+            <th><button class="th-sort" type="button" data-sort="slug">Slug</button></th>
+            <th class="num"><button class="th-sort" type="button" data-sort="episodes">Episodes</button></th>
+            <th class="num"><button class="th-sort" type="button" data-sort="seconds">Hours</button></th>
+            <th class="num"><button class="th-sort" type="button" data-sort="newest">Newest</button></th>
+          </tr>
+        </thead>
+        <tbody id="showTableBody"></tbody>
+      </table>
+    </div>
+    <p class="studio-note" id="tableCount" role="status" aria-live="polite"></p>
+  </section>
 
   <section class="studio-section">
     <h2 class="studio-h2">Storage</h2>
@@ -88,6 +179,12 @@
        interrupt whatever a screen-reader user is currently reading. -->
   <p class="studio-error" id="loadError" role="alert" aria-live="polite" hidden></p>
 </main>
+
+<!-- One shared tooltip for every chart. Positioned by studio.js through the
+     CSSOM, which CSP permits — only style attributes parsed from markup are
+     blocked. `aria-hidden` because the same values are already reachable
+     without hovering: in the direct labels and in the table above. -->
+<div class="chart-tip" id="chartTip" role="presentation" aria-hidden="true" hidden></div>
 
 <script src="/studio.js"></script>
 </body>

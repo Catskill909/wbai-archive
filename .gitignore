@@ -16,3 +16,5 @@ desktop/src-tauri/gen/
 
 # feed scanner snapshot (machine-local; rebuilt by test/feed-scan/scan.js)
 test/feed-scan/state.json
+studio-profile
+chrome.log

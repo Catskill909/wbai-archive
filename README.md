@@ -64,6 +64,31 @@ an archived broadcast.
 - **Responsive** — a multi-column table on desktop/tablet that collapses to
   stacked cards on phones. Light and dark themes both supported (follows the
   system preference).
+- **Accessible, and audited rather than assumed** — a skip link, semantic
+  landmarks, visible focus rings, and a focus trap that returns focus where it
+  came from on every overlay (info sheet, live player, menu, lightbox), each
+  closable with `Escape`. The category dropdown is a real keyboard listbox
+  (Arrow/Home/End/`Escape`, `role="listbox"`, `aria-selected`), loading and
+  search results are announced through live regions, decorative icons are hidden
+  from screen readers and duplicate controls are kept out of the tab order,
+  touch targets meet WCAG 2.2 § 2.5.8, and 23 `prefers-reduced-motion` blocks
+  mean the animation-heavy parts stand down when asked. The theme is applied
+  before first paint, so a light-mode reader on a dark phone never gets a flash.
+  The standing audit — including what is still open — is
+  [docs/accessibility.md](docs/accessibility.md).
+- **A private station view at `/studio`** — password-gated, off entirely unless
+  `STUDIO_PASSWORD` is set (unset, the routes are never registered, so it is
+  indistinguishable from any unknown path). Same design language and the same
+  light/dark control as the app. It reports storage health, content held, feed
+  harvest state and the running build. Sessions are signed cookies with no
+  server-side store, so a restart never signs anyone out. See
+  [docs/admin-page.md](docs/admin-page.md).
+- **Keeps what it learns across deploys** — show descriptions are harvested only
+  while a show is on air, so the cache accrues slowly and is worth protecting.
+  Writes are atomic and flushed on shutdown, and `/healthz` reports whether the
+  data volume is genuinely persisting rather than leaving it to be inferred —
+  this deployment ran for weeks silently rebuilding from scratch every deploy
+  before that was measurable.
 
 ## Why a server?
 
