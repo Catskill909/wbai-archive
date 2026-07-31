@@ -230,7 +230,7 @@
      * gap. Rendered at measured pixel width so the type stays the right size
      * instead of scaling with a viewBox.
      */
-    function columnChart(node, days) {
+    function columnChart(node, days, unit) {
       node.textContent = '';
       if (!days.length) return;
       var w = Math.max(280, Math.round(node.getBoundingClientRect().width));
@@ -246,7 +246,7 @@
         role: 'img',
         // 72 focusable columns would be a tab trap; one honest summary is
         // better, and every underlying number is in the table above.
-        'aria-label': 'Episodes per day, ' + days[0].day + ' to ' + days[days.length - 1].day
+        'aria-label': (unit || 'episodes') + ' per day, ' + days[0].day + ' to ' + days[days.length - 1].day
           + '. Peak ' + peak.episodes + ' on ' + peak.day + '. '
           + empty + ' of ' + days.length + ' days have none.',
       });
@@ -272,7 +272,8 @@
           class: 'chart-hit',
         });
         function show(ev) {
-          showTip(ev, d.episodes + (d.episodes === 1 ? ' episode' : ' episodes'), d.day);
+          var u = unit || 'episodes';
+          showTip(ev, d.episodes + ' ' + (d.episodes === 1 ? u.replace(/s$/, '') : u), d.day);
         }
         hit.addEventListener('pointerenter', show);
         hit.addEventListener('pointermove', moveTip);
@@ -510,6 +511,15 @@
     var sortKey = 'seconds', sortAsc = false;
 
     function num(n) { return Number(n).toLocaleString(); }
+    // Listening time spans seconds on day one and hundreds of hours later, so
+    // the unit has to move with it rather than showing "0h" for a real figure.
+    function listenTime(sec) {
+      if (!sec) return '0';
+      if (sec < 60) return sec + 's';
+      if (sec < 3600) return Math.round(sec / 60) + 'm';
+      var h = sec / 3600;
+      return (h < 10 ? h.toFixed(1) : String(Math.round(h))) + 'h';
+    }
     function hours(sec) { return Math.round(sec / 3600); }
 
     function renderStats(d) {
@@ -609,6 +619,8 @@
       });
       rows.sort(function (a, b) {
         var x = a[sortKey], y = b[sortKey];
+        x = x === undefined ? 0 : x;
+        y = y === undefined ? 0 : y;
         var r = (typeof x === 'string') ? x.localeCompare(y) : x - y;
         return sortAsc ? r : -r;
       });
@@ -623,6 +635,7 @@
         tr.appendChild(el('td', 'num', num(s.episodes)));
         tr.appendChild(el('td', 'num', String(hours(s.seconds))));
         tr.appendChild(el('td', 'num', num(s.plays || 0)));
+        tr.appendChild(el('td', 'num', listenTime(s.listened || 0)));
         tr.appendChild(el('td', 'num', s.newest
           ? new Date(s.newest * 1000).toISOString().slice(0, 10) : '—'));
         body.appendChild(tr);
@@ -667,6 +680,8 @@
       var k = document.getElementById('usageKpis');
       k.textContent = '';
       [
+        [listenTime(u.totals.listenSeconds), '', 'Time listened'],
+        [listenTime(u.totals.liveSeconds), '', 'Live listened'],
         [num(u.totals.plays), '', 'Episode plays'],
         [num(u.totals.live), '', 'Live tune-ins'],
         [num(u.totals.pageviews), '', 'Page views'],
@@ -682,8 +697,24 @@
       // Reuse the air-date histogram: same shape of question, same mark. It
       // already draws a measured zero as a baseline tick, which matters more
       // here — a quiet day and a broken collector must not look alike.
+      // A silent cap is the worst kind: the numbers just read low. Say so.
+      var note = document.getElementById('usageNote');
+      var warn = document.getElementById('usageDropped');
+      if (warn) warn.remove();
+      if (u.droppedBeacons) {
+        var w = el('p', 'usage-empty', '⚠ ' + num(u.droppedBeacons)
+          + ' beacons were refused by the per-address rate limit since this server '
+          + 'started, so the figures below are an undercount.');
+        w.id = 'usageDropped';
+        note.parentNode.insertBefore(w, note.nextSibling);
+      }
+
+      // Minutes listened per day, not plays — the same reason the ranking below
+      // is by seconds. Rounded to minutes so the axis is a human quantity.
       columnChart(document.getElementById('usageDays'),
-        u.days.map(function (d) { return { day: d.day, episodes: d.plays }; }));
+        u.days.map(function (d) {
+          return { day: d.day, episodes: Math.round((d.listenSeconds || 0) / 60) };
+        }), 'minutes');
 
       var shows = document.getElementById('usageShows');
       if (!u.topShows.length) {
@@ -694,8 +725,8 @@
             : 'Nothing counted yet. Counting began when this was deployed — it does not backfill.'));
       } else {
         barChart(shows, u.topShows.map(function (s) {
-          return { label: s.title, value: s.plays, display: num(s.plays) };
-        }), 'plays');
+          return { label: s.title, value: s.seconds, display: listenTime(s.seconds) };
+        }), 'listened');
       }
     }
 

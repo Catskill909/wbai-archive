@@ -75,11 +75,11 @@
     <div class="kpi-row" id="usageKpis"></div>
     <div class="usage-split">
       <div>
-        <h3 class="studio-h3">Plays per day</h3>
+        <h3 class="studio-h3">Minutes listened per day</h3>
         <div class="chart" id="usageDays"></div>
       </div>
       <div>
-        <h3 class="studio-h3">Most played shows</h3>
+        <h3 class="studio-h3">Most listened shows</h3>
         <div class="bars" id="usageShows"></div>
       </div>
     </div>
@@ -139,9 +139,10 @@
   <section class="studio-section studio-section--wide">
     <h2 class="studio-h2">Every feed</h2>
     <p class="studio-note">
-      Every show, with its plays this month — sortable and searchable, so a
-      single show's figure is one filter away rather than only visible if it
-      reaches the top twelve.
+      Every show, with its plays <em>and time listened</em> this month — sortable
+      and searchable, so a single show's figures are one filter away rather than
+      only visible if it reaches the top twelve. A play is a click; the listened
+      column is whether anyone stayed.
     </p>
     <label class="studio-field studio-field--inline">
       <span class="studio-field-label">Filter</span>
@@ -157,6 +158,7 @@
             <th class="num"><button class="th-sort" type="button" data-sort="episodes">Episodes</button></th>
             <th class="num"><button class="th-sort" type="button" data-sort="seconds">Hours</button></th>
             <th class="num"><button class="th-sort" type="button" data-sort="plays">Plays</button></th>
+            <th class="num"><button class="th-sort" type="button" data-sort="listened">Listened</button></th>
             <th class="num"><button class="th-sort" type="button" data-sort="newest">Newest</button></th>
           </tr>
         </thead>

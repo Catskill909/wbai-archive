@@ -706,7 +706,25 @@ same `instanceId` across every deploy for a day, with `showinfoOnDisk` climbing
 49 → 50 → 51 across restarts. This is the first data the app has held that no
 upstream can hand back.
 
-**What it counts** — `pageview`, `play` (by show), `live`, `search`, `share`.
+**What it counts** — `pageview`, `play` (by show), `listen` (**seconds, by
+show**), `live`, `search`, `share`.
+
+**Time listened is the headline, added 2026-07-31**, because a play is a click
+and a click is not value. The dashboard ranks shows by seconds, not plays, and
+the two orders really do differ: in testing a show with 9 plays sat below one
+with 3. Measured as media consumed by sampling the player position, so pauses,
+stalls and scrubs are excluded; it under-reports slightly and can never
+over-report. Two bugs found by measuring rather than reasoning: the baseline was
+being set on the first sample tick rather than at `play` (a 50s listen recorded
+29s), and the final partial interval was dropped at `pause`.
+
+**The rate limit was raised from 120 to 600 beacons per address per minute** on
+the same evidence. A listener sends ~2 a minute, so 120 tolerated only ~60
+concurrent listeners *per address* — and carrier-grade NAT puts thousands of
+mobile users behind one. That would have undercounted a popular show silently,
+which is the worst failure this counter has: it reads as a quiet day. The
+ceiling still exists, and `droppedBeacons` now reports when it bites so the
+dashboard can say the figures are low rather than leaving it to be guessed.
 
 **What it cannot do, structurally.** No event log, no cookie, no session, no
 fingerprint, no stored or hashed IP. A request increments a counter in memory

@@ -467,7 +467,10 @@ async function harvestFeeds(slugs, full = true, force = false) {
       const slug = slugs[i++];
       try {
         const rec = await fetchFeed(slug, force);
-        if (rec) feedStore[slug] = rec;
+        // Bump the version even when the record is unchanged by value: a 304
+        // returns a new object with a fresh fetchedAt, and the index holds
+        // references into it.
+        if (rec) { feedStore[slug] = rec; feedStoreVersion++; }
       } catch (e) {
         feedsDiag.failed++;
         feedsDiag.failures.unshift({ slug, at: Date.now(), error: String(e.message || e).slice(0, 120) });
@@ -577,13 +580,30 @@ async function refreshStaleFeeds(rows) {
   return due.length;
 }
 
-// MP3 URL -> the feed item describing it, rebuilt from whatever the store holds.
+/**
+ * MP3 URL -> the feed item describing it.
+ *
+ * Memoised against a version counter bumped whenever `feedStore` changes. It
+ * used to rebuild all ~474 entries on every call, which was invisible while the
+ * only caller was the 5-minute archive scrape — and became silly the moment
+ * usage beacons started resolving a slug on every play and every listen sample.
+ * Not a bottleneck (the endpoint measured ~6,800 beacons/sec even rebuilding
+ * every time), but it was garbage generated for nothing on the hottest path in
+ * the server.
+ */
+let feedStoreVersion = 0;
+let feedIndexCache = null;
+let feedIndexBuiltAt = -1;
+
 function feedIndex() {
+  if (feedIndexCache && feedIndexBuiltAt === feedStoreVersion) return feedIndexCache;
   const byMp3 = new Map();
   for (const [slug, rec] of Object.entries(feedStore)) {
     if (!rec || !rec.items) continue;
     for (const it of rec.items) byMp3.set(it.mp3, { slug, item: it, channel: rec.channel });
   }
+  feedIndexCache = byMp3;
+  feedIndexBuiltAt = feedStoreVersion;
   return byMp3;
 }
 
@@ -1866,7 +1886,7 @@ const STATS_FLUSH_MS = 60 * 1000;
 // count already fired on the shorter timer. Splitting them is what stops a
 // mid-word pause from recording a truncated stem. See track.js.
 // No `searchterm`: the words are not collected. See the note above.
-const EVENT_TYPES = ['pageview', 'play', 'live', 'search', 'share'];
+const EVENT_TYPES = ['pageview', 'play', 'live', 'listen', 'search', 'share'];
 
 function statsMonthPath(month) { return path.join(STATS_DIR, `${month}.json`); }
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -1902,7 +1922,13 @@ function statsDay() {
   }
   const d = today();
   if (!statsStore.days[d]) {
-    statsStore.days[d] = { pageviews: 0, plays: 0, live: 0, searches: 0, shares: 0, byShow: {} };
+    statsStore.days[d] = {
+      pageviews: 0, plays: 0, live: 0, searches: 0, shares: 0,
+      byShow: {},
+      // Seconds actually listened — the stat that means something. A play is a
+      // click; this is whether anyone stayed.
+      listenSeconds: 0, liveSeconds: 0, secondsByShow: {},
+    };
   }
   return statsStore.days[d];
 }
@@ -1921,14 +1947,32 @@ function saveStatsSoon() {
  */
 const EV_SALT = crypto.randomBytes(16);
 const evSeen = new Map();
-const EV_MAX_PER_MIN = 120;
+
+/**
+ * Sized for shared addresses, not for one browser.
+ *
+ * A genuine listener sends ~2 beacons a minute (a listen flush every 30s) plus
+ * a pageview and a play. At the original 120 that allowed only ~60 concurrent
+ * listeners **per address** — and carrier-grade NAT puts thousands of mobile
+ * users behind one. A popular show would have quietly undercounted, which is
+ * the worst failure this counter has: silently wrong in the direction nobody
+ * checks.
+ *
+ * The ceiling still exists — it stops a single client inflating the station's
+ * own numbers — but the trade is deliberate: over-reporting from one abusive
+ * client is a visible anomaly, while under-reporting from a busy mobile network
+ * looks exactly like a quiet day. `droppedBeacons` below makes a hit visible
+ * instead of leaving it to be inferred.
+ */
+const EV_MAX_PER_MIN = 600;
+let evDropped = 0;
 
 function evAllowed(req) {
   const key = crypto.createHmac('sha256', EV_SALT).update(clientIp(req)).digest('base64');
   const now = Date.now();
   const rec = evSeen.get(key);
   if (!rec || now - rec.at > 60000) { evSeen.set(key, { at: now, n: 1 }); }
-  else if (rec.n >= EV_MAX_PER_MIN) return false;
+  else if (rec.n >= EV_MAX_PER_MIN) { evDropped++; return false; }
   else rec.n++;
   if (evSeen.size > 5000) {
     for (const [k, v] of evSeen) if (now - v.at > 60000) evSeen.delete(k);
@@ -1958,6 +2002,21 @@ async function ingestEvent(req, res) {
       // able to reintroduce collection we have removed.
       day.searches++;
       break;
+    case 'listen': {
+      // Clamped hard. The client samples every 15s and sends whole seconds, so
+      // anything beyond a couple of minutes is a bug or someone poking the
+      // endpoint — and this counter is the one a station would quote publicly.
+      const sec = Math.floor(Number(body.s));
+      if (!Number.isFinite(sec) || sec < 1 || sec > 300) break;
+      day.listenSeconds += sec;
+      const hit = typeof body.u === 'string' ? feedIndex().get(body.u) : null;
+      if (hit) {
+        day.secondsByShow[hit.slug] = (day.secondsByShow[hit.slug] || 0) + sec;
+      } else if (typeof body.u === 'string' && body.u.indexOf(UPSTREAM.liveStream) === 0) {
+        day.liveSeconds += sec;
+      }
+      break;
+    }
     case 'play': {
       day.plays++;
       // The client sends the media URL it is actually playing; the slug is
@@ -1990,13 +2049,19 @@ function usageReport(days = 30) {
       live: rec ? rec.live : 0,
       searches: rec ? rec.searches : 0,
       shares: rec ? rec.shares : 0,
+      listenSeconds: (rec && rec.listenSeconds) || 0,
+      liveSeconds: (rec && rec.liveSeconds) || 0,
     });
   }
   const byShow = new Map();
-  for (const [d, rec] of Object.entries(statsStore.days)) {
-    if (!rec || !rec.byShow) continue;
-    for (const [slug, n] of Object.entries(rec.byShow)) {
+  const secsByShow = new Map();
+  for (const rec of Object.values(statsStore.days)) {
+    if (!rec) continue;
+    for (const [slug, n] of Object.entries(rec.byShow || {})) {
       byShow.set(slug, (byShow.get(slug) || 0) + n);
+    }
+    for (const [slug, n] of Object.entries(rec.secondsByShow || {})) {
+      secsByShow.set(slug, (secsByShow.get(slug) || 0) + n);
     }
   }
   const titles = feedStore;
@@ -2004,6 +2069,10 @@ function usageReport(days = 30) {
     since: Object.keys(statsStore.days).sort()[0] || today(),
     month: statsMonth,
     searchTermsRecorded: false,
+    // Beacons refused by the per-address ceiling since boot. Non-zero means the
+    // figures above are an undercount, which is worth knowing before quoting
+    // them. See EV_MAX_PER_MIN.
+    droppedBeacons: evDropped,
     days: out,
     totals: out.reduce((t, d) => ({
       pageviews: t.pageviews + d.pageviews,
@@ -2011,14 +2080,20 @@ function usageReport(days = 30) {
       live: t.live + d.live,
       searches: t.searches + d.searches,
       shares: t.shares + d.shares,
-    }), { pageviews: 0, plays: 0, live: 0, searches: 0, shares: 0 }),
-    topShows: [...byShow.entries()]
-      .map(([slug, plays]) => ({
+      listenSeconds: t.listenSeconds + d.listenSeconds,
+      liveSeconds: t.liveSeconds + d.liveSeconds,
+    }), { pageviews: 0, plays: 0, live: 0, searches: 0, shares: 0, listenSeconds: 0, liveSeconds: 0 }),
+    // Ranked by SECONDS, not plays. A play is a click; this is whether anyone
+    // stayed, and the two orders differ — a show people open and abandon should
+    // not outrank one they sit through.
+    topShows: [...new Set([...byShow.keys(), ...secsByShow.keys()])]
+      .map((slug) => ({
         slug,
         title: (titles[slug] && titles[slug].channel && titles[slug].channel.title) || slug,
-        plays,
+        plays: byShow.get(slug) || 0,
+        seconds: secsByShow.get(slug) || 0,
       }))
-      .sort((a, b) => b.plays - a.plays)
+      .sort((a, b) => (b.seconds - a.seconds) || (b.plays - a.plays))
       .slice(0, 12),
   };
 }
@@ -2344,7 +2419,16 @@ function studioStats() {
       playsBySlug.set(slug, (playsBySlug.get(slug) || 0) + n);
     }
   }
-  shows.forEach((s) => { s.plays = playsBySlug.get(s.slug) || 0; });
+  const secondsBySlug = new Map();
+  for (const rec of Object.values(statsStore.days || {})) {
+    for (const [slug, n] of Object.entries((rec && rec.secondsByShow) || {})) {
+      secondsBySlug.set(slug, (secondsBySlug.get(slug) || 0) + n);
+    }
+  }
+  shows.forEach((s) => {
+    s.plays = playsBySlug.get(s.slug) || 0;
+    s.listened = secondsBySlug.get(s.slug) || 0;
+  });
 
   const programs = programCache.programs || {};
   const programKeys = new Set(Object.keys(programs));

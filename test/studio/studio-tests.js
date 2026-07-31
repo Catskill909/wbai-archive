@@ -326,14 +326,55 @@ async function run() {
       JSON.stringify(usage.totals));
 
     // An unresolvable media URL is an unattributed play, never a guess.
+    /* LISTENING TIME. A play is a click; seconds are whether anyone stayed, and
+     * the two orders genuinely differ — a show people open and abandon must not
+     * outrank one they sit through. `beta` is opened once and listened to for
+     * ten minutes; `alpha` was opened once and barely played. */
+    await beacon({ t: 'play', u: 'b1' });
+    for (let i = 0; i < 10; i++) await beacon({ t: 'listen', u: 'b1', s: 60 });
+    // alpha is opened repeatedly and abandoned each time. Without these extra
+    // plays both shows have one play, the two orderings agree, and the test
+    // cannot tell them apart — it would pass whichever key we sorted on.
+    for (let i = 0; i < 3; i++) await beacon({ t: 'play', u: 'a2' });
+    await beacon({ t: 'listen', u: 'a1', s: 5 });
+
+    // The counter a station would quote publicly, so the ceiling matters.
+    await beacon({ t: 'listen', u: 'a1', s: 99999 });
+    await beacon({ t: 'listen', u: 'a1', s: -60 });
+    await beacon({ t: 'listen', u: 'a1', s: 'lots' });
+
+    const listened = await (await get(PORT_ON, '/api/studio/usage', authed)).json();
+    ok('listening seconds are recorded per show',
+      listened.totals.listenSeconds === 605,
+      `expected 605 (10x60 + 5, junk rejected), got ${listened.totals.listenSeconds}`);
+
+    const ranked = listened.topShows;
+    ok('shows rank by time listened, not by plays',
+      ranked[0].slug === 'beta' && ranked[0].plays < ranked[1].plays
+      && ranked[0].seconds > ranked[1].seconds,
+      JSON.stringify(ranked.map((r) => r.slug + ':' + r.plays + 'p/' + r.seconds + 's')));
+
+    // A silent ceiling is the worst failure this counter has — it reads as a
+    // quiet day. The number must be reported, not merely enforced.
+    ok('the report says how many beacons the rate limit refused',
+      typeof listened.droppedBeacons === 'number',
+      String(listened.droppedBeacons));
+
+    ok('an out-of-range duration is rejected rather than clamped in',
+      (ranked.find((r) => r.slug === 'alpha') || {}).seconds === 5,
+      JSON.stringify(ranked));
+
     // Per-show plays must reach the table, so a single show's figure is
     // reachable by filtering rather than only if it makes the top twelve.
     const withPlays = await (await get(PORT_ON, '/api/studio/stats', authed)).json();
     const alpha = withPlays.shows.find((s) => s.slug === 'alpha');
     const beta = withPlays.shows.find((s) => s.slug === 'beta');
     ok('every show row carries its own play count, zero included',
-      alpha && alpha.plays === 1 && beta && beta.plays === 0,
+      alpha && alpha.plays === 4 && beta && beta.plays === 1,
       JSON.stringify(withPlays.shows.map((s) => s.slug + ':' + s.plays)));
+    ok('every show row carries its own listening time',
+      alpha && alpha.listened === 5 && beta && beta.listened === 600,
+      JSON.stringify(withPlays.shows.map((s) => s.slug + ':' + s.listened)));
 
     ok('a play is attributed to a show only when the URL resolves',
       usage.topShows.length === 1 && usage.topShows[0].slug === 'alpha'

@@ -687,8 +687,37 @@ failure direction is the safe one. The boot log says which happened.
 
 ### Usage counters
 
-The station can see how many episodes were played, which shows, live tune-ins,
-page views, searches and shares. It cannot see who — and that is structural, not
+The station can see how long people actually listened per show, plus plays, live
+tune-ins, page views, searches and shares.
+
+**Time listened is the number that means something**, and it is measured as
+media *consumed*, not wall clock: `track.js` samples `currentTime` every 15s and
+counts the delta. A pause contributes nothing (the position stops advancing), so
+does a stall, and a **seek is excluded by an upper bound** — otherwise dragging
+the scrubber would manufacture hours. The cost is that the one interval
+containing a seek is discarded whole, so the figure under-reports slightly and
+can never over-report, which is the right direction for something a station
+might quote. Measured end to end: 50s of uninterrupted playback records 49s; 40s
+either side of a 30-minute seek records ~24s and never the 1,800.
+
+**Closing the window mid-episode is handled** — `pagehide` banks the last
+partial interval and `sendBeacon` survives the document dying (measured: 40s
+played, tab closed, 39s recorded). A *hard* kill — crash, OOM, swiping the app
+away — fires nothing, so up to ~30s is lost. Undercount, never overcount.
+
+**Cost.** The ingest endpoint measured **~6,800 beacons/sec** on a laptop. A
+listener sends ~2 a minute, so that is headroom of a different order than this
+station will ever need; the counters are increments on an in-memory object and
+the write is debounced to 60s. `feedIndex()` is memoised against a version
+counter because a play and every listen sample resolve a slug through it — it
+used to rebuild ~474 entries per beacon, which cost no measurable throughput but
+generated garbage on the hottest path (RSS 98 MB → 79 MB over 2,000 beacons).
+
+Two things that were wrong first time and are easy to reintroduce: the baseline
+must be set at the `play` event (setting it on the first sample tick discards the
+opening interval of every listen — a 50s listen measured 29s), and the `pause`
+path must be allowed to sample even though the element is already paused, or the
+final partial interval is thrown away. It cannot see who — and that is structural, not
 a policy stated on top of a system that could do otherwise:
 
 - **No event log.** A beacon increments a number in memory and is dropped. There

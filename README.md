@@ -98,9 +98,13 @@ an archived broadcast.
   themes work with no extra code. Sessions are signed cookies with no
   server-side store, so a restart never signs anyone out. See
   [docs/admin-page.md](docs/admin-page.md).
-- **Counts, without tracking anyone** — the station can see how many episodes
-  were played, which shows, how many live tune-ins, page views, searches and
-  shares. It cannot see *who*, and that is structural rather than a promise:
+- **Counts, without tracking anyone** — the station can see **how long people
+  actually listened**, per show, alongside plays, live tune-ins, page views,
+  searches and shares. Time is the honest number: a play is a click, and the two
+  rankings genuinely differ — a show people open and abandon should not outrank
+  one they sit through. It is measured as media *consumed* (sampling the
+  player's position, so pauses, buffering and scrubbing forward are all
+  excluded), which under-reports slightly and can never over-report. It cannot see *who*, and that is structural rather than a promise:
   there is **no event log, no cookie, no session, no fingerprint, and no stored
   or hashed IP**. A request increments a number in memory and is dropped, so
   nothing links two events to the same person — which means "unique listeners"
