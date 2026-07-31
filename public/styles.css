@@ -943,13 +943,31 @@
     background:var(--surface-1); border:1px solid var(--outline-strong);
     border-radius:14px; padding:.65rem .9rem;
   }
-  .search-field:focus-within{border-color:var(--accent-2); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 20%, transparent);}
+  /* .has-query keeps the accent while a filter is in force even after focus has
+     moved on — closing a show modal used to drop the field back to its resting
+     grey with the list still filtered underneath. */
+  .search-field:focus-within,
+  .search-field.has-query{border-color:var(--accent-2); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-2) 20%, transparent);}
   .search-field svg{width:18px;height:18px;color:var(--ink-faint); flex:none;}
+  .search-field.has-query > svg{color:var(--accent-2);}
   .search-field input{
     border:none; outline:none; background:transparent; color:var(--ink);
     font-size:.95rem; width:100%; font-family:var(--font-body);
   }
   .search-field input::placeholder{color:var(--ink-faint);}
+  /* Suppress the native X — it only shows while focused, and two clear buttons
+     side by side is worse than either alone. */
+  .search-field input::-webkit-search-cancel-button{-webkit-appearance:none; appearance:none;}
+  .search-clear{
+    flex:none; display:flex; align-items:center; justify-content:center;
+    width:22px; height:22px; padding:0; margin:-2px -2px -2px 0;
+    border:none; border-radius:50%; cursor:pointer;
+    background:var(--outline-strong); color:var(--surface-0);
+  }
+  .search-clear[hidden]{display:none;}
+  .search-clear svg{width:13px; height:13px; color:inherit;}
+  .search-clear:hover{background:var(--accent-2);}
+  .search-clear:focus-visible{outline:2px solid var(--accent-2); outline-offset:2px;}
 
   /* ---- Category dropdown ---- */
   .cat-select{position:relative; flex:none;}

@@ -133,11 +133,20 @@
   </section>
 
   <div class="controls-row">
+    <!-- The clear button is ours, not the browser's. The native
+         ::-webkit-search-cancel-button is drawn only while the field has focus,
+         so opening a show and closing it again took the X away and left a
+         filtered list with nothing on screen saying so. This one is tied to the
+         field's *value* (.has-query), which is the thing the user actually
+         needs signalled. -->
     <label class="search-field" for="q">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
       <input id="q" type="search" placeholder="Search shows — “Democracy Now”, “jazz”, “housing”…"
              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
              inputmode="search" enterkeyhint="search">
+      <button class="search-clear" id="qClear" type="button" aria-label="Clear search" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
     </label>
     <div class="cat-select" id="catSelect">
       <button class="cat-trigger" id="catTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by category">

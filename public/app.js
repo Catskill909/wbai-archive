@@ -246,11 +246,34 @@
   });
 
   var searchEl = document.getElementById('q');
-  searchEl.addEventListener('input', function(e){
-    state.query = e.target.value.trim().toLowerCase();
+  var searchClearEl = document.getElementById('qClear');
+  var searchFieldEl = searchClearEl.closest('.search-field');
+
+  // The only thing that decides whether the field looks "active" is whether it
+  // holds text — never focus. Focus is lost every time a show modal opens, and
+  // the list stays filtered the whole time it is gone.
+  function syncSearchUi(){
+    var has = searchEl.value.trim() !== '';
+    searchFieldEl.classList.toggle('has-query', has);
+    searchClearEl.hidden = !has;
+  }
+
+  function onSearchChanged(){
+    state.query = searchEl.value.trim().toLowerCase();
+    syncSearchUi();
     render();
     resetListScroll();
     syncUrl();
+  }
+  searchEl.addEventListener('input', onSearchChanged);
+  // Escape inside a type="search" field empties it; not every engine follows
+  // that with an `input` event, so the `search` event is caught as well.
+  searchEl.addEventListener('search', onSearchChanged);
+
+  searchClearEl.addEventListener('click', function(){
+    searchEl.value = '';
+    onSearchChanged();
+    searchEl.focus();
   });
 
   document.querySelectorAll('.sortbtn').forEach(function(btn){
@@ -3092,6 +3115,7 @@
     if(cat && CAT_BY_KEY[cat]) state.cat = cat;
     var q = param('q');
     if(q){ state.query = q.trim().toLowerCase(); searchEl.value = q; }
+    syncSearchUi();
   })();
 
   renderCat();
