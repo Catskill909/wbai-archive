@@ -1,32 +1,56 @@
 # The Studio — a private view for the people who run this thing
 
-**Status: every phase is built, verified and deployed (2026-07-30/31).**
+**Every phase is built, verified and deployed (2026-07-30/31).**
 
-§1–§5 are the original design and audit, kept because the reasoning still
-explains the code. §6 is the build record — what shipped, what the data forced
-us to change, and every bug worth not repeating. §10 is the open brainstorm for
-what comes next; nothing in it is committed.
-
-Five decisions are already made and everything below assumes them:
-
-- **The route is `/studio`**, not `/admin`. "Studio" is radio-native, reads as
-  behind-the-scenes to a non-technical board member, and is short enough to type
-  on a phone. `/admin` is a word that tells a scanner it found something.
-- **Content and health stats first; listener analytics later.** The app
-  currently records *nothing* about listeners — see §2.3.
-- **Analytics persist on Coolify Persistent Storage.** Plain JSON rollups under
-  the data dir, no database. See §5, which also covers why the volume has to be
-  *proven* rather than assumed.
-- **This repo is a template.** It will be deployed for other Pacifica stations
-  running the same tools, so every storage and configuration decision here is
-  judged on "how hard is this to stand up for station number four?" That is what
-  §5 is really about.
-- **Local and Coolify are named separately at every step.** Storage is the one
-  area where a laptop cannot reproduce production even in principle, so every
-  definition of done below is split in two — what local proves, and what only a
-  redeploy proves. §5.1 is the rule; it is not optional politeness.
+This page is a roundup first and a reference second. Everything below the
+divider is detail — the design reasoning (§1–§5), the build record with the bugs
+worth not repeating (§6), and the open brainstorm (§10). Section numbers are
+referenced from `server.js` and four other docs, so they stay put.
 
 ---
+
+## At a glance
+
+### Shipped
+
+| Phase | What it does | Detail |
+| --- | --- | --- |
+| **1b — durable storage** | One `DATA_DIR`, atomic writes, flush on `SIGTERM`, and a volume that can *prove* it persisted. Fixed the bug that silently reset production every deploy. | [§6](#phase-1b-durable-storage-done-both-halves-2026-07-30) |
+| **1 — the gate** | Password-gated `/studio`. Unset password ⇒ the routes do not exist. Stateless signed-cookie sessions, rate-limited login. | [§6](#phase-1-the-gate-built-2026-07-30) |
+| **2 — content dashboard** | What is in the archive: shows, episodes, hours, category mix, air-date histogram, thinnest coverage, coverage meters, sortable table of every feed. | [§6](#phase-2-the-content-dashboard-built-2026-07-30) |
+| **2.5 — full width** | 100rem, four columns at 1440px. Page height 6,650px → 2,480px. | [§6](#phase-25-full-width-2026-07-31) |
+| **3 — operational health** | Feed failures **named**, per-feed staleness, per-host upstream latency from real traffic, process and cache stats. | [§6](#phase-3-operational-health-built-2026-07-31) |
+| **4 — actions** | Re-check feeds, refresh the directory, re-probe the stream, drop a cache. Idempotent, cooled down, CSRF-guarded, logged. | [§6](#phase-4-actions-built-2026-07-31) |
+| **5 — listener analytics** | **Time listened** per show (the headline), plus plays, live tune-ins, page views, searches, shares. No identifier of any kind. | [§6](#phase-5-listener-analytics-built-2026-07-31) |
+
+### Next up — nothing committed
+
+Ranked by value ÷ effort. Full reasoning and the rest of the menu in [§10](#10-brainstorm-where-this-could-go-next).
+
+| | Candidate | Why it is worth doing | Effort |
+| --- | --- | --- | --- |
+| 1 | **Inventory snapshots** | The only one that gets *worse* the longer it waits — every day without it is history that cannot be recovered. Nothing today records what the archive looked like last week. | S |
+| 2 | **Completion rate** | Turns the dashboard from a description into a judgement: people open this show and leave, they sit through that one. Needs no new collection. | S |
+| 3 | **Alerting (webhook)** | A dashboard only helps if someone opens it. The volume bug ran for weeks because nothing shouted. | S |
+| 4 | **Content QA panel** | Turns the coverage meters from a number into a to-do list. | S |
+| 5 | **Shows nobody played** | The actionable inverse of "most listened". | XS |
+| 6 | **CSV export** | Board reports are written in spreadsheets. | XS |
+
+**Before proposing anything:** [§10.1](#101-what-this-design-makes-impossible-read-before-proposing) lists what this
+design makes *arithmetically* impossible — unique listeners, returning-vs-new,
+per-person session length. They need identity, and there is none.
+
+### Standing decisions
+
+- **`/studio`, not `/admin`** — radio-native, and not a word that tells a scanner it found something.
+- **No listener identity, ever** — no cookie, no session, no fingerprint, no stored or hashed IP.
+- **Plain JSON on a mounted volume, no database** — a volunteer at another station can read the file.
+- **This repo is a template** — a per-station difference is a setting, never a code edit.
+- **Local proves the code path; only a redeploy proves the storage** — [§5.1](#51-local-is-not-production-and-local-never-fails), and it is not optional politeness.
+
+---
+
+# Detail
 
 ## 1. What we are building
 
@@ -159,9 +183,9 @@ production storage is unreliable (CLAUDE.md §4), and a session table on a volum
 that may not be mounted would log everyone out at unpredictable times. Stateless
 sessions also survive a restart, which the harvest caches do not.
 
-`Secure` on the cookie means the studio does not work over plain HTTP. Local dev
-is `http://localhost:8080`, which browsers treat as a secure context for
-cookies — but verify this early rather than debug it in Phase 2.
+`Secure` on the cookie means the studio does not work over plain HTTP.
+`http://localhost:8080` is a secure context so local dev is fine, and the flag
+also keys off `X-Forwarded-Proto` in production.
 
 `POST /api/studio/logout` clears the cookie. There is no way to invalidate one
 session remotely; rotating `STUDIO_PASSWORD` invalidates all of them, and that
@@ -341,9 +365,9 @@ So the deployment instruction for every station is:
 3. Redeploy, then run the check in §5.4. **Do not skip step 3.** The failure
    mode is silent and only visible one deploy later.
 
-Also worth doing while we are here: consider dropping the `VOLUME` line from the
-Dockerfile entirely. It provides nothing an explicit mount does not, and its only
-observable behaviour is the anonymous-volume trap above.
+The `VOLUME` line was dropped from the Dockerfile for exactly this reason: it
+provides nothing an explicit mount does not, and its only observable behaviour
+is the trap above.
 
 ### 5.4 Make the volume prove itself
 
@@ -392,9 +416,6 @@ because it catches and returns the fallback. For a cache that is a re-fetch. For
 a month of analytics it is the month. Fix: write to `<file>.tmp`, `fsync`,
 `fs.renameSync` into place — rename is atomic on the same filesystem.
 
-Neither fix is more than a few lines, and both improve today's behaviour, so
-they should not wait for Phase 5.
-
 ### 5.6 Per-station configuration surface
 
 The full "stand up a new station" story is [ROADMAP.md](ROADMAP.md) item 4
@@ -435,7 +456,7 @@ verdict Phase 1b just earned.
   colour comes from a `styles.css` token, which is why both themes and the
   toggle work with no extra code.
 - ✅ Auth in `server.js`: env vars, `timingSafeEqual` over hashed inputs, HMAC
-  session cookie, rate limiter, the five routes in §3.4.
+  session cookie, rate limiter, and the routes in §3.4.
 - ✅ Narrow `POST` allowance — the two auth routes only; everything else still
   405s (constraint #1). Studio-safe headers: `private, no-store` + `Vary: Cookie`
   (#6).
@@ -494,10 +515,6 @@ invalidate a value already copied off a device — it stays valid until it
 expires. That is the price of having no session store, which is deliberate
 (§3.2: this app's storage was unreliable for months). Rotating
 `STUDIO_PASSWORD` revokes everything at once and is the documented path.
-
-**Still to do on the deployment:** set `STUDIO_PASSWORD` in Coolify. Until then
-production behaves exactly as if the feature does not exist, which is the
-intended default.
 
 ### Phase 1b — durable storage — **DONE, both halves, 2026-07-30**
 
@@ -632,6 +649,22 @@ and **section 3 of it restores the bug and requires the probe to report it** —
 an overflow test that has never seen overflow is indistinguishable from a blind
 one (CLAUDE.md §3a).
 
+### Phase 2.5 — full width (2026-07-31)
+
+The dashboard was capped at 60rem, which put two narrow columns on a wide
+monitor and made comparing any two panels a long scroll. Now `100rem` with
+`repeat(auto-fit, minmax(min(21rem, 100%), 1fr))` — four columns at 1440px,
+three at 1180 — plus `grid-auto-flow: dense` so a short panel backfills a hole
+instead of leaving dead space. The two smallest charts were merged into one
+"Shape of the archive" panel so the row's heights are comparable rather than
+ragged. **Page height went from ~6,650px to ~2,480px at 1440px.**
+
+That change also removed the original overflow bug's root cause a second time,
+by accident worth keeping: a bare `1fr` track has an *automatic* minimum of
+`auto`, which is what let the column grow to its content; `minmax()` gives it a
+real floor. `test/studio/run.sh` section 3 now removes each defence in turn and
+asserts that either one alone holds the layout.
+
 ### Phase 3 — operational health — **BUILT 2026-07-31**
 
 Added to `/api/studio/health`, and rendered as three panels (Feed harvest,
@@ -655,22 +688,6 @@ Upstream, Process).
 listing advertises have no feed behind them, so `catchUpFeeds` probing them 404s
 *by design*. Those are counted as `missing` and reported separately. A panel that
 is always red teaches everyone to stop reading it.
-
-### Phase 2.5 — full width (2026-07-31)
-
-The dashboard was capped at 60rem, which put two narrow columns on a wide
-monitor and made comparing any two panels a long scroll. Now `100rem` with
-`repeat(auto-fit, minmax(min(21rem, 100%), 1fr))` — four columns at 1440px,
-three at 1180 — plus `grid-auto-flow: dense` so a short panel backfills a hole
-instead of leaving dead space. The two smallest charts were merged into one
-"Shape of the archive" panel so the row's heights are comparable rather than
-ragged. **Page height went from ~6,650px to ~2,480px at 1440px.**
-
-That change also removed the original overflow bug's root cause a second time,
-by accident worth keeping: a bare `1fr` track has an *automatic* minimum of
-`auto`, which is what let the column grow to its content; `minmax()` gives it a
-real floor. `test/studio/run.sh` section 3 now removes each defence in turn and
-asserts that either one alone holds the layout.
 
 ### Phase 4 — actions — **BUILT 2026-07-31**
 
@@ -733,13 +750,15 @@ looking in the wrong file. The shape is now asserted on every access, and a test
 boots a server against a legacy stats file and fails if that regresses. It was
 verified by reverting the fix and watching the test go red.
 
-**The rate limit was raised from 120 to 600 beacons per address per minute** on
-the same evidence. A listener sends ~2 a minute, so 120 tolerated only ~60
+**The abuse ceiling was raised from 120 to 600 beacons per address per minute**
+on the same evidence. A listener sends ~2 a minute, so 120 tolerated only ~60
 concurrent listeners *per address* — and carrier-grade NAT puts thousands of
 mobile users behind one. That would have undercounted a popular show silently,
 which is the worst failure this counter has: it reads as a quiet day. The
-ceiling still exists, and `droppedBeacons` now reports when it bites so the
-dashboard can say the figures are low rather than leaving it to be guessed.
+ceiling still exists — keyed by an HMAC of the address salted with a value
+generated at boot and never written, so it cannot be reversed or correlated
+across restarts — and `droppedBeacons` now reports when it bites, so the
+dashboard says the figures are low rather than leaving it to be guessed.
 
 **What it cannot do, structurally.** No event log, no cookie, no session, no
 fingerprint, no stored or hashed IP. A request increments a counter in memory
@@ -795,11 +814,6 @@ show is one search away. Shows with none report `0` rather than a blank.
 debounce and on `SIGTERM`. Verified: nothing on disk during the debounce,
 everything written on shutdown. Without Phase 1b's flush handler every redeploy
 would have silently dropped up to a minute of counters.
-
-**Abuse ceiling** — 600 events/minute per address, keyed by an HMAC of the
-address salted with a value generated at boot and never written. It cannot be
-reversed, cannot be correlated across restarts, and does not survive the
-process. See the note above on why 120 was too low.
 
 **A bug caught by looking.** The peak label on the day chart rendered "peak 4"
 for a value of 41 — centred text runs past the SVG edge when the peak is the
@@ -1006,11 +1020,3 @@ pairs naturally with F. **Effort: medium.**
   then as a new design rather than a widening of the cookie.
 - **Anything that writes to WBAI.** §7. The actions in Phase 4 touch our caches
   only, and that boundary is worth keeping bright.
-
-### 10.5 If only three things get built
-
-**F (inventory snapshots)** first, because it is the only one that gets worse the
-longer it is delayed — every day without it is a day of history that cannot be
-recovered. Then **A (completion rate)**, which turns the dashboard from a
-description into a judgement. Then **J (alerting)**, so nobody has to remember
-to look.
