@@ -1045,6 +1045,23 @@
   var LIVE_DRIFT_MS = 45000;
   var LIVE_RESYNC_MIN_MS = 30000;
   var liveResyncAt = 0;
+  // ---- The silent stall. A network that disappears underneath a *running*
+  // stream does not close the socket and does not fire `error` — the bytes just
+  // stop arriving (2026-07-30: a USB-tethered iPhone unplugged mid-listen;
+  // ERR_NETWORK_CHANGED in the console, no event on the element, and a spinner
+  // that span forever). The element's whole account of that is `waiting`, then
+  // nothing, ever. So progress is polled, and silence is read as a dead
+  // connection: keep rebuilding until audio returns, or until the budget runs
+  // out and it becomes something the listener has to act on.
+  var LIVE_STALL_MS = 8000;      // audio frozen this long = the connection is gone
+  var LIVE_REBUILD_MS = 8000;    // at most one rebuild attempt per this long
+  var LIVE_GIVEUP_MS = 90000;    // keep trying this long before showing the card
+  var liveTicker = null;         // the progress poll; runs only while live is wanted
+  var liveProgressAt = 0;        // last moment the AUDIBLE element actually advanced
+  var liveLastTime = -1;
+  var liveRecovering = false;    // trying to get audio back with no user gesture
+  var liveStallSince = 0;        // when that started — the give-up budget's clock
+  var liveRebuildAt = 0;
 
   // Latest on-air snapshot, so the modal can paint whenever it opens and re-paint
   // as the schedule rolls over. Set by renderNowPlaying().
@@ -1336,6 +1353,62 @@
     }, LIVE_CONNECT_MS);
   }
 
+  // ================= RECOVERY WITHOUT A GESTURE =================
+  // The watchdog above only covers a connection that never starts. This covers
+  // one that starts and then dies quietly — the case a listener actually meets:
+  // audio is playing, the network moves under it (an interface goes away, a
+  // hand-off between Wi-Fi and cellular, a station hiccup), and the element is
+  // left holding a socket that will never produce another byte. Nothing tells us
+  // this happened, so we watch the only thing that can't lie: whether the audio
+  // the listener is hearing is still advancing.
+  //
+  // Two rules keep it honest:
+  //   * The clock is the AUDIBLE element (`livePrev` while a handover is in
+  //     flight, otherwise `liveAudio`) — a silent replacement being auditioned
+  //     must never look like progress, and must never look like a stall either.
+  //   * Trying is bounded. LIVE_GIVEUP_MS of failed attempts is a real failure
+  //     and gets the card; anything less is our problem, not the listener's.
+  function liveHeard(){ return livePrev || liveAudio; }
+
+  function startLiveTicker(){ if(!liveTicker) liveTicker = setInterval(liveTick, 1000); }
+  function stopLiveTicker(){ if(liveTicker){ clearInterval(liveTicker); liveTicker = null; } }
+
+  // Audio moved: whatever we were worried about is over.
+  function noteLiveProgress(t){
+    liveLastTime = t;
+    liveProgressAt = Date.now();
+    liveRecovering = false;
+    liveStallSince = 0;
+  }
+  function showLiveReconnecting(){
+    setLiveLoading(true);
+    setLiveNote('Reconnecting…');
+    if(barMode === 'live') setStatus('Reconnecting…');
+  }
+
+  function liveTick(){
+    if(!liveWanted || liveErrored) return;
+    var now = Date.now(), el = liveHeard();
+    if(el && el._wall){
+      if(el.currentTime !== liveLastTime){ noteLiveProgress(el.currentTime); return; }
+      if(now - liveProgressAt < LIVE_STALL_MS) return;
+    } else if(el){
+      return;                  // still connecting — armLiveWatchdog() owns that wait
+    }
+    // Either the audible connection has gone silent, or an attempt left us with
+    // nothing at all. Same job either way: get the audio back.
+    if(!liveRecovering){ liveRecovering = true; liveStallSince = now; }
+    if(now - liveStallSince >= LIVE_GIVEUP_MS){ liveFailed('stalled'); return; }
+    showLiveReconnecting();
+    if(livePrev) return;                          // a handover is already in flight
+    if(now - liveRebuildAt < LIVE_REBUILD_MS) return;
+    liveRebuildAt = now;
+    // With a connection still in hand, audition its replacement (it may yet come
+    // back, and under a strict autoplay policy it is the only thing that can).
+    // With nothing in hand, an ordinary start is the whole of the retry.
+    if(el) rebuildLive(); else startLive(true);
+  }
+
   // Single funnel for every way the stream can fail: the error event, a rejected
   // play(), or the watchdog. Leaves the player in a clean paused state so the
   // retry path is the ordinary play path.
@@ -1344,7 +1417,15 @@
     // one failure, one alert: a dead source often reports twice (rejected play()
     // *and* an error event), and the retry path clears this flag before re-trying
     if(liveErrored && !lpAlert.hidden) return;
-    var wasPlaying = !!(liveAudio && liveAudio.currentTime > 0);
+    var wasPlaying = liveRecovering || !!(liveAudio && liveAudio.currentTime > 0);
+    // Nothing has failed the listener yet if we can fix it ourselves. A stream
+    // that WAS playing and then died gets the quiet reconnect loop instead of a
+    // card — the listener finds out only if that runs out of budget. A stream
+    // that never played is a plain failure and says so immediately.
+    if(reason !== 'blocked' && liveWanted && navigator.onLine !== false
+       && liveKeepTrying(wasPlaying)) return;
+    liveRecovering = false;
+    liveStallSince = 0;
     liveErrored = true;         // set first: stopLive() leaves the error UI alone
     stopLive();                 // throw the half-open connection away entirely
     if(barMode === 'live') setStatus('Stream unavailable');
@@ -1363,6 +1444,21 @@
       wasPlaying ? 'The live stream dropped' : 'Can’t reach the live stream',
       'Checking WBAI’s streaming server…');
     probeLiveServer();
+  }
+
+  // Decides whether a failure is ours to absorb. Returns true once the reconnect
+  // loop owns the problem, false when the listener has to be told.
+  function liveKeepTrying(wasPlaying){
+    if(!liveRecovering){
+      if(!wasPlaying) return false;         // it never played: a plain failure
+      liveRecovering = true;
+      liveStallSince = Date.now();
+    }
+    if(Date.now() - liveStallSince >= LIVE_GIVEUP_MS) return false;
+    abandonLiveEls();          // the dead connection goes; the intent to play stays
+    showLiveReconnecting();
+    startLiveTicker();         // the tick owns the next attempt, on its own cadence
+    return true;
   }
 
   function renderProbeResult(s){
@@ -1470,6 +1566,7 @@
     el.addEventListener('waiting', current(function(){ if(liveWanted) setLiveLoading(true); }));
     el.addEventListener('playing', current(function(){
       markLiveEdge(el);
+      noteLiveProgress(el.currentTime);
       clearLiveWatchdog();
       liveErrored = false;
       hideLiveAlert();
@@ -1482,13 +1579,26 @@
       // and doing that inside its own handler is asking for trouble.
       if(liveDriftMs() >= LIVE_DRIFT_MS) setTimeout(resyncLive, 0);
     }));
-    el.addEventListener('error', current(function(){ liveFailed('error'); }));
+    // While a handover is in flight this element is the *audition*, not the
+    // audio: its death is a failed attempt, so hand the working connection back
+    // and let the loop try again rather than alarming a listener who can still
+    // hear the stream.
+    el.addEventListener('error', current(function(){
+      if(livePrev){ handback(el, livePrev); return; }
+      liveFailed('error');
+    }));
     // A live stream has no end; 'ended' means the server closed the connection.
-    el.addEventListener('ended', current(function(){ liveFailed('ended'); }));
+    el.addEventListener('ended', current(function(){
+      if(livePrev){ handback(el, livePrev); return; }
+      liveFailed('ended');
+    }));
     // A pause we did not ask for — an OS interruption, a headset unplug, another
     // app taking the audio session — is a stop, not a pause: that connection is
     // dead to us and the next play must open a new one.
-    el.addEventListener('pause', current(function(){ if(liveWanted) stopLive(); }));
+    el.addEventListener('pause', current(function(){
+      if(livePrev){ handback(el, livePrev); return; }
+      if(liveWanted) stopLive();
+    }));
     document.body.appendChild(el);
     return el;
   }
@@ -1506,15 +1616,23 @@
     if(el.parentNode) el.parentNode.removeChild(el);
   }
 
-  function stopLive(){
+  // Throw away every element and socket we hold, without touching the intent to
+  // play. Recovery needs exactly this: the connection is dead, the listener still
+  // wants the stream. stopLive() is this plus giving up on wanting it.
+  function abandonLiveEls(){
     clearLiveWatchdog();
     clearTimeout(liveHandoverTimer);
     var el = liveAudio, old = livePrev;
     liveAudio = null;            // from here, `el`'s remaining events are ignored
     livePrev = null;
-    liveWanted = false;
     destroyLiveEl(el);
     destroyLiveEl(old);          // a half-finished handover must not be orphaned
+  }
+
+  function stopLive(){
+    abandonLiveEls();
+    liveWanted = false;
+    stopLiveTicker();
     setLiveLoading(false);
     setLiveIcon(false);
     if(mediaMode === 'live') setPlaybackState('paused');
@@ -1526,16 +1644,24 @@
   // The one and only way audio starts. Always a new element, always a new
   // connection, therefore always the live edge — whether it is the first play,
   // a play after a stop, a retry after a failure, or a drift resync.
-  function startLive(){
+  //
+  // `auto` marks an attempt the listener did not ask for (the reconnect loop).
+  // It changes two things and nothing else: the wording, and that it must NOT
+  // reset the give-up budget — a loop that restarts its own deadline never ends.
+  function startLive(auto){
     stopLive();                               // no-op when nothing is connected
     if(!audio.paused) audio.pause();          // the two players never run at once
     hideLiveAlert();
     liveErrored = false;
     liveWanted = true;
     liveEngaged = true;
+    if(!auto){ liveRecovering = false; liveStallSince = 0; }
+    liveLastTime = -1;
+    liveProgressAt = liveRebuildAt = Date.now();
+    startLiveTicker();
     setLiveLoading(true);
-    setLiveNote('Connecting…');
-    if(barMode === 'live'){ refreshToggleIcon(); setStatus('Connecting…'); }
+    setLiveNote(auto ? 'Reconnecting…' : 'Connecting…');
+    if(barMode === 'live'){ refreshToggleIcon(); setStatus(auto ? 'Reconnecting…' : 'Connecting…'); }
     paintLiveCloseBtn();          // connecting counts: closing now still hands over
     var el = liveAudio = newLiveEl();
     el.src = liveSrc();
@@ -1569,10 +1695,23 @@
     if(document.visibilityState === 'hidden') return;
     if(liveDriftMs() < LIVE_DRIFT_MS) return;
     if(Date.now() - liveResyncAt < LIVE_RESYNC_MIN_MS) return;
-    liveResyncAt = Date.now();
+    liveResyncAt = liveRebuildAt = Date.now();
+    rebuildLive();
+  }
 
+  // The handover itself, shared by the drift resync above and by stall recovery:
+  // build a replacement, prove it plays, and only then drop the one in hand. The
+  // two callers differ only in when they decide it is time.
+  function rebuildLive(){
     var prev = liveAudio;
     var next = newLiveEl();
+    // The audition must reach the station even when the autoplay policy is going
+    // to refuse it. Elements are preload:'none', so with a strict policy (iOS,
+    // Chrome's user-gesture-required) `play()` is rejected before any request is
+    // made, and "reconnecting…" would describe a client that never touched the
+    // network. Loading on `src` costs one short connection — the refusal hands
+    // back within milliseconds and takes the socket with it.
+    next.preload = 'auto';
     livePrev = prev;             // `prev` keeps playing, but its events go quiet
     liveAudio = next;
     // Abandon a handover that never starts, or we would sit on two connections
