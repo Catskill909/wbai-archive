@@ -75,7 +75,6 @@ variables, each with a working default, and the full annotated list is
 | `STUDIO_PASSWORD` | Enables that station's private view at `/studio`. Unset and the routes do not exist at all, which is the right default for a station that doesn't want one. |
 | `STUDIO_SECRET`, `STUDIO_SESSION_HOURS` | Optional session tuning. |
 | `USAGE_TRACKING` | Whether to count plays, live tune-ins, page views, searches and shares at all. `off` and the ingest route is never registered — nothing is counted. |
-| `TRACK_SEARCH_TERMS` | Whether to record *what* people searched for, not just how many searches. A term is never written to disk until several searches have used the same words. **This is a policy question, and stations may well answer it differently** — which is exactly why it is a setting. |
 
 The rule these follow, and the one to keep following: **a per-station difference
 should be a setting, never a code edit.** The moment it is a code edit, every

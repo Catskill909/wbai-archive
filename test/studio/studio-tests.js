@@ -342,60 +342,41 @@ async function run() {
 
     /* THE PRIVACY PROMISE, asserted rather than documented.
      *
-     * WBAI turned search-term recording on (2026-07-31), so the promise is no
-     * longer "never" — it is a threshold, and a threshold enforced in STORAGE
-     * rather than only in the display. The README and the studio page both tell
-     * listeners that a rare query is never written down. These assertions are
-     * what keep that true.
+     * Search terms are not collected. They were, briefly, behind a storage
+     * threshold; that was removed on product grounds — an as-you-type filter
+     * means people stop after two or three characters, so the terms were mostly
+     * stems and not worth having.
      *
-     * A term sent ONCE must be invisible: not in the report, and not on disk.
-     * The same term sent enough times must appear. If either half breaks, the
-     * public claim is wrong. */
-    const rare = 'zzq rare private query';
-    await beacon({ t: 'search', q: rare });
-    const afterRare = await (await get(PORT_ON, '/api/studio/usage', authed)).json();
-    ok('a search term seen once is never recorded',
-      JSON.stringify(afterRare).indexOf(rare) < 0,
-      JSON.stringify(afterRare.terms || []).slice(0, 160));
+     * The promise is back to its strongest form, so the test is too: send a term
+     * and require that it reaches neither the report nor the disk. `q` is sent
+     * deliberately here — a stale cached client will keep sending it for a
+     * while, and the server must ignore it rather than merely not ask for it. */
+    const secret = 'zzq private query';
+    await beacon({ t: 'search', q: secret });
+    await beacon({ t: 'searchterm', q: secret });   // the removed event type
+    const afterTerm = await (await get(PORT_ON, '/api/studio/usage', authed)).json();
 
-    // …and it must not be sitting in a file either. Absence from the report
-    // would also be satisfied by "stored but not displayed", which is a much
-    // weaker guarantee than the one we make.
+    ok('a search still counts even when a stale client sends the words',
+      afterTerm.totals.searches > usage.totals.searches,
+      `${usage.totals.searches} → ${afterTerm.totals.searches}`);
+    ok('the words never reach the report',
+      JSON.stringify(afterTerm).indexOf(secret) < 0 && !afterTerm.terms,
+      JSON.stringify(afterTerm).slice(0, 200));
+    ok('the report states plainly that terms are not recorded',
+      afterTerm.searchTermsRecorded === false);
+
     const statsDir = path.join(dataDirOf(on), 'stats');
     const onDisk = fs.existsSync(statsDir)
       ? fs.readdirSync(statsDir).map((f) => fs.readFileSync(path.join(statsDir, f), 'utf8')).join('')
       : '';
-    ok('a rare term is not written to disk either', onDisk.indexOf(rare) < 0,
+    ok('the words never reach the disk either',
+      onDisk.indexOf(secret) < 0 && onDisk.indexOf('"terms"') < 0,
       onDisk.slice(0, 200));
 
-    /* The search box filters as you type, so there is no Enter key. Counting and
-     * term-capture therefore run on different timers, and `searchterm` records
-     * the words WITHOUT counting a second search. The first version recorded on
-     * the count timer, which meant a pause mid-word stored the stem ("democ")
-     * and dropped the finished query — terms accumulated as fragments that
-     * never reached the threshold. Assert both halves of the split. */
-    const before = (await (await get(PORT_ON, '/api/studio/usage', authed)).json()).totals.searches;
-    for (let i = 0; i < 3; i++) await beacon({ t: 'searchterm', q: 'settled query' });
-    const afterTerms = await (await get(PORT_ON, '/api/studio/usage', authed)).json();
-    ok('a searchterm records the words without counting another search',
-      afterTerms.totals.searches === before
-      && (afterTerms.terms || []).some((t) => t.term === 'settled query'),
-      `searches ${before} → ${afterTerms.totals.searches}`);
-
-    ok('the report says how many terms are still below the threshold',
-      typeof afterTerms.termsBelowThreshold === 'number',
-      String(afterTerms.termsBelowThreshold));
-
-    const common = 'jazz';
-    for (let i = 0; i < 3; i++) await beacon({ t: 'search', q: common });
-    const afterCommon = await (await get(PORT_ON, '/api/studio/usage', authed)).json();
-    const hit = (afterCommon.terms || []).find((t) => t.term === common);
-    ok('a term crossing the threshold is recorded, with its count',
-      afterCommon.searchTermsRecorded === true && !!hit && hit.count >= 3,
-      JSON.stringify(afterCommon.terms || []).slice(0, 160));
-
-    ok('the report says what the threshold is, so the page can explain itself',
-      afterCommon.termThreshold >= 2, String(afterCommon.termThreshold));
+    // The removed event type must be inert, not silently accepted.
+    ok('the retired searchterm event does not count as a search',
+      afterTerm.totals.searches === usage.totals.searches + 1,
+      `expected exactly one more search, got ${afterTerm.totals.searches}`);
 
     ok('the usage report carries a day series, not just totals',
       Array.isArray(usage.days) && usage.days.length === 30

@@ -77,55 +77,27 @@
 
   // ---- searches ------------------------------------------------------------
   //
-  // Debounced to the settled query, so one search is one event rather than one
-  // per keystroke — nobody searched for "d", "de", "dem", "demo".
+  // Only THAT a search happened — never the words. Terms were collected briefly
+  // on 2026-07-31 and removed the same day: the box filters as you type, so
+  // people stop after two or three characters and what came back was mostly
+  // stems. Not worth collecting, and not collecting it is the simplest promise
+  // to keep.
   //
-  // The query text IS sent, since 2026-07-31. What protects it is on the server
-  // and is worth knowing from here: a term is held in memory and **never
-  // written to disk** until it has been seen several times, and stored terms
-  // are aggregated per month rather than per day. One person searching once for
-  // something unusual leaves no record anywhere. See the TRACK_SEARCH_TERMS
-  // block in server.js.
-  //
-  // The search box filters as you type, so there is no Enter to hang a "a
-  // search happened" event on. Two different timings do two different jobs,
-  // and conflating them was a real bug:
-  //
-  //   COUNT (1.2s idle) — "someone searched". Suppressed while a query is
-  //     merely being extended, so typing "jazz festival" with a pause in it is
-  //     one search, not two.
-  //   TERM (3s idle) — "…and this is what they ended up with". Longer, and it
-  //     only ever sends the FINAL value. The first version sent the term on the
-  //     count timer, so a pause mid-word recorded the stem ("democ") and then
-  //     suppressed the finished query — terms would have accumulated as
-  //     truncated fragments that never reach the storage threshold, which is
-  //     exactly what "the terms aren't showing up" looks like from outside.
-  //
-  // The term is also flushed when the field loses focus or the tab is hidden,
-  // so someone who types and immediately clicks a result is not lost.
+  // Debounced to the settled query so one search is one event rather than one
+  // per keystroke, and suppressed while a query is merely being extended — a
+  // pause mid-word is still the same search.
   var q = document.getElementById('q');
   if (q) {
-    var countTimer = null;
-    var termTimer = null;
+    var timer = null;
     var lastCounted = '';
     var lastCountedAt = 0;
-    var lastTermSent = '';
     var BURST_MS = 8000;
 
-    function flushTerm() {
-      var v = (q.value || '').trim().slice(0, 60);
-      if (v.length < 2 || v === lastTermSent) return;
-      lastTermSent = v;
-      send({ t: 'searchterm', q: v });
-    }
-
     q.addEventListener('input', function () {
-      if (countTimer) clearTimeout(countTimer);
-      if (termTimer) clearTimeout(termTimer);
-
-      countTimer = setTimeout(function () {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
         var v = (q.value || '').trim();
-        if (!v) { lastCounted = ''; lastTermSent = ''; return; }
+        if (!v) { lastCounted = ''; return; }
         if (v.length < 2 || v === lastCounted) return;
         var extending = lastCounted
           && (v.indexOf(lastCounted) === 0 || lastCounted.indexOf(v) === 0);
@@ -137,14 +109,7 @@
         lastCountedAt = Date.now();
         send({ t: 'search' });
       }, 1200);
-
-      termTimer = setTimeout(flushTerm, 3000);
     }, { passive: true });
-
-    q.addEventListener('blur', flushTerm);
-    document.addEventListener('visibilitychange', function () {
-      if (document.hidden) flushTerm();
-    });
   }
 
   // ---- shares --------------------------------------------------------------

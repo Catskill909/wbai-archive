@@ -169,9 +169,9 @@ code that ran.
 - **Usage counters** live in `public/track.js` (loaded separately from `app.js`
   so counting can never affect playback) and `POST /api/ev`. They carry **no
   identifier of any kind** — no cookie, no session, no stored or hashed IP — and
-  search terms are never written to disk until several searches have used the
-  same words. The README states this publicly and tests enforce both halves; if
-  you change what is collected, change those together or the app starts lying.
+  the words typed into the search box are never sent at all. The README states
+  this publicly and a test enforces it; if you change what is collected, change
+  the README in the same commit or the app starts lying to its listeners.
 - **The studio's actions are the only state-changing routes.** Keep them
   idempotent, rate limited, coalesced, logged and CSRF-guarded — "re-check every
   feed" is 122 requests at a small station's server.

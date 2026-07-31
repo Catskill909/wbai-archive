@@ -36,10 +36,6 @@ does this for you.
      hashed IP**. Set to `off` and the ingest route is never registered, so
      nothing is counted. Rollups live in `DATA_DIR/stats/` — the only data here
      that no upstream can give back, so the volume in step 5 matters for it.
-   - `TRACK_SEARCH_TERMS` — defaults to `on`. Records *what* people searched
-     for, but a term is never written to disk until several searches have used
-     the same words. A policy decision; see
-     [admin-page.md](admin-page.md) § Phase 5.
    - `NODE_ENV=production` — already set in the image.
    - `SEED_PATH` — the read-only starting set merged into the show-info cache at
      boot; default `/app/seed/showinfo.json`. Lives outside `DATA_DIR` on

@@ -696,21 +696,18 @@ a policy stated on top of a system that could do otherwise:
 - **No identifier at all** — no cookie, no session, no fingerprint, no stored or
   hashed IP. Nothing links two events, so *unique listeners* is not a number
   this app can produce.
-- **Search terms, above a threshold only** (on since 2026-07-31). A term is held
-  in memory and **never written to disk** until several searches have used the
-  same words; stored terms are aggregated per month, so one cannot be tied to a
-  time of day. A rare query typed once leaves no record anywhere. The threshold
-  is enforced in storage, not in the display — "stored but not shown" would be a
-  much weaker guarantee than the one the README makes. Tests assert both halves:
-  a rare term must reach neither the report nor the disk, and a common one must
-  appear. `TRACK_SEARCH_TERMS=off` disables it per station.
+- **No search terms.** Volume only; the words never leave the browser. They were
+  collected briefly on 2026-07-31 behind a storage threshold and removed the
+  same day, on product grounds rather than privacy ones: the box filters as you
+  type, so people stop after two or three characters and what came back was
+  mostly stems — fiddly to capture around pauses in typing and not worth the
+  value. A test sends a term the way a stale cached page would and fails if it
+  reaches the report or the disk. Old terms written by that build are stripped
+  when a month file is loaded, so the removal is retroactive.
 
-The search box filters as you type, so there is no Enter to hang an event on.
-Counting and term-capture therefore run on **different timers** — 1.2s idle
-counts a search, 3s idle sends the settled words as a separate `searchterm`
-event that does not count again. Do not merge them: recording the term on the
-count timer means a pause mid-word stores a truncated stem and drops the real
-query.
+The search box filters as you type, so there is no Enter to hang an event on: a
+search is counted after 1.2s of idle, and suppressed while a query is merely
+being extended, so a pause mid-word is still one search rather than two.
 
 `public/track.js` deliberately knows nothing about `app.js`. Media events do not
 bubble but do propagate through the **capture** phase, so a single capturing

@@ -685,36 +685,6 @@
       columnChart(document.getElementById('usageDays'),
         u.days.map(function (d) { return { day: d.day, episodes: d.plays }; }));
 
-      // Terms exist only if they crossed the storage threshold, so an empty
-      // list is the normal early state and should say so rather than look broken.
-      var terms = document.getElementById('usageTerms');
-      var th = document.getElementById('termsHeading');
-      terms.textContent = '';
-      if (!u.searchTermsRecorded) {
-        th.textContent = 'Searches';
-        terms.appendChild(el('p', 'usage-empty',
-          'Search terms are not being recorded (TRACK_SEARCH_TERMS=off). '
-          + u.totals.searches + ' searches counted.'));
-      } else if (!u.terms || !u.terms.length) {
-        th.textContent = 'What people searched for';
-        // Say WHY it is empty, with the numbers. "Nothing here" and "this is
-        // broken" look identical otherwise, which is exactly the question this
-        // panel got asked on its first day.
-        terms.appendChild(el('p', 'usage-empty',
-          u.totals.searches
-            ? u.totals.searches + ' searches so far, and '
-              + (u.termsBelowThreshold || 0) + ' distinct term(s) waiting — a term '
-              + 'is only written down once ' + u.termThreshold + ' searches have used '
-              + 'the same words. Rarer ones are never stored at all.'
-            : 'No searches yet. A term is only kept once ' + u.termThreshold
-              + ' searches have used the same words.'));
-      } else {
-        th.textContent = 'What people searched for';
-        barChart(terms, u.terms.map(function (t) {
-          return { label: t.term, value: t.count, display: num(t.count) };
-        }), 'searches');
-      }
-
       var shows = document.getElementById('usageShows');
       if (!u.topShows.length) {
         shows.textContent = '';

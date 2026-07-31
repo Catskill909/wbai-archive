@@ -715,19 +715,30 @@ listeners" is not a number this app can produce** — a deliberate trade, not an
 oversight. A station that asks its audience for money should be able to say what
 it collects in three sentences and have them be true.
 
-**Search terms — recorded from 2026-07-31, above a threshold.** The station
-decided to keep them, which is its call and a genuinely useful signal: it says
-what people came looking for and may not have found. The protection is that a
-term is **never written to disk until several different searches have used the
-same words**, and stored terms are aggregated per month rather than per day. A
-rare query typed once by one listener is never persisted at all.
+**Search terms: collected on 2026-07-31, removed the same day.** Worth recording
+because the reason was not the one you would expect.
 
-The threshold lives in the *storage* path deliberately. Filtering only the
-display would leave every rare query sitting in a file, which is a much weaker
-promise than the one the README makes. Tests assert both halves — a rare term
-must reach neither the report nor the disk, and a common one must appear — so
-neither direction can quietly stop being true. `TRACK_SEARCH_TERMS=off` turns it
-off per station.
+The station said yes, and it shipped behind a storage threshold — a term was
+never written to disk until several different searches had used the same words,
+aggregated per month so it could not be tied to a time of day. The privacy
+engineering worked exactly as designed.
+
+It was removed on **product** grounds. The search box filters as you type, so
+there is no Enter key and no moment that means "this is my query": people find
+what they want after two or three characters and stop. What came back was mostly
+stems, capturing the settled phrase meant guessing around pauses in typing (a
+first attempt recorded `"democ"` and dropped `"democracy now"`), and the whole
+mechanism cost two timers and a threshold to produce data nobody could act on.
+The count of searches is genuinely useful. The words were not worth having.
+
+So the promise is back to its strongest form — the words never leave the
+browser — and the test asserts it that way: send a term the way a stale cached
+client would, and require it to reach neither the report nor the disk. Terms
+written by the brief build are **stripped when a month file is loaded**, so the
+removal is retroactive rather than merely forward-looking.
+
+The lesson is the one worth keeping: a threshold, a purge and two timers are all
+cheaper than asking whether the data is worth collecting at all.
 
 **There is no Enter key, so counting and term-capture run on different timers.**
 The search box filters as you type. The first version recorded the term on the
