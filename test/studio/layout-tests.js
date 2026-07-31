@@ -108,6 +108,35 @@ const OVERFLOW_PROBE = `(() => {
     ok(`${w}px — the document itself does not scroll sideways`, !r.docScrolls);
   }
 
+  /* ---- 2b. chart labels must not be clipped by their own SVG
+   *
+   * A clipped label is not a cosmetic problem: "peak 41" rendered as "peak 4"
+   * for a whole afternoon, which is a wrong number on screen presented with the
+   * same confidence as a right one. Centred labels overflow when the value they
+   * annotate sits at either edge, so this measures the text boxes against the
+   * SVG box rather than trusting the anchoring maths. */
+  console.log('\n2b. no chart label is clipped by its own chart');
+  for (const w of [1440, 900, 390]) {
+    await size(w);
+    await go();
+    const r = JSON.parse(await ev(`(() => {
+      const bad = [];
+      document.querySelectorAll('.chart svg').forEach((svg) => {
+        const sb = svg.getBoundingClientRect();
+        svg.querySelectorAll('text').forEach((t) => {
+          const b = t.getBoundingClientRect();
+          if (b.left < sb.left - 1 || b.right > sb.right + 1) bad.push(t.textContent);
+        });
+      });
+      const texts = [...document.querySelectorAll('.chart svg text')].map((t) => t.textContent);
+      return JSON.stringify({ bad, seen: texts.length });
+    })()`));
+    ok(`${w}px — every chart label is drawn inside its chart`,
+      r.bad.length === 0 && r.seen > 0,
+      r.seen === 0 ? 'no labels found at all — the probe may be blind'
+        : `clipped: ${r.bad.join(', ')}`);
+  }
+
   /* ---- 3. the probe must be able to SEE the bug it was written for
    *
    * There are now TWO independent defences against the original overflow, and

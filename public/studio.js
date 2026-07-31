@@ -290,9 +290,17 @@
         t.textContent = p[1].slice(5);
         svg.appendChild(t);
       });
+      // The peak label is centred on its column — except near either edge,
+      // where a centred label runs past the SVG boundary and is clipped. That
+      // shipped once: a peak on the last day rendered "peak 4" for a value of
+      // 41, which is not a cosmetic bug but a wrong number on screen. Anchor to
+      // the edge instead of centring when there is not room to centre.
+      var pkX = days.indexOf(peak) * slot + slot / 2;
+      var anchor = 'middle';
+      if (pkX < 28) { pkX = 0; anchor = 'start'; }
+      else if (pkX > w - 28) { pkX = w; anchor = 'end'; }
       var pk = svgEl('text', {
-        x: Math.min(w - 4, Math.max(4, days.indexOf(peak) * slot + slot / 2)),
-        y: padT - 3, class: 'chart-tick', 'text-anchor': 'middle',
+        x: pkX.toFixed(2), y: padT - 3, class: 'chart-tick', 'text-anchor': anchor,
       });
       pk.textContent = 'peak ' + peak.episodes;
       svg.appendChild(pk);
@@ -608,7 +616,48 @@
       }, 150);
     });
 
+    function renderUsage(u) {
+      var k = document.getElementById('usageKpis');
+      k.textContent = '';
+      [
+        [num(u.totals.plays), '', 'Episode plays'],
+        [num(u.totals.live), '', 'Live tune-ins'],
+        [num(u.totals.pageviews), '', 'Page views'],
+        [num(u.totals.searches), '', 'Searches'],
+        [num(u.totals.shares), '', 'Shares'],
+      ].forEach(function (t) {
+        var tile = el('div', 'kpi');
+        tile.appendChild(el('div', 'kpi-value', t[0]));
+        tile.appendChild(el('div', 'kpi-label', t[2]));
+        k.appendChild(tile);
+      });
+
+      // Reuse the air-date histogram: same shape of question, same mark. It
+      // already draws a measured zero as a baseline tick, which matters more
+      // here — a quiet day and a broken collector must not look alike.
+      columnChart(document.getElementById('usageDays'),
+        u.days.map(function (d) { return { day: d.day, episodes: d.plays }; }));
+
+      var shows = document.getElementById('usageShows');
+      if (!u.topShows.length) {
+        shows.textContent = '';
+        shows.appendChild(el('p', 'usage-empty',
+          u.totals.plays
+            ? 'Plays recorded, but none matched a show in the current feed window.'
+            : 'Nothing counted yet. Counting began when this was deployed — it does not backfill.'));
+      } else {
+        barChart(shows, u.topShows.map(function (s) {
+          return { label: s.title, value: s.plays, display: num(s.plays) };
+        }), 'plays');
+      }
+    }
+
     function load() {
+      fetch('/api/studio/usage', { headers: { 'Accept': 'application/json' } })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (u) { if (u) renderUsage(u); })
+        .catch(function () { /* the health panel reports an outage */ });
+
       fetch('/api/studio/stats', { headers: { 'Accept': 'application/json' } })
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (d) { if (d) renderStats(d); })

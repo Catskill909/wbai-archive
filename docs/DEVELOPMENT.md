@@ -58,7 +58,8 @@ zero-toolchain property is a feature of this project, not an accident.
 | `public/data/shows-fallback.json` | Offline snapshot served when the upstream scrape fails |
 | `public/studio.css`, `public/studio.js` | The studio's own layout and logic. Public files, inert without a session |
 | `admin/login.html`, `admin/studio.html` | The studio's markup. **Outside `public/` on purpose** — anything under `public/` is served to anyone who asks, which would walk straight around the password gate |
-| `data/` | Runtime caches (`feeds.json`, `programs.json`, `showinfo.json`) plus `.instance.json`. Set by `DATA_DIR`. Gitignored, rebuildable, safe to delete |
+| `public/track.js` | Usage beacons. Loaded separately from `app.js` and touches none of it |
+| `data/` | Runtime caches (`feeds.json`, `programs.json`, `showinfo.json`) plus `.instance.json` and `stats/YYYY-MM.json`. Set by `DATA_DIR`. The caches are rebuildable; **`stats/` is not** |
 
 `app.js` is organized into commented sections. In source order:
 
@@ -675,3 +676,32 @@ from the oldest `fetchedAt` in the restored feed store, and `fetchedAt` moves
 forward on a 304 — it means "last confirmed current", not "last changed", which
 is what a freshness clock needs. A missing or ancient timestamp sweeps, so the
 failure direction is the safe one. The boot log says which happened.
+
+### Usage counters
+
+The station can see how many episodes were played, which shows, live tune-ins,
+page views, searches and shares. It cannot see who — and that is structural, not
+a policy stated on top of a system that could do otherwise:
+
+- **No event log.** A beacon increments a number in memory and is dropped. There
+  is no per-visit record to leak or to be asked for.
+- **No identifier at all** — no cookie, no session, no fingerprint, no stored or
+  hashed IP. Nothing links two events, so *unique listeners* is not a number
+  this app can produce.
+- **No search terms.** Volume is counted; the words are never sent.
+  `TRACK_SEARCH_TERMS` is the one constant that would change that, and a test in
+  `test/studio/` sends a term and fails if it surfaces anywhere — so the claim in
+  the README cannot silently stop being true.
+
+`public/track.js` deliberately knows nothing about `app.js`. Media events do not
+bubble but do propagate through the **capture** phase, so a single capturing
+listener on `document` sees `play` from both the static archive element and the
+live element that is built and discarded per connection. The show is resolved
+**server-side** from the media URL against the feed index already in memory, so
+the tracker never depends on how `app.js` represents the current episode. A URL
+that does not resolve is an unattributed play, never a guess.
+
+Rollups are `$DATA_DIR/stats/YYYY-MM.json`, aggregates only, flushed on a 60s
+debounce and on `SIGTERM`. **This is the only data here that no upstream can
+give back**, which is why it waited for the volume to be proven rather than
+assumed — see [admin-page.md](admin-page.md) §5.

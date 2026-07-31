@@ -506,6 +506,26 @@
   overflow-wrap: anywhere;
 }
 
+/* ------------------------------------------------------------- usage */
+
+.usage-split {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 1.25rem;
+}
+/* The day series wants width; the ranked shows want a column. Split them only
+   when there is room for both to be readable. */
+@media (min-width: 60rem) {
+  .usage-split { grid-template-columns: 1.6fr 1fr; align-items: start; }
+}
+
+.usage-empty {
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+  line-height: 1.45;
+  margin: 0.4rem 0 0;
+}
+
 /* ------------------------------------------------------------- hosts */
 
 .hosts { display: grid; gap: 0.55rem; }

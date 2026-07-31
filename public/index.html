@@ -552,5 +552,9 @@
   <audio id="mainAudio" preload="none"></audio>
 </div>
 <script src="/app.js" defer></script>
+<!-- Usage counters. Deferred and entirely separate from app.js so it can never
+     affect playback; see the header of track.js for what it does and does not
+     send. Nothing here identifies a listener. -->
+<script src="/track.js" defer></script>
 </body>
 </html>

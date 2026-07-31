@@ -243,6 +243,59 @@ async function run() {
       && /cookie/i.test(health.headers.get('vary') || ''),
       `cache-control=${health.headers.get('cache-control')}`);
 
+    // -- usage counters (phase 5) --------------------------------------------
+    //
+    // The ingest route is public and answers 204 to everything, so its
+    // behaviour has to be read from what the counters do, never from a status.
+    const usageNone = await get(PORT_ON, '/api/studio/usage');
+    ok('no cookie: usage is 401', usageNone.status === 401, `status ${usageNone.status}`);
+
+    const beacon = (b) => post(PORT_ON, '/api/ev', b);
+    ok('a valid beacon is accepted with no body',
+      (await beacon({ t: 'pageview' })).status === 204);
+    ok('garbage and unknown event types are dropped, not errors',
+      (await beacon({ t: 'nonsense' })).status === 204
+      && (await beacon({})).status === 204
+      && (await fetch(`http://127.0.0.1:${PORT_ON}/api/ev`,
+        { method: 'POST', body: 'not json' })).status === 204);
+
+    await beacon({ t: 'play', u: 'a1' });          // resolvable in FIXTURE
+    await beacon({ t: 'play', u: 'no-such-url' }); // not resolvable
+    await beacon({ t: 'live' });
+    await beacon({ t: 'share' });
+    await beacon({ t: 'search', q: 'a listener typed this' });
+
+    const usage = await (await get(PORT_ON, '/api/studio/usage', authed)).json();
+    ok('counters reflect the beacons that were sent',
+      usage.totals.plays === 2 && usage.totals.live === 1
+      && usage.totals.shares === 1 && usage.totals.searches === 1
+      && usage.totals.pageviews >= 1,
+      JSON.stringify(usage.totals));
+
+    // An unresolvable media URL is an unattributed play, never a guess.
+    ok('a play is attributed to a show only when the URL resolves',
+      usage.topShows.length === 1 && usage.topShows[0].slug === 'alpha'
+      && usage.topShows[0].plays === 1,
+      JSON.stringify(usage.topShows));
+
+    /* THE PRIVACY PROMISE, asserted rather than documented.
+     *
+     * The README and the studio page both tell listeners that what they type is
+     * not recorded. A comment saying so is worth nothing — this sends a search
+     * term and requires that it appear NOWHERE in the report, so the claim
+     * cannot quietly stop being true. If someone flips TRACK_SEARCH_TERMS, this
+     * fails, which is exactly right: that is a policy decision and it should
+     * have to be made deliberately. */
+    ok('search terms are counted but never recorded',
+      usage.searchTermsRecorded === false
+      && JSON.stringify(usage).indexOf('a listener typed this') < 0,
+      JSON.stringify(usage).slice(0, 200));
+
+    ok('the usage report carries a day series, not just totals',
+      Array.isArray(usage.days) && usage.days.length === 30
+      && usage.days[usage.days.length - 1].plays === 2,
+      `${usage.days.length} days`);
+
     // -- operational health (phase 3) ----------------------------------------
     const wantHealth = ['upstream', 'process'];
     ok('health carries the operational blocks',

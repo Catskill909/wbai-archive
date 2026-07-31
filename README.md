@@ -83,6 +83,18 @@ an archived broadcast.
   harvest state and the running build. Sessions are signed cookies with no
   server-side store, so a restart never signs anyone out. See
   [docs/admin-page.md](docs/admin-page.md).
+- **Counts, without tracking anyone** — the station can see how many episodes
+  were played, which shows, how many live tune-ins, page views, searches and
+  shares. It cannot see *who*, and that is structural rather than a promise:
+  there is **no event log, no cookie, no session, no fingerprint, and no stored
+  or hashed IP**. A request increments a number in memory and is dropped, so
+  nothing links two events to the same person — which means "unique listeners"
+  is a number this app cannot produce. Search *volume* is counted; the words
+  someone typed are never sent. Counters live in plain monthly JSON under
+  `DATA_DIR/stats/`, a few KB a month, readable by anyone who opens the file.
+  The tracker is a 100-line file loaded separately from the app, so it can never
+  affect playback. There is a test that sends a search term and fails if it
+  appears anywhere in the report.
 - **Keeps what it learns across deploys** — show descriptions are harvested only
   while a show is on air, so the cache accrues slowly and is worth protecting.
   Writes are atomic and flushed on shutdown, and `/healthz` reports whether the

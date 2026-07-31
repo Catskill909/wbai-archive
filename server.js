@@ -1637,7 +1637,8 @@ function fileVer(relFromPublic) {
 // Combined stamp for the whole client bundle — exposed on /healthz and the
 // X-App-Version header so a deploy can be verified from the command line.
 function appVersion() {
-  return `${fileVer('/app.js')}.${fileVer('/styles.css')}.${fileVer('/theme-boot.js')}`;
+  return `${fileVer('/app.js')}.${fileVer('/styles.css')}.${fileVer('/theme-boot.js')}`
+    + `.${fileVer('/track.js')}`;
 }
 // The studio's own assets, reported separately rather than folded into
 // appVersion(). A studio-only change must be visible on /healthz — otherwise
@@ -1801,6 +1802,190 @@ function sendJson(res, obj, status = 200, cacheSeconds = 0) {
   res.end(JSON.stringify(obj));
 }
 
+// ------------------------------------------------------------- usage stats
+/**
+ * What the station learns about its own audience — and deliberately, the least
+ * that answers the question.
+ *
+ * The design constraint is not technical. WBAI is listener-funded, so the
+ * honest position is that we can say exactly what is counted in three sentences
+ * and have them be true:
+ *
+ *   - **Counters only. There is no event log.** A request increments a number
+ *     in memory and is dropped. Nothing per-visit is written, so there is no
+ *     raw history to leak, subpoena, or regret keeping.
+ *   - **No identifier of any kind.** No cookie, no session, no fingerprint, no
+ *     stored or hashed IP. Nothing links two events to the same person, which
+ *     means "unique listeners" is not a number this app can produce — and that
+ *     is a deliberate trade, not an oversight.
+ *   - **No search terms.** How many searches happen is a count; what someone
+ *     typed is something a person wrote. On a community station a rare query
+ *     can identify one listener, so only the volume is recorded. Flipping
+ *     TRACK_SEARCH_TERMS below is the whole change if that is ever revisited —
+ *     and it should be revisited as a policy decision, not a code tidy.
+ *
+ * Rollups are plain JSON per month under $DATA_DIR/stats/. A month is a few KB;
+ * keep them forever. This is the first data this app has held that no upstream
+ * can hand back, which is why it waited for the volume to be *proven* rather
+ * than assumed (docs/admin-page.md §5).
+ */
+/**
+ * Collection can be switched off entirely, per station, without touching code —
+ * the template rule (see desktop/src-tauri/stations/README.md). A station that
+ * wants to count nothing sets USAGE_TRACKING=off and the ingest route is never
+ * registered, so beacons meet the same 405 as any other stray POST and no
+ * counter is ever created. Viewing is separate: that is the studio's password.
+ */
+const USAGE_TRACKING = (process.env.USAGE_TRACKING || 'on').toLowerCase() !== 'off';
+const TRACK_SEARCH_TERMS = false;
+const STATS_DIR = path.join(DATA_DIR, 'stats');
+const STATS_FLUSH_MS = 60 * 1000;
+const EVENT_TYPES = ['pageview', 'play', 'live', 'search', 'share'];
+
+function statsMonthPath(month) { return path.join(STATS_DIR, `${month}.json`); }
+function today() { return new Date().toISOString().slice(0, 10); }
+function thisMonth() { return today().slice(0, 7); }
+
+let statsMonth = thisMonth();
+let statsStore = readJsonFile(statsMonthPath(statsMonth), null)
+  || { station: STATION_ID, month: statsMonth, days: {} };
+
+function statsDay() {
+  // Month rollover: flush what we hold, then start the new file. Checked on
+  // write rather than on a timer, so a server that is idle across midnight
+  // still lands the next event in the right month.
+  const m = thisMonth();
+  if (m !== statsMonth) {
+    flushFile(statsMonthPath(statsMonth));
+    statsMonth = m;
+    statsStore = readJsonFile(statsMonthPath(m), null)
+      || { station: STATION_ID, month: m, days: {} };
+  }
+  const d = today();
+  if (!statsStore.days[d]) {
+    statsStore.days[d] = { pageviews: 0, plays: 0, live: 0, searches: 0, shares: 0, byShow: {} };
+  }
+  return statsStore.days[d];
+}
+
+function saveStatsSoon() {
+  writeJsonSoon(statsMonthPath(statsMonth), () => statsStore, STATS_FLUSH_MS);
+}
+
+/**
+ * Abuse ceiling for the public ingest route.
+ *
+ * Keyed by a hash of the client address salted with a value generated fresh at
+ * boot and never written anywhere — so the key cannot be reversed to an address,
+ * cannot be correlated across restarts, and does not survive the process. It
+ * exists only to stop one client inflating the station's own numbers.
+ */
+const EV_SALT = crypto.randomBytes(16);
+const evSeen = new Map();
+const EV_MAX_PER_MIN = 120;
+
+function evAllowed(req) {
+  const key = crypto.createHmac('sha256', EV_SALT).update(clientIp(req)).digest('base64');
+  const now = Date.now();
+  const rec = evSeen.get(key);
+  if (!rec || now - rec.at > 60000) { evSeen.set(key, { at: now, n: 1 }); }
+  else if (rec.n >= EV_MAX_PER_MIN) return false;
+  else rec.n++;
+  if (evSeen.size > 5000) {
+    for (const [k, v] of evSeen) if (now - v.at > 60000) evSeen.delete(k);
+  }
+  return true;
+}
+
+async function ingestEvent(req, res) {
+  // Answer the same way regardless — a beacon is fire-and-forget, and telling a
+  // client whether its event counted is information nobody needs and a probe
+  // nobody should get.
+  const done = () => { res.writeHead(204, securityHeaders()); res.end(); };
+  if (!evAllowed(req)) return done();
+
+  let body;
+  try { body = JSON.parse(await readBody(req, 512)); } catch (e) { return done(); }
+  if (!body || EVENT_TYPES.indexOf(body.t) < 0) return done();
+
+  const day = statsDay();
+  switch (body.t) {
+    case 'pageview': day.pageviews++; break;
+    case 'live': day.live++; break;
+    case 'share': day.shares++; break;
+    case 'search':
+      day.searches++;
+      if (TRACK_SEARCH_TERMS && typeof body.q === 'string') {
+        day.terms = day.terms || {};
+        const q = body.q.toLowerCase().trim().slice(0, 40);
+        if (q) day.terms[q] = (day.terms[q] || 0) + 1;
+      }
+      break;
+    case 'play': {
+      day.plays++;
+      // The client sends the media URL it is actually playing; the slug is
+      // resolved HERE against the feed index we already hold. That keeps the
+      // tracker ignorant of the app's internals — it never has to know which
+      // show is loaded — and means a URL we cannot resolve is simply an
+      // unattributed play rather than a guess.
+      const hit = typeof body.u === 'string' ? feedIndex().get(body.u) : null;
+      if (hit) day.byShow[hit.slug] = (day.byShow[hit.slug] || 0) + 1;
+      break;
+    }
+  }
+  saveStatsSoon();
+  return done();
+}
+
+/** Recent days, newest last, plus the totals the dashboard leads with. */
+function usageReport(days = 30) {
+  const out = [];
+  const now = Date.now();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now - i * 86400000).toISOString().slice(0, 10);
+    const rec = (d.slice(0, 7) === statsMonth ? statsStore.days[d] : null)
+      || (readJsonFile(statsMonthPath(d.slice(0, 7)), { days: {} }).days || {})[d]
+      || null;
+    out.push({
+      day: d,
+      pageviews: rec ? rec.pageviews : 0,
+      plays: rec ? rec.plays : 0,
+      live: rec ? rec.live : 0,
+      searches: rec ? rec.searches : 0,
+      shares: rec ? rec.shares : 0,
+    });
+  }
+  const byShow = new Map();
+  for (const [d, rec] of Object.entries(statsStore.days)) {
+    if (!rec || !rec.byShow) continue;
+    for (const [slug, n] of Object.entries(rec.byShow)) {
+      byShow.set(slug, (byShow.get(slug) || 0) + n);
+    }
+  }
+  const titles = feedStore;
+  return {
+    since: Object.keys(statsStore.days).sort()[0] || today(),
+    month: statsMonth,
+    searchTermsRecorded: TRACK_SEARCH_TERMS,
+    days: out,
+    totals: out.reduce((t, d) => ({
+      pageviews: t.pageviews + d.pageviews,
+      plays: t.plays + d.plays,
+      live: t.live + d.live,
+      searches: t.searches + d.searches,
+      shares: t.shares + d.shares,
+    }), { pageviews: 0, plays: 0, live: 0, searches: 0, shares: 0 }),
+    topShows: [...byShow.entries()]
+      .map(([slug, plays]) => ({
+        slug,
+        title: (titles[slug] && titles[slug].channel && titles[slug].channel.title) || slug,
+        plays,
+      }))
+      .sort((a, b) => b.plays - a.plays)
+      .slice(0, 12),
+  };
+}
+
 // -------------------------------------------------------------- the studio
 /**
  * A password-gated area at /studio for the people who run the station. See
@@ -1843,6 +2028,9 @@ if (STUDIO_ENABLED && STUDIO_PASSWORD.length < 12) {
 console.log(STUDIO_ENABLED
   ? `[studio] enabled at /studio (sessions last ${STUDIO_SESSION_HOURS}h)`
   : '[studio] disabled — set STUDIO_PASSWORD to enable');
+console.log(USAGE_TRACKING
+  ? '[usage] counting plays and page views (no identifiers, no search terms)'
+  : '[usage] disabled — USAGE_TRACKING=off, nothing is counted');
 
 // Says whether this boot inherited a usable harvest clock, i.e. whether it is
 // about to re-fetch 122 feeds from a small station's server or skip them.
@@ -2175,6 +2363,9 @@ function studioStats() {
 
 function studioApi(req, res, pathOnly) {
   if (!studioAuthed(req)) return sendStudioJson(res, { error: 'unauthorized' }, 401);
+  if (pathOnly === '/api/studio/usage') {
+    return sendStudioJson(res, usageReport(30));
+  }
   if (pathOnly === '/api/studio/stats') {
     refreshProgramsIfStale();
     return sendStudioJson(res, studioStats());
@@ -2239,6 +2430,12 @@ const server = http.createServer(async (req, res) => {
   // routes and nothing else. A global `if (method === 'POST')` would be a much
   // larger change than this feature needs.
   if (req.method === 'POST') {
+    // The one public POST: a fire-and-forget usage beacon. No auth by design —
+    // it carries no identity and answers 204 to everything.
+    if (USAGE_TRACKING && pathOnly === '/api/ev') {
+      try { return await ingestEvent(req, res); }
+      catch (e) { res.writeHead(204, securityHeaders()); return res.end(); }
+    }
     if (STUDIO_ENABLED && (pathOnly === '/api/studio/login' || pathOnly === '/api/studio/logout')) {
       try {
         return await studioPost(req, res, pathOnly);

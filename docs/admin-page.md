@@ -1,7 +1,7 @@
 # The Studio — a private view for the people who run this thing
 
-**Status: Phases 1b, 1, 2 and 3 are built and verified (2026-07-30/31). Phases
-4–5 are still proposals.** Per [ROADMAP.md](ROADMAP.md)'s rule this file describes
+**Status: Phases 1b, 1, 2, 3 and 5 are built and verified (2026-07-30/31).
+Phase 4 (actions) is the only one still a proposal.** Per [ROADMAP.md](ROADMAP.md)'s rule this file describes
 intent, so treat everything below Phase 1 as a plan rather than a description —
 each phase says which it is.
 
@@ -675,53 +675,58 @@ program directory, re-probe the stream, clear a cache. Write operations, so:
 `SameSite=Strict` plus an explicit CSRF token, each action idempotent and
 logged, each with a confirmation. Small phase, high satisfaction.
 
-### Phase 5 — listener analytics
+### Phase 5 — listener analytics — **BUILT 2026-07-31**
 
-Prerequisite: **Phase 1b shipped, and `/healthz` showing a `persistedSince`
-that survived a real redeploy on that station.** Not "the volume is configured"
-— configured is what we thought last time.
+Shipped only after the prerequisite was met for real: production reported the
+same `instanceId` across every deploy for a day, with `showinfoOnDisk` climbing
+49 → 50 → 51 across restarts. This is the first data the app has held that no
+upstream can hand back.
 
-**Collection.** `POST /api/ev` takes a tiny event body — `play` (with show
-slug), `live`, `search`, `share`, `pageview`. No cookie, no session, no
-identifier, **no IP stored or hashed**. The server increments in-memory counters
-and drops the request; there is no event log to leak, because raw events are
-never written at all. Rate-limit by shape (a body cap and a per-connection
-ceiling) so the endpoint cannot be used to inflate numbers or fill memory.
+**What it counts** — `pageview`, `play` (by show), `live`, `search`, `share`.
 
-**Storage.** Aggregates only, one file per month, atomic writes, flushed every
-60s when dirty and on shutdown (§5.5). Worst-case loss is one minute.
+**What it cannot do, structurally.** No event log, no cookie, no session, no
+fingerprint, no stored or hashed IP. A request increments a counter in memory
+and is dropped. Nothing links two events to the same person, so **"unique
+listeners" is not a number this app can produce** — a deliberate trade, not an
+oversight. A station that asks its audience for money should be able to say what
+it collects in three sentences and have them be true.
 
-```jsonc
-// $DATA_DIR/stats/2026-07.json
-{
-  "station": "wbai",
-  "month": "2026-07",
-  "days": {
-    "2026-07-30": {
-      "pageviews": 812,
-      "plays": { "dn": 44, "housing": 12 },   // by feed slug
-      "live": 96,
-      "searches": 130,
-      "shares": 7
-    }
-  }
-}
-```
+**Search terms are not recorded.** How many searches happen is a count; what
+someone typed is something a person wrote, and on a community station a rare
+query can identify one listener. `TRACK_SEARCH_TERMS` is the single constant
+that would change it, and flipping it should be a policy decision, not a code
+tidy. **A test sends a search term and fails if it appears anywhere in the
+report** — so the promise in the README cannot quietly stop being true.
 
-A month is a few KB. Keep them forever; a decade of this is smaller than one
-episode's artwork. The format is deliberately readable — a station operator can
-open the file and understand it without us.
+**The tracker touches `app.js` not at all.** `public/track.js` is loaded
+separately and listens from outside:
 
-**Dashboard.** Plays per day, top shows played, live-vs-archive share, share
-counts, and search terms **only above a count threshold** — a rare search string
-can identify one person, and a community station is exactly the wrong place to
-be careless about that.
+- Media events do not bubble, but they *do* propagate through the capture phase,
+  so one capturing listener on `document` catches `play` from both the static
+  archive element and the live element `app.js` builds and discards per
+  connection. Verified with a real `play()` in headless Chrome, because that
+  assumption was the whole design risk.
+- **The show is resolved server-side** from the media URL against the feed index
+  already in memory. The tracker never has to know how `app.js` represents the
+  current episode, so it cannot break when that changes — and a URL that does
+  not resolve is an unattributed play rather than a guess.
 
-**Publish what we count.** A short, plain-language note in the README and on the
-studio page itself: what is counted, what is not, and that no listener is
-identified or tracked across visits. A station that asks its audience for trust
-should be able to state this in three sentences, and this design makes those
-sentences true rather than aspirational.
+**Storage** — `$DATA_DIR/stats/YYYY-MM.json`, aggregates only, flushed on a 60s
+debounce and on `SIGTERM`. Verified: nothing on disk during the debounce,
+everything written on shutdown. Without Phase 1b's flush handler every redeploy
+would have silently dropped up to a minute of counters.
+
+**Abuse ceiling** — 120 events/minute per client, keyed by an HMAC of the address
+salted with a value generated at boot and never written. It cannot be reversed,
+cannot be correlated across restarts, and does not survive the process. It exists
+only to stop one client inflating the station's own numbers.
+
+**A bug caught by looking.** The peak label on the day chart rendered "peak 4"
+for a value of 41 — centred text runs past the SVG edge when the peak is the
+last column. That is a wrong number on screen wearing the same confidence as a
+right one. Fixed by anchoring to the edge instead of centring, and
+`test/studio/run.sh` §2b now measures every chart label's box against its SVG's
+box at three widths.
 
 ---
 
