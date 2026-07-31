@@ -74,6 +74,11 @@ const FIXTURE = {
   },
 };
 
+// Which temp dir a spawned server was given — the on-disk privacy assertion
+// has to look at the actual files, not just the API response.
+const dataDirs = new WeakMap();
+function dataDirOf(child) { return dataDirs.get(child); }
+
 function startServer(port, env, fixture) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wbai-studio-'));
   if (fixture) fs.writeFileSync(path.join(dataDir, 'feeds.json'), JSON.stringify(fixture));
@@ -84,6 +89,7 @@ function startServer(port, env, fixture) {
   });
   child.stdout.on('data', () => {});
   child.stderr.on('data', (d) => process.stderr.write(`[server:${port}] ${d}`));
+  dataDirs.set(child, dataDir);
   return child;
 }
 
@@ -280,16 +286,42 @@ async function run() {
 
     /* THE PRIVACY PROMISE, asserted rather than documented.
      *
-     * The README and the studio page both tell listeners that what they type is
-     * not recorded. A comment saying so is worth nothing — this sends a search
-     * term and requires that it appear NOWHERE in the report, so the claim
-     * cannot quietly stop being true. If someone flips TRACK_SEARCH_TERMS, this
-     * fails, which is exactly right: that is a policy decision and it should
-     * have to be made deliberately. */
-    ok('search terms are counted but never recorded',
-      usage.searchTermsRecorded === false
-      && JSON.stringify(usage).indexOf('a listener typed this') < 0,
-      JSON.stringify(usage).slice(0, 200));
+     * WBAI turned search-term recording on (2026-07-31), so the promise is no
+     * longer "never" — it is a threshold, and a threshold enforced in STORAGE
+     * rather than only in the display. The README and the studio page both tell
+     * listeners that a rare query is never written down. These assertions are
+     * what keep that true.
+     *
+     * A term sent ONCE must be invisible: not in the report, and not on disk.
+     * The same term sent enough times must appear. If either half breaks, the
+     * public claim is wrong. */
+    const rare = 'zzq rare private query';
+    await beacon({ t: 'search', q: rare });
+    const afterRare = await (await get(PORT_ON, '/api/studio/usage', authed)).json();
+    ok('a search term seen once is never recorded',
+      JSON.stringify(afterRare).indexOf(rare) < 0,
+      JSON.stringify(afterRare.terms || []).slice(0, 160));
+
+    // …and it must not be sitting in a file either. Absence from the report
+    // would also be satisfied by "stored but not displayed", which is a much
+    // weaker guarantee than the one we make.
+    const statsDir = path.join(dataDirOf(on), 'stats');
+    const onDisk = fs.existsSync(statsDir)
+      ? fs.readdirSync(statsDir).map((f) => fs.readFileSync(path.join(statsDir, f), 'utf8')).join('')
+      : '';
+    ok('a rare term is not written to disk either', onDisk.indexOf(rare) < 0,
+      onDisk.slice(0, 200));
+
+    const common = 'jazz';
+    for (let i = 0; i < 3; i++) await beacon({ t: 'search', q: common });
+    const afterCommon = await (await get(PORT_ON, '/api/studio/usage', authed)).json();
+    const hit = (afterCommon.terms || []).find((t) => t.term === common);
+    ok('a term crossing the threshold is recorded, with its count',
+      afterCommon.searchTermsRecorded === true && !!hit && hit.count >= 3,
+      JSON.stringify(afterCommon.terms || []).slice(0, 160));
+
+    ok('the report says what the threshold is, so the page can explain itself',
+      afterCommon.termThreshold >= 2, String(afterCommon.termThreshold));
 
     ok('the usage report carries a day series, not just totals',
       Array.isArray(usage.days) && usage.days.length === 30

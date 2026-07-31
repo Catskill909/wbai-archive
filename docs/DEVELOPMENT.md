@@ -688,10 +688,14 @@ a policy stated on top of a system that could do otherwise:
 - **No identifier at all** — no cookie, no session, no fingerprint, no stored or
   hashed IP. Nothing links two events, so *unique listeners* is not a number
   this app can produce.
-- **No search terms.** Volume is counted; the words are never sent.
-  `TRACK_SEARCH_TERMS` is the one constant that would change that, and a test in
-  `test/studio/` sends a term and fails if it surfaces anywhere — so the claim in
-  the README cannot silently stop being true.
+- **Search terms, above a threshold only** (on since 2026-07-31). A term is held
+  in memory and **never written to disk** until several searches have used the
+  same words; stored terms are aggregated per month, so one cannot be tied to a
+  time of day. A rare query typed once leaves no record anywhere. The threshold
+  is enforced in storage, not in the display — "stored but not shown" would be a
+  much weaker guarantee than the one the README makes. Tests assert both halves:
+  a rare term must reach neither the report nor the disk, and a common one must
+  appear. `TRACK_SEARCH_TERMS=off` disables it per station.
 
 `public/track.js` deliberately knows nothing about `app.js`. Media events do not
 bubble but do propagate through the **capture** phase, so a single capturing

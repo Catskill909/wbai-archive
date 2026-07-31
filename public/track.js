@@ -78,21 +78,42 @@
   // ---- searches ------------------------------------------------------------
   //
   // Debounced to the settled query, so one search is one event rather than one
-  // per keystroke. The text is never sent — only that a search happened.
+  // per keystroke — nobody searched for "d", "de", "dem", "demo".
+  //
+  // The query text IS sent, since 2026-07-31. What protects it is on the server
+  // and is worth knowing from here: a term is held in memory and **never
+  // written to disk** until it has been seen several times, and stored terms
+  // are aggregated per month rather than per day. One person searching once for
+  // something unusual leaves no record anywhere. See the TRACK_SEARCH_TERMS
+  // block in server.js.
   var q = document.getElementById('q');
   if (q) {
     var timer = null;
-    var lastLen = 0;
+    var lastSent = '';
+    var lastSentAt = 0;
+    var BURST_MS = 8000;
+
     q.addEventListener('input', function () {
       if (timer) clearTimeout(timer);
       timer = setTimeout(function () {
         var v = (q.value || '').trim();
-        // Ignore the backspacing tail of a query that was already counted.
-        if (v.length >= 2 && v.length !== lastLen) {
-          lastLen = v.length;
-          send({ t: 'search' });
+        if (!v) { lastSent = ''; return; }
+        if (v.length < 2 || v === lastSent) return;
+
+        // Suppress only within one typing burst. Someone who pauses mid-word
+        // ("jazz" … "jazz festival") should count once, but the same person
+        // refining their search a minute later is a second, real search — and
+        // suppressing that outright would bias the record toward truncated
+        // queries, which is a worse answer than counting one extra.
+        var prefixOfEachOther = lastSent
+          && (v.indexOf(lastSent) === 0 || lastSent.indexOf(v) === 0);
+        if (prefixOfEachOther && Date.now() - lastSentAt < BURST_MS) {
+          lastSent = v;
+          return;
         }
-        if (!v) lastLen = 0;
+        lastSent = v;
+        lastSentAt = Date.now();
+        send({ t: 'search', q: v.slice(0, 60) });
       }, 1200);
     }, { passive: true });
   }

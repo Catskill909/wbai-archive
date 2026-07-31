@@ -691,12 +691,19 @@ listeners" is not a number this app can produce** — a deliberate trade, not an
 oversight. A station that asks its audience for money should be able to say what
 it collects in three sentences and have them be true.
 
-**Search terms are not recorded.** How many searches happen is a count; what
-someone typed is something a person wrote, and on a community station a rare
-query can identify one listener. `TRACK_SEARCH_TERMS` is the single constant
-that would change it, and flipping it should be a policy decision, not a code
-tidy. **A test sends a search term and fails if it appears anywhere in the
-report** — so the promise in the README cannot quietly stop being true.
+**Search terms — recorded from 2026-07-31, above a threshold.** The station
+decided to keep them, which is its call and a genuinely useful signal: it says
+what people came looking for and may not have found. The protection is that a
+term is **never written to disk until several different searches have used the
+same words**, and stored terms are aggregated per month rather than per day. A
+rare query typed once by one listener is never persisted at all.
+
+The threshold lives in the *storage* path deliberately. Filtering only the
+display would leave every rare query sitting in a file, which is a much weaker
+promise than the one the README makes. Tests assert both halves — a rare term
+must reach neither the report nor the disk, and a common one must appear — so
+neither direction can quietly stop being true. `TRACK_SEARCH_TERMS=off` turns it
+off per station.
 
 **The tracker touches `app.js` not at all.** `public/track.js` is loaded
 separately and listens from outside:

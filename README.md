@@ -89,12 +89,18 @@ an archived broadcast.
   there is **no event log, no cookie, no session, no fingerprint, and no stored
   or hashed IP**. A request increments a number in memory and is dropped, so
   nothing links two events to the same person — which means "unique listeners"
-  is a number this app cannot produce. Search *volume* is counted; the words
-  someone typed are never sent. Counters live in plain monthly JSON under
+  is a number this app cannot produce. Searches are recorded, but a term is only
+  ever **written down once several different searches have used the same
+  words** — anything rarer stays in memory and dies with the process, so one
+  person looking for one unusual thing leaves no record at all. Counters live in
+  plain monthly JSON under
   `DATA_DIR/stats/`, a few KB a month, readable by anyone who opens the file.
   The tracker is a 100-line file loaded separately from the app, so it can never
-  affect playback. There is a test that sends a search term and fails if it
-  appears anywhere in the report.
+  affect playback. Tests send a rare term and fail if it reaches the report *or
+  the disk*, then send a common one and fail if it doesn't — so neither half of
+  that promise can quietly stop being true. Set `USAGE_TRACKING=off` to count
+  nothing at all, or `TRACK_SEARCH_TERMS=off` to keep the counts without the
+  words.
 - **Keeps what it learns across deploys** — show descriptions are harvested only
   while a show is on air, so the cache accrues slowly and is worth protecting.
   Writes are atomic and flushed on shutdown, and `/healthz` reports whether the

@@ -1837,7 +1837,56 @@ function sendJson(res, obj, status = 200, cacheSeconds = 0) {
  * counter is ever created. Viewing is separate: that is the studio's password.
  */
 const USAGE_TRACKING = (process.env.USAGE_TRACKING || 'on').toLowerCase() !== 'off';
-const TRACK_SEARCH_TERMS = false;
+
+/**
+ * Search terms — recorded, but only once a term stops being about one person.
+ *
+ * WBAI decided on 2026-07-31 to record what listeners search for. That is a
+ * policy call the station is entitled to make, and it is a genuinely useful
+ * signal: it says what people came looking for and did not necessarily find.
+ * But "what someone typed" is not the same kind of data as "a play happened",
+ * and a query typed once by one listener can identify them.
+ *
+ * So the threshold is enforced in **storage**, not merely in the display:
+ *
+ *   - A term is held in memory only until it has been seen TERM_MIN_TO_STORE
+ *     times. Below that it is **never written to disk** and dies with the
+ *     process. One person searching for one unusual thing leaves no record
+ *     anywhere, ever.
+ *   - Terms are aggregated per MONTH, not per day, so a stored term cannot be
+ *     tied back to a time of day or a single session.
+ *   - Normalised and length-capped, so near-identical phrasings converge and a
+ *     pasted paragraph cannot become a record.
+ *
+ * `TRACK_SEARCH_TERMS=off` disables it entirely, per station — this is exactly
+ * the sort of policy another Pacifica station may answer differently, and the
+ * template rule is that such a difference is a setting, never a code edit.
+ */
+const TRACK_SEARCH_TERMS = (process.env.TRACK_SEARCH_TERMS || 'on').toLowerCase() !== 'off';
+const TERM_MIN_TO_STORE = 3;
+const TERM_MAX_LEN = 40;
+const TERM_MIN_LEN = 2;
+
+// Below-threshold terms. In memory, never serialised, cleared on rollover.
+const pendingTerms = new Map();
+
+function recordTerm(raw) {
+  const q = String(raw).toLowerCase().replace(/\s+/g, ' ').trim().slice(0, TERM_MAX_LEN);
+  if (q.length < TERM_MIN_LEN) return;
+  statsStore.terms = statsStore.terms || {};
+  if (statsStore.terms[q]) { statsStore.terms[q]++; return; }
+  const n = (pendingTerms.get(q) || 0) + 1;
+  if (n >= TERM_MIN_TO_STORE) {
+    statsStore.terms[q] = n;
+    pendingTerms.delete(q);
+  } else {
+    pendingTerms.set(q, n);
+    // Bound it: this map is keyed by attacker-supplied text. Dropping the whole
+    // pending set costs nothing — everything in it is below the threshold and
+    // was never going to be kept as it stood.
+    if (pendingTerms.size > 2000) pendingTerms.clear();
+  }
+}
 const STATS_DIR = path.join(DATA_DIR, 'stats');
 const STATS_FLUSH_MS = 60 * 1000;
 const EVENT_TYPES = ['pageview', 'play', 'live', 'search', 'share'];
@@ -1860,6 +1909,7 @@ function statsDay() {
     statsMonth = m;
     statsStore = readJsonFile(statsMonthPath(m), null)
       || { station: STATION_ID, month: m, days: {} };
+    pendingTerms.clear();
   }
   const d = today();
   if (!statsStore.days[d]) {
@@ -1915,11 +1965,7 @@ async function ingestEvent(req, res) {
     case 'share': day.shares++; break;
     case 'search':
       day.searches++;
-      if (TRACK_SEARCH_TERMS && typeof body.q === 'string') {
-        day.terms = day.terms || {};
-        const q = body.q.toLowerCase().trim().slice(0, 40);
-        if (q) day.terms[q] = (day.terms[q] || 0) + 1;
-      }
+      if (TRACK_SEARCH_TERMS && typeof body.q === 'string') recordTerm(body.q);
       break;
     case 'play': {
       day.plays++;
@@ -1967,6 +2013,13 @@ function usageReport(days = 30) {
     since: Object.keys(statsStore.days).sort()[0] || today(),
     month: statsMonth,
     searchTermsRecorded: TRACK_SEARCH_TERMS,
+    termThreshold: TERM_MIN_TO_STORE,
+    // Month-aggregated, and only terms that crossed the threshold exist at all
+    // — the rest were never written. Sorted, capped, and safe to render.
+    terms: Object.entries(statsStore.terms || {})
+      .map(([term, count]) => ({ term, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20),
     days: out,
     totals: out.reduce((t, d) => ({
       pageviews: t.pageviews + d.pageviews,
@@ -2029,7 +2082,10 @@ console.log(STUDIO_ENABLED
   ? `[studio] enabled at /studio (sessions last ${STUDIO_SESSION_HOURS}h)`
   : '[studio] disabled — set STUDIO_PASSWORD to enable');
 console.log(USAGE_TRACKING
-  ? '[usage] counting plays and page views (no identifiers, no search terms)'
+  ? '[usage] counting plays and page views (no identifiers)'
+    + (TRACK_SEARCH_TERMS
+      ? `; search terms kept once seen ${TERM_MIN_TO_STORE}+ times`
+      : '; search terms not recorded')
   : '[usage] disabled — USAGE_TRACKING=off, nothing is counted');
 
 // Says whether this boot inherited a usable harvest clock, i.e. whether it is
