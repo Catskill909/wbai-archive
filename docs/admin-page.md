@@ -1,9 +1,11 @@
 # The Studio — a private view for the people who run this thing
 
-**Status: every phase is built and verified (2026-07-30/31).** What follows is
-a record of what was built and why, not a plan. Per [ROADMAP.md](ROADMAP.md)'s rule this file describes
-intent, so treat everything below Phase 1 as a plan rather than a description —
-each phase says which it is.
+**Status: every phase is built, verified and deployed (2026-07-30/31).**
+
+§1–§5 are the original design and audit, kept because the reasoning still
+explains the code. §6 is the build record — what shipped, what the data forced
+us to change, and every bug worth not repeating. §10 is the open brainstorm for
+what comes next; nothing in it is committed.
 
 Five decisions are already made and everything below assumes them:
 
@@ -99,7 +101,7 @@ Notable shape facts that should drive the design, not be discovered during it:
 - **122 feeds vs 149 programs vs 115 harvested records.** Those three numbers
   disagreeing is itself the most interesting operational stat on the page.
 
-### 2.3 What does not exist
+### 2.3 What did not exist when this was written *(historical — Phase 5 changed it)*
 
 **No usage data of any kind.** There is no request log, no counter, no
 `sendBeacon`, no analytics of any sort anywhere in `server.js` or `app.js`
@@ -186,6 +188,9 @@ a way that helps; a single `401` with a `Retry-After` is enough.
 | `/api/studio/logout` | POST | cookie | 204 + cleared cookie |
 | `/api/studio/stats` | GET | cookie | Content stats JSON (Phase 2) |
 | `/api/studio/health` | GET | cookie | Operational stats JSON (Phase 3) |
+| `/api/studio/usage` | GET | cookie | Listening figures (Phase 5) |
+| `/api/studio/action` | POST | cookie **+ CSRF header** | Runs one maintenance action (Phase 4) |
+| `/api/ev` | POST | **none** | The public usage beacon. Carries no identity, answers `204` to everything, unregistered when `USAGE_TRACKING=off` |
 
 Everything under `/api/studio/*` returns **401 with no body detail** when the
 cookie is missing or fails verification. The dashboard's JS treats any 401 as
@@ -365,10 +370,11 @@ with no inference and no waiting to see what happens. The Studio's health panel
 (Phase 3) renders this as a single pass/fail badge — the thing a station
 operator who has never read this document will actually look at.
 
-### 5.5 Two bugs that would eat analytics data
+### 5.5 Two bugs that would eat analytics data — **both fixed in Phase 1b**
 
-Both exist today. They cost nothing now because every file under `data/` is
-rebuildable; they become data loss the day Phase 5 ships.
+They cost nothing at the time because every file under `data/` was rebuildable;
+they would have become data loss the day Phase 5 shipped. Kept here because the
+reasoning is the reusable part.
 
 **No shutdown flush.** There is no `SIGTERM` or `SIGINT` handler anywhere in
 `server.js` (verified by grep). [`writeJsonSoon`](../server.js#L664) debounces
@@ -492,8 +498,6 @@ expires. That is the price of having no session store, which is deliberate
 **Still to do on the deployment:** set `STUDIO_PASSWORD` in Coolify. Until then
 production behaves exactly as if the feature does not exist, which is the
 intended default.
-
-**Tests** — new `test/studio/` suite: unset-env behaviour, wrong password, backoff, cookie forgery, expiry, logout, direct-file-path probe, and a 401-on-every-API-route sweep. Per §3a, include one test that *strips* the cookie mid-session and requires the probe to notice — an auth suite that can't see failure is worse than none.
 
 ### Phase 1b — durable storage — **DONE, both halves, 2026-07-30**
 
@@ -769,18 +773,6 @@ removal is retroactive rather than merely forward-looking.
 The lesson is the one worth keeping: a threshold, a purge and two timers are all
 cheaper than asking whether the data is worth collecting at all.
 
-**There is no Enter key, so counting and term-capture run on different timers.**
-The search box filters as you type. The first version recorded the term on the
-same 1.2s debounce as the count, which meant a pause mid-word stored the stem
-("democ") and then suppressed the finished query — terms would have accumulated
-as fragments that never reach the storage threshold, which from outside looks
-exactly like "the terms aren't showing up". Now: **1.2s idle counts a search**
-(suppressed while a query is merely being extended, so one search is one search),
-and **3s idle sends the settled term** as a separate `searchterm` event that
-records the words without counting again. The term is also flushed on blur and
-on the tab being hidden, so someone who types and clicks straight through to a
-result is not lost.
-
 **The tracker touches `app.js` not at all.** `public/track.js` is loaded
 separately and listens from outside:
 
@@ -804,10 +796,10 @@ debounce and on `SIGTERM`. Verified: nothing on disk during the debounce,
 everything written on shutdown. Without Phase 1b's flush handler every redeploy
 would have silently dropped up to a minute of counters.
 
-**Abuse ceiling** — 120 events/minute per client, keyed by an HMAC of the address
-salted with a value generated at boot and never written. It cannot be reversed,
-cannot be correlated across restarts, and does not survive the process. It exists
-only to stop one client inflating the station's own numbers.
+**Abuse ceiling** — 600 events/minute per address, keyed by an HMAC of the
+address salted with a value generated at boot and never written. It cannot be
+reversed, cannot be correlated across restarts, and does not survive the
+process. See the note above on why 120 was too low.
 
 **A bug caught by looking.** The peak label on the day chart rendered "peak 4"
 for a value of 41 — centred text runs past the SVG edge when the peak is the
@@ -841,40 +833,184 @@ box at three widths.
 
 ## 8. Open questions and risks
 
-1. **The volume is decided but not yet proven.** Persistent Storage in Coolify
-   is the answer (§5.3), and §5.4 is how we confirm it rather than assume it.
-   The risk that remains is procedural: this has already failed once silently
-   here, so **Phase 5 does not start on any station until that station's
-   `/healthz` shows a `persistedSince` older than its last deploy.** Content and
-   health stats are computed live and are unaffected either way.
-2. **`Secure` cookies and local dev.** Verify in Phase 1 that
-   `http://localhost:8080` accepts the cookie; if not, key `Secure` off
-   `NODE_ENV` and document it.
-3. **Password distribution.** An env var in Coolify is fine; the password
-   reaching people's phones over SMS is the actual weak link. Worth one line of
-   guidance in DEPLOYMENT.md.
-4. **Does the studio need to be linked from the app at all?** A menu item makes
-   it discoverable to staff and to everyone else. Recommendation: **no link.**
-   People who need it can be told the URL once. Revisit if that proves annoying.
-5. **Retention framing.** With a 5-item cap per feed, "471 episodes" is a
-   snapshot. If the station wants trends over time, that is a *third* kind of
-   data — periodic snapshots of our own inventory — written to the same
-   `stats/` directory and subject to the same §5.4 prerequisite.
-6. **Who holds the password for stations we don't run?** The template hands each
-   station its own `STUDIO_PASSWORD`. Nothing in this design lets us into
-   theirs, which is correct, but it does mean support means talking someone
-   through a `curl` rather than looking ourselves. Worth being deliberate about
+Resolved ones are kept with their answers, because "we already looked at this"
+is worth more than a shorter list.
+
+1. ~~**The volume is not yet proven.**~~ **Resolved 2026-07-30.** Persistent
+   Storage configured in Coolify's Storages UI; `instanceId` held across every
+   deploy since, with cached data returning (`showinfoOnDisk` 0 → 49 → 51).
+2. ~~**`Secure` cookies and local dev.**~~ **Resolved.** `http://localhost:8080`
+   is a secure context, so the cookie is accepted; the flag also keys off
+   `X-Forwarded-Proto` in production.
+3. **Password distribution.** Still open, and still the weakest link — an env
+   var in Coolify is fine, the password reaching someone's phone over SMS is
+   not. Worth a line of guidance in DEPLOYMENT.md.
+4. ~~**Should the studio be linked from the app?**~~ **Answered: no link.** The
+   URL is told to the people who need it. Nothing has made that annoying yet.
+5. **Retention framing.** Still open, and now the most interesting one: with a
+   five-item cap, "474 episodes" is a snapshot, not a total. Trends over time
+   need a *third* kind of data — periodic snapshots of our own inventory. See
+   §10.2.
+6. **Who holds the password for stations we don't run?** Still open. Nothing in
+   this design lets us into another station's studio, which is correct, but it
+   means supporting them is talking someone through a `curl`. Worth deciding
    before there are four of these.
+7. **Sessions cannot be revoked individually.** Accepted, pinned by a test, and
+   documented: rotating `STUDIO_PASSWORD` invalidates everything at once. It
+   only becomes wrong if the station ever wants per-person access, which is §7.
 
 ---
 
-## 9. Before writing any code
+## 9. Working on this
 
-- Confirm the phase-1 scope is what's wanted, and that "no link from the app"
-  (§8.4) is right.
-- Phase 1b (§5) can go first if the priority is making the template deployable
-  rather than getting a dashboard on screen. It is small, it fixes two live
-  bugs, and every station benefits whether or not it ever turns the studio on.
-- Reread CLAUDE.md §1 and §2: this feature adds new client assets **and** new
-  server routes, so both the stale-asset guardrail and the restart-and-verify
-  rule are live on almost every commit.
+- **Reread CLAUDE.md §1 and §2.** The studio has client assets *and* server
+  routes, so the stale-asset guardrail and the restart-and-verify rule are live
+  on almost every commit here.
+- **Adding a counter is a migration.** `statsDay()` backfills every field on
+  every access; add new ones to its `NUMBERS`/`MAPS` lists and nothing else.
+  Initialising them only at creation is what made listening time read zero in
+  production while plays worked (§6, Phase 5).
+- **Changing what is collected changes a public promise.** The README and the
+  page both tell listeners what is and is not recorded. Change them in the same
+  commit, and check the test that enforces it.
+- **Look at the page, not just the tests.** Three real bugs this project shipped
+  — `undefined feeds`, every panel clipped at phone widths, and `peak 4` for a
+  value of 41 — were invisible to green suites and obvious in a screenshot.
+
+---
+
+## 10. Brainstorm — where this could go next
+
+**Nothing here is committed.** It is a menu with prices attached, so a decision
+can be made on value rather than on which idea was mentioned most recently.
+Anything adopted moves up into §6 with a build record.
+
+### 10.1 What this design makes impossible — read before proposing
+
+The no-identity choice is load-bearing, and several obvious-sounding features
+are *arithmetically* out of reach because of it. Better to know now than to
+discover it three days in:
+
+| Asked for | Why it cannot be built here |
+|---|---|
+| **Unique listeners / reach** | Requires linking two events to one person. There is no cookie, no session, no fingerprint and no stored IP. Not hard — impossible by construction. |
+| **Returning vs new listeners** | Same reason. There is nothing to compare against. |
+| **Session length, "average listen per person"** | We know total seconds and total plays. Their ratio is *seconds per play*, which is a genuinely useful number (§10.2) — but it is not per person and must never be labelled as such. |
+| **A search → play funnel** | Needs the two events tied to one visitor. |
+| **Where a listener went next** | Same. |
+| **Per-listener geography** | Needs the IP kept long enough to resolve. Country-level counting is *arguably* possible without retention (§10.3), but it is a genuine policy decision, not a technical one. |
+
+If a station genuinely needs reach numbers, the honest answer is that this is
+the wrong instrument and a real analytics product is the right one — with the
+privacy cost stated plainly rather than discovered later.
+
+### 10.2 Stats worth building
+
+Ordered by value ÷ effort. The first three need **no new collection at all** —
+the data is already on disk.
+
+**A. Completion rate — "did anyone finish it?"** ★ best value here
+Every feed item carries `durationSec`, and we already record seconds listened
+per show. `secondsListened ÷ (plays × durationSec)` is a completion ratio, and
+it answers the question a programmer actually has: *people open this show and
+leave, but they sit through that one.* It separates a popular title from a good
+one. **Effort: small — arithmetic over data already held.** Caveat to design
+around: a show with 2 plays and 1 long listen will read >100%; cap the display
+and require a minimum play count before ranking on it.
+
+**B. Seconds per play, per show.** Falls straight out of the same two numbers
+and is less prone to the caveat above. A blunt but honest "how long do people
+stay" figure. **Effort: trivial.**
+
+**C. Shows nobody played.** The inverse of "most listened", and the more
+actionable list: a show with a healthy feed and zero plays all month is either
+mis-titled, badly placed, or invisible in the UI. **Effort: trivial** — every
+row already carries its play count; this is a filter and a heading.
+
+**D. Time-of-day and day-of-week.** When is anyone actually listening? A 7×24
+heatmap is the natural form and the archive is *on demand*, so this is not the
+broadcast schedule — it is when people choose to catch up, which is a different
+and more interesting fact. **Effort: medium.** Needs an hour bucket added to the
+day record (`byHour: {0..23}`), which is 24 more integers per day — trivial
+storage. Adding it is a migration; see §9.
+
+**E. Month-over-month.** The rollups are already per month, so "this month vs
+last" is a second file read and a delta. Turns a dashboard into a trend without
+storing anything new. **Effort: small.**
+
+**F. Inventory snapshots — the missing third data type (§8.5).** Everything in
+Phase 2 is a *snapshot* of a rotating five-item window; nothing records what the
+archive looked like last week. A nightly line in `stats/inventory.json` —
+episodes, hours, feeds held, shows at the cap — would make "are we growing or
+shrinking" answerable, which today it simply is not. **Effort: small, and it
+gets more valuable every day it runs**, which is an argument for starting it
+before it is wanted.
+
+**G. Per-episode, not just per-show.** We resolve the mp3 URL to a feed item
+already, so counting by episode is nearly free — except that episodes rotate out
+every few days and the key set grows without bound. Needs a pruning rule (drop
+episodes absent from the feed for N days) before it is safe. **Effort: medium,
+mostly the pruning.**
+
+**H. Sparklines in the feed table.** A 30-day per-show trace beside each row.
+The chart primitives exist; this is layout. **Effort: small. Value: moderate** —
+pretty, and occasionally reveals a show falling off a cliff.
+
+**I. CSV / JSON export.** Board reports are written in spreadsheets. One button
+that hands over what is already on screen. **Effort: trivial. Value: high the
+first time someone has to report to a board**, which for a listener-funded
+station is regularly.
+
+### 10.3 Admin features beyond stats
+
+**J. Alerting.** The dashboard answers "is anything wrong" only if someone
+opens it. A webhook POST on: feed harvest failures above a threshold, the live
+stream unreachable, the volume reporting `freshVolume` on a redeploy (data
+loss!), or the archive listing going empty. A webhook needs no SMTP, no
+dependency, no credentials beyond a URL in an env var. **Effort: small.
+Value: high** — the volume bug ran for weeks precisely because nothing shouted.
+
+**K. A public status page.** A subset of `/healthz` rendered for humans at
+`/status`, no auth: is the stream up, is the archive fresh. Useful to listeners
+during an outage and cheap to build from existing data. **Decide first** whether
+the station wants to publish its own uptime.
+
+**L. An incident log.** Record every transition of the live-stream probe and
+each harvest failure with a timestamp, so "was it down last Tuesday?" has an
+answer. A few hundred bytes a day in the same rollup directory. **Effort: small.**
+
+**M. Content QA panel.** Shows with no artwork, no description, a title that
+does not match the programme directory, or a feed that has not published in 30
+days. The data is all held; this is a query and a list. **Effort: small.
+Value: high for the people who maintain the station's own metadata** — it turns
+the coverage meters from a number into a to-do list.
+
+**N. "What changed" digest.** New shows appearing, shows that stopped
+publishing, titles that changed upstream. Requires comparing harvests, so it
+pairs naturally with F. **Effort: medium.**
+
+**O. Per-station branding for the studio.** Currently the header reads
+`STATION_ID`. If ROADMAP item 4 lands, the studio should take the same profile.
+**Effort: trivial once item 4 exists; do not build it before.**
+
+### 10.4 Deliberately parked
+
+- **Any form of per-person measurement** — §10.1. Not a maybe.
+- **Geography from IP.** Country-level counts without retaining the address are
+  technically possible, but it is the first feature that would make the privacy
+  paragraph in the README longer and more conditional. The current promise fits
+  in three sentences. That is worth something.
+- **A database.** §7 still holds. If a station outgrows JSON files, that is a
+  happy problem and a different design.
+- **Multiple studio users with roles.** §7. Revisit only if a station asks, and
+  then as a new design rather than a widening of the cookie.
+- **Anything that writes to WBAI.** §7. The actions in Phase 4 touch our caches
+  only, and that boundary is worth keeping bright.
+
+### 10.5 If only three things get built
+
+**F (inventory snapshots)** first, because it is the only one that gets worse the
+longer it is delayed — every day without it is a day of history that cannot be
+recovered. Then **A (completion rate)**, which turns the dashboard from a
+description into a judgement. Then **J (alerting)**, so nobody has to remember
+to look.
