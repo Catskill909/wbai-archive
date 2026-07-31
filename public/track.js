@@ -86,36 +86,65 @@
   // are aggregated per month rather than per day. One person searching once for
   // something unusual leaves no record anywhere. See the TRACK_SEARCH_TERMS
   // block in server.js.
+  //
+  // The search box filters as you type, so there is no Enter to hang a "a
+  // search happened" event on. Two different timings do two different jobs,
+  // and conflating them was a real bug:
+  //
+  //   COUNT (1.2s idle) — "someone searched". Suppressed while a query is
+  //     merely being extended, so typing "jazz festival" with a pause in it is
+  //     one search, not two.
+  //   TERM (3s idle) — "…and this is what they ended up with". Longer, and it
+  //     only ever sends the FINAL value. The first version sent the term on the
+  //     count timer, so a pause mid-word recorded the stem ("democ") and then
+  //     suppressed the finished query — terms would have accumulated as
+  //     truncated fragments that never reach the storage threshold, which is
+  //     exactly what "the terms aren't showing up" looks like from outside.
+  //
+  // The term is also flushed when the field loses focus or the tab is hidden,
+  // so someone who types and immediately clicks a result is not lost.
   var q = document.getElementById('q');
   if (q) {
-    var timer = null;
-    var lastSent = '';
-    var lastSentAt = 0;
+    var countTimer = null;
+    var termTimer = null;
+    var lastCounted = '';
+    var lastCountedAt = 0;
+    var lastTermSent = '';
     var BURST_MS = 8000;
 
-    q.addEventListener('input', function () {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(function () {
-        var v = (q.value || '').trim();
-        if (!v) { lastSent = ''; return; }
-        if (v.length < 2 || v === lastSent) return;
+    function flushTerm() {
+      var v = (q.value || '').trim().slice(0, 60);
+      if (v.length < 2 || v === lastTermSent) return;
+      lastTermSent = v;
+      send({ t: 'searchterm', q: v });
+    }
 
-        // Suppress only within one typing burst. Someone who pauses mid-word
-        // ("jazz" … "jazz festival") should count once, but the same person
-        // refining their search a minute later is a second, real search — and
-        // suppressing that outright would bias the record toward truncated
-        // queries, which is a worse answer than counting one extra.
-        var prefixOfEachOther = lastSent
-          && (v.indexOf(lastSent) === 0 || lastSent.indexOf(v) === 0);
-        if (prefixOfEachOther && Date.now() - lastSentAt < BURST_MS) {
-          lastSent = v;
+    q.addEventListener('input', function () {
+      if (countTimer) clearTimeout(countTimer);
+      if (termTimer) clearTimeout(termTimer);
+
+      countTimer = setTimeout(function () {
+        var v = (q.value || '').trim();
+        if (!v) { lastCounted = ''; lastTermSent = ''; return; }
+        if (v.length < 2 || v === lastCounted) return;
+        var extending = lastCounted
+          && (v.indexOf(lastCounted) === 0 || lastCounted.indexOf(v) === 0);
+        if (extending && Date.now() - lastCountedAt < BURST_MS) {
+          lastCounted = v;
           return;
         }
-        lastSent = v;
-        lastSentAt = Date.now();
-        send({ t: 'search', q: v.slice(0, 60) });
+        lastCounted = v;
+        lastCountedAt = Date.now();
+        send({ t: 'search' });
       }, 1200);
+
+      termTimer = setTimeout(flushTerm, 3000);
     }, { passive: true });
+
+    q.addEventListener('blur', flushTerm);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) flushTerm();
+    });
   }
 
   // ---- shares --------------------------------------------------------------

@@ -66,6 +66,9 @@ separately, because it is a different document with its own markup:
 | Status not conveyed by colour alone | the storage verdict states the outcome in words; the coloured dot only reinforces it |
 | Reduced motion | honoured via the shared token set and an explicit block in `studio.css` |
 | No zoom trap on iOS | input font-size pinned to 1rem/16px |
+| Action buttons | real `<button>`s, `min-height: 2.75rem`, `:focus-visible` rings, disabled while running so a second press cannot queue |
+| Action results announced | `role="status" aria-live="polite"` on the result line, so the outcome reaches a screen reader rather than only appearing |
+| Charts are not colour-only | every bar row is focusable with an `aria-label` carrying label and value; the day histogram is `role="img"` with a summary naming its range, peak and empty-day count, and every number is also in the sortable table |
 
 ---
 

@@ -326,6 +326,15 @@ async function run() {
       JSON.stringify(usage.totals));
 
     // An unresolvable media URL is an unattributed play, never a guess.
+    // Per-show plays must reach the table, so a single show's figure is
+    // reachable by filtering rather than only if it makes the top twelve.
+    const withPlays = await (await get(PORT_ON, '/api/studio/stats', authed)).json();
+    const alpha = withPlays.shows.find((s) => s.slug === 'alpha');
+    const beta = withPlays.shows.find((s) => s.slug === 'beta');
+    ok('every show row carries its own play count, zero included',
+      alpha && alpha.plays === 1 && beta && beta.plays === 0,
+      JSON.stringify(withPlays.shows.map((s) => s.slug + ':' + s.plays)));
+
     ok('a play is attributed to a show only when the URL resolves',
       usage.topShows.length === 1 && usage.topShows[0].slug === 'alpha'
       && usage.topShows[0].plays === 1,
@@ -358,6 +367,24 @@ async function run() {
       : '';
     ok('a rare term is not written to disk either', onDisk.indexOf(rare) < 0,
       onDisk.slice(0, 200));
+
+    /* The search box filters as you type, so there is no Enter key. Counting and
+     * term-capture therefore run on different timers, and `searchterm` records
+     * the words WITHOUT counting a second search. The first version recorded on
+     * the count timer, which meant a pause mid-word stored the stem ("democ")
+     * and dropped the finished query — terms accumulated as fragments that
+     * never reached the threshold. Assert both halves of the split. */
+    const before = (await (await get(PORT_ON, '/api/studio/usage', authed)).json()).totals.searches;
+    for (let i = 0; i < 3; i++) await beacon({ t: 'searchterm', q: 'settled query' });
+    const afterTerms = await (await get(PORT_ON, '/api/studio/usage', authed)).json();
+    ok('a searchterm records the words without counting another search',
+      afterTerms.totals.searches === before
+      && (afterTerms.terms || []).some((t) => t.term === 'settled query'),
+      `searches ${before} → ${afterTerms.totals.searches}`);
+
+    ok('the report says how many terms are still below the threshold',
+      typeof afterTerms.termsBelowThreshold === 'number',
+      String(afterTerms.termsBelowThreshold));
 
     const common = 'jazz';
     for (let i = 0; i < 3; i++) await beacon({ t: 'search', q: common });

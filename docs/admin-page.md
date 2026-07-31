@@ -729,6 +729,18 @@ must reach neither the report nor the disk, and a common one must appear — so
 neither direction can quietly stop being true. `TRACK_SEARCH_TERMS=off` turns it
 off per station.
 
+**There is no Enter key, so counting and term-capture run on different timers.**
+The search box filters as you type. The first version recorded the term on the
+same 1.2s debounce as the count, which meant a pause mid-word stored the stem
+("democ") and then suppressed the finished query — terms would have accumulated
+as fragments that never reach the storage threshold, which from outside looks
+exactly like "the terms aren't showing up". Now: **1.2s idle counts a search**
+(suppressed while a query is merely being extended, so one search is one search),
+and **3s idle sends the settled term** as a separate `searchterm` event that
+records the words without counting again. The term is also flushed on blur and
+on the tab being hidden, so someone who types and clicks straight through to a
+result is not lost.
+
 **The tracker touches `app.js` not at all.** `public/track.js` is loaded
 separately and listens from outside:
 
@@ -741,6 +753,11 @@ separately and listens from outside:
   already in memory. The tracker never has to know how `app.js` represents the
   current episode, so it cannot break when that changes — and a URL that does
   not resolve is an unattributed play rather than a guess.
+
+**Per-show plays live in the table, not only the chart.** "Most played" is a top
+twelve, which cannot answer "how did *this* show do". Every row of the feed
+table carries its own play count, sortable, next to a filter box — so a single
+show is one search away. Shows with none report `0` rather than a blank.
 
 **Storage** — `$DATA_DIR/stats/YYYY-MM.json`, aggregates only, flushed on a 60s
 debounce and on `SIGTERM`. Verified: nothing on disk during the debounce,

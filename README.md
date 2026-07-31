@@ -79,8 +79,23 @@ an archived broadcast.
 - **A private station view at `/studio`** — password-gated, off entirely unless
   `STUDIO_PASSWORD` is set (unset, the routes are never registered, so it is
   indistinguishable from any unknown path). Same design language and the same
-  light/dark control as the app. It reports storage health, content held, feed
-  harvest state and the running build. Sessions are signed cookies with no
+  light/dark control as the app. It holds:
+  - **the archive in numbers** — shows, episodes, hours, size, the category mix,
+    a per-day air-date histogram that shows the empty days rather than closing
+    them up, episode lengths, and which shows have the *least* in the window
+    (the top is a flat tie, because upstream caps every feed at five episodes);
+  - **listening figures** — plays by show, live tune-ins, page views, searches;
+  - **operational health** — storage persistence, feed harvest with failures
+    named rather than counted, per-host upstream latency timed from real
+    traffic, and process/cache stats;
+  - **four maintenance actions** — re-check every feed, refresh the program
+    directory, re-probe the stream, drop the archive cache. Idempotent, rate
+    limited, CSRF-guarded, and all operating on *our* caches; nothing writes to
+    WBAI.
+
+  Charts are hand-drawn SVG and CSS with no charting library — the app's CSP
+  forbids a CDN script, and the marks inherit the same design tokens, so both
+  themes work with no extra code. Sessions are signed cookies with no
   server-side store, so a restart never signs anyone out. See
   [docs/admin-page.md](docs/admin-page.md).
 - **Counts, without tracking anyone** — the station can see how many episodes
@@ -132,6 +147,7 @@ attack surface at zero.
 | `GET /api/showinfo` | Richer per-show records harvested from the on-air feed over time  | 1 min  |
 | `GET /api/showinfo/<altid>` | One show, resolved on demand from archive2's per-show endpoint — works for any show, not just what's on air | 1 hr |
 | `GET /pix/<file>`  | Image proxy for show artwork (allow-listed `*_med_*.jpg` names)    | 1 day  |
+| `POST /api/ev`     | Usage beacon from the page — an event name, and for a play the media URL. No identifier of any kind; answers `204` to everything. Not registered at all when `USAGE_TRACKING=off` | — |
 | `GET /studio`      | Password-gated station view. **Only exists when `STUDIO_PASSWORD` is set** — otherwise the route is never registered and the path falls through like any other unknown one | — |
 | `GET /healthz`     | Health check for the container / load balancer, plus the bundle version, storage identity (`storage.mounted` and `storage.instanceId` are what tell you a persistent volume is really mounted — see below) and feed state (`feeds.held: 0` with `lastHarvest` set is the one condition that empties the listing) | —      |
 

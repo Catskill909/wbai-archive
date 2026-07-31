@@ -15,6 +15,7 @@
       │             │  GET /pix/<file>    → image proxy ───────┼─────▶│                    │
       │  <audio>    │  GET /healthz                            │      │ wbai.org           │
       │             │  GET /studio        → gated station view │      │  (program pages)   │
+      │             │  POST /api/ev       → usage counters     │      │                    │
       └─────────────┼──────────────────────────────────────────┘      └────────────────────┘
         live stream │  (media plays directly from WBAI hosts,  │
         + archive    │   allowed by the page's media-src CSP)  │
@@ -287,6 +288,17 @@ elements are used: one for the live stream (header) and one for archived shows
   pattern.
 - **Security headers on every response** — `Content-Security-Policy`,
   `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`.
+- **Usage counters carry no identity.** `POST /api/ev` is the only
+  unauthenticated POST. It takes an event name (and, for a play, the media URL
+  the page is already playing), increments a number in memory and drops the
+  request — no cookie, no session, no stored or hashed IP, and no event log, so
+  there is no per-visit history to leak. Search terms are held in memory and
+  never written to disk until several searches have used the same words.
+  `USAGE_TRACKING=off` unregisters the route entirely.
+- **The studio's actions are its only writes**, and only to our own caches:
+  re-check feeds, refresh the directory, re-probe the stream, drop a cache. Each
+  is idempotent, rate limited, coalesced with any in-flight run, logged, and
+  requires a CSRF token derived from the session cookie.
 - **The studio is off unless configured** — with no `STUDIO_PASSWORD` the routes
   are never registered, so `/studio` falls through like any unknown path rather
   than presenting a login form to whoever scans for one. When it is on: sessions

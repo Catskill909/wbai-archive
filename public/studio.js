@@ -622,6 +622,7 @@
         tr.appendChild(slug);
         tr.appendChild(el('td', 'num', num(s.episodes)));
         tr.appendChild(el('td', 'num', String(hours(s.seconds))));
+        tr.appendChild(el('td', 'num', num(s.plays || 0)));
         tr.appendChild(el('td', 'num', s.newest
           ? new Date(s.newest * 1000).toISOString().slice(0, 10) : '—'));
         body.appendChild(tr);
@@ -696,9 +697,17 @@
           + u.totals.searches + ' searches counted.'));
       } else if (!u.terms || !u.terms.length) {
         th.textContent = 'What people searched for';
+        // Say WHY it is empty, with the numbers. "Nothing here" and "this is
+        // broken" look identical otherwise, which is exactly the question this
+        // panel got asked on its first day.
         terms.appendChild(el('p', 'usage-empty',
-          'Nothing yet. A term is only kept once ' + u.termThreshold
-          + ' searches have used the same words — rarer ones are never stored.'));
+          u.totals.searches
+            ? u.totals.searches + ' searches so far, and '
+              + (u.termsBelowThreshold || 0) + ' distinct term(s) waiting — a term '
+              + 'is only written down once ' + u.termThreshold + ' searches have used '
+              + 'the same words. Rarer ones are never stored at all.'
+            : 'No searches yet. A term is only kept once ' + u.termThreshold
+              + ' searches have used the same words.'));
       } else {
         th.textContent = 'What people searched for';
         barChart(terms, u.terms.map(function (t) {

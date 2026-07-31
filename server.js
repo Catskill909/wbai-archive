@@ -1899,7 +1899,10 @@ function recordTerm(raw) {
 }
 const STATS_DIR = path.join(DATA_DIR, 'stats');
 const STATS_FLUSH_MS = 60 * 1000;
-const EVENT_TYPES = ['pageview', 'play', 'live', 'search', 'share'];
+// `searchterm` carries the words and does NOT increment the search count — the
+// count already fired on the shorter timer. Splitting them is what stops a
+// mid-word pause from recording a truncated stem. See track.js.
+const EVENT_TYPES = ['pageview', 'play', 'live', 'search', 'searchterm', 'share'];
 
 function statsMonthPath(month) { return path.join(STATS_DIR, `${month}.json`); }
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -1975,6 +1978,10 @@ async function ingestEvent(req, res) {
     case 'share': day.shares++; break;
     case 'search':
       day.searches++;
+      // A term may ride along (older clients, or a one-shot search); harmless.
+      if (TRACK_SEARCH_TERMS && typeof body.q === 'string') recordTerm(body.q);
+      break;
+    case 'searchterm':
       if (TRACK_SEARCH_TERMS && typeof body.q === 'string') recordTerm(body.q);
       break;
     case 'play': {
@@ -2024,6 +2031,10 @@ function usageReport(days = 30) {
     month: statsMonth,
     searchTermsRecorded: TRACK_SEARCH_TERMS,
     termThreshold: TERM_MIN_TO_STORE,
+    // How many distinct terms are still short of the threshold. A number, never
+    // the words — it exists so an empty list can say "not yet" rather than
+    // leaving someone wondering whether collection is broken.
+    termsBelowThreshold: pendingTerms.size,
     // Month-aggregated, and only terms that crossed the threshold exist at all
     // — the rest were never written. Sorted, capped, and safe to render.
     terms: Object.entries(statsStore.terms || {})
@@ -2363,6 +2374,17 @@ function studioStats() {
       perDay.push({ day, episodes: dayMap.get(day) || 0 });
     }
   }
+
+  // Plays this month, by slug — merged into the rows below so the table can
+  // answer "how many plays did THIS show get", which a top-12 chart cannot.
+  const playsBySlug = new Map();
+  for (const rec of Object.values(statsStore.days || {})) {
+    if (!rec || !rec.byShow) continue;
+    for (const [slug, n] of Object.entries(rec.byShow)) {
+      playsBySlug.set(slug, (playsBySlug.get(slug) || 0) + n);
+    }
+  }
+  shows.forEach((s) => { s.plays = playsBySlug.get(s.slug) || 0; });
 
   const programs = programCache.programs || {};
   const programKeys = new Set(Object.keys(programs));

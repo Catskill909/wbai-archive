@@ -166,6 +166,15 @@ code that ran.
   would walk around the gate. Its CSS/JS are in `public/` and are inert without
   a session. Read `docs/admin-page.md` before extending it; the phases and the
   reasoning are all there.
+- **Usage counters** live in `public/track.js` (loaded separately from `app.js`
+  so counting can never affect playback) and `POST /api/ev`. They carry **no
+  identifier of any kind** — no cookie, no session, no stored or hashed IP — and
+  search terms are never written to disk until several searches have used the
+  same words. The README states this publicly and tests enforce both halves; if
+  you change what is collected, change those together or the app starts lying.
+- **The studio's actions are the only state-changing routes.** Keep them
+  idempotent, rate limited, coalesced, logged and CSRF-guarded — "re-check every
+  feed" is 122 requests at a small station's server.
 - **This repo is a template.** Other Pacifica stations deploy it with the same
   tools, so prefer one env var over three, plain JSON over a database, and a
   setting over a code edit. `.env.example` is the list; keep it current.

@@ -705,6 +705,13 @@ a policy stated on top of a system that could do otherwise:
   a rare term must reach neither the report nor the disk, and a common one must
   appear. `TRACK_SEARCH_TERMS=off` disables it per station.
 
+The search box filters as you type, so there is no Enter to hang an event on.
+Counting and term-capture therefore run on **different timers** — 1.2s idle
+counts a search, 3s idle sends the settled words as a separate `searchterm`
+event that does not count again. Do not merge them: recording the term on the
+count timer means a pause mid-word stores a truncated stem and drops the real
+query.
+
 `public/track.js` deliberately knows nothing about `app.js`. Media events do not
 bubble but do propagate through the **capture** phase, so a single capturing
 listener on `document` sees `play` from both the static archive element and the
