@@ -48,5 +48,13 @@ for i in $(seq 1 60); do
   sleep 0.25
 done
 
-CDP_PORT=$PORT BASE="$BASE" STUDIO_PASSWORD="$PASSWORD" \
-  exec node --experimental-websocket layout-tests.js
+# Both suites share the one browser. Neither is allowed to hide the other's
+# failure, so run them regardless and exit non-zero if either did.
+rc=0
+for suite in layout-tests.js sort-tests.js; do
+  echo
+  echo "--- $suite"
+  CDP_PORT=$PORT BASE="$BASE" STUDIO_PASSWORD="$PASSWORD" \
+    node --experimental-websocket "$suite" || rc=1
+done
+exit $rc

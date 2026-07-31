@@ -622,6 +622,10 @@
         x = x === undefined ? 0 : x;
         y = y === undefined ? 0 : y;
         var r = (typeof x === 'string') ? x.localeCompare(y) : x - y;
+        // Ties are the common case here — most shows hold the same five
+        // episodes and nobody has played most of them — so break them by title
+        // rather than leaving 100 rows in whatever order the feed map yielded.
+        if (r === 0 && sortKey !== 'title') return a.title.localeCompare(b.title);
         return sortAsc ? r : -r;
       });
 
@@ -646,11 +650,14 @@
           ? rows.length + ' shows'
           : rows.length + ' of ' + stats.shows.length + ' shows';
 
-      // aria-sort belongs on exactly one header at a time.
+      // aria-sort belongs on the column header cell — the th, not the button
+      // inside it — and on exactly one header at a time. The arrows are drawn
+      // from it in CSS, so this is also what makes the direction visible.
       [].forEach.call(document.querySelectorAll('.th-sort'), function (b) {
+        var th = b.parentNode;
         if (b.getAttribute('data-sort') === sortKey) {
-          b.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending');
-        } else b.removeAttribute('aria-sort');
+          th.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending');
+        } else th.removeAttribute('aria-sort');
       });
     }
 

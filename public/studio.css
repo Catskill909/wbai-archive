@@ -668,9 +668,30 @@
   border: 0;
   padding: 0.2rem 0;
   cursor: pointer;
+  /* Full width so the whole header cell is the target, not just the few
+     characters of the label — on a phone the word "Hours" is a small tap. */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  width: 100%;
 }
+.studio-table th.num .th-sort { justify-content: flex-end; }
 .th-sort:hover { color: var(--ink); }
 .th-sort:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
-.th-sort[aria-sort="descending"]::after { content: " ↓"; }
-.th-sort[aria-sort="ascending"]::after { content: " ↑"; }
-.th-sort[aria-sort] { color: var(--ink); }
+
+/* Every sortable column says so. Before this, only the active one carried an
+   arrow and the other six read as plain labels — the table was sortable and
+   looked like it wasn't. The glyph box is a fixed width so switching columns
+   never re-flows the header row. */
+.th-sort::after {
+  content: "\2195";           /* ↕ — sortable, not currently sorted */
+  display: inline-block;
+  width: 0.9em;
+  text-align: center;
+  opacity: 0.4;
+}
+.th-sort:hover::after { opacity: 0.75; }
+th[aria-sort] .th-sort { color: var(--ink); }
+th[aria-sort] .th-sort::after { opacity: 1; }
+th[aria-sort="descending"] .th-sort::after { content: "\2193"; }   /* ↓ */
+th[aria-sort="ascending"] .th-sort::after { content: "\2191"; }    /* ↑ */
