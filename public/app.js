@@ -1062,6 +1062,8 @@
   var liveRecovering = false;    // trying to get audio back with no user gesture
   var liveStallSince = 0;        // when that started — the give-up budget's clock
   var liveRebuildAt = 0;
+  var LIVE_PROBE_MS = 3000;      // how long a refused attempt may keep its socket
+  var liveProbeEl = null, liveProbeTimer = null;
 
   // Latest on-air snapshot, so the modal can paint whenever it opens and re-paint
   // as the schedule rolls over. Set by renderNowPlaying().
@@ -1622,6 +1624,7 @@
   function abandonLiveEls(){
     clearLiveWatchdog();
     clearTimeout(liveHandoverTimer);
+    dropLiveProbe();
     var el = liveAudio, old = livePrev;
     liveAudio = null;            // from here, `el`'s remaining events are ignored
     livePrev = null;
@@ -1709,8 +1712,7 @@
     // to refuse it. Elements are preload:'none', so with a strict policy (iOS,
     // Chrome's user-gesture-required) `play()` is rejected before any request is
     // made, and "reconnecting…" would describe a client that never touched the
-    // network. Loading on `src` costs one short connection — the refusal hands
-    // back within milliseconds and takes the socket with it.
+    // network. Loading on `src` costs one short connection, no more.
     next.preload = 'auto';
     livePrev = prev;             // `prev` keeps playing, but its events go quiet
     liveAudio = next;
@@ -1723,14 +1725,31 @@
       clearTimeout(liveHandoverTimer);
       livePrev = null;
       destroyLiveEl(prev);                   // only now is the old one expendable
-    }).catch(function(){ handback(next, prev); });
+    }).catch(function(err){
+      // A refusal is the autoplay policy talking, not the network. Hand the audio
+      // straight back — but do NOT kill the element in the same microtask: the
+      // request queued by `src` has not left the machine yet, and destroying it
+      // here cancels it, which is how a strict-policy client ended up reporting
+      // "Reconnecting…" while never once contacting the station. Give it a couple
+      // of seconds to make the attempt, then throw it away.
+      handback(next, prev, (err && err.name === 'NotAllowedError') ? LIVE_PROBE_MS : 0);
+    });
   }
-  function handback(next, prev){
+  function handback(next, prev, probeMs){
     if(next !== liveAudio) return;
     clearTimeout(liveHandoverTimer);
     liveAudio = prev;            // whatever it is playing, it is playing something
     livePrev = null;
-    destroyLiveEl(next);
+    if(!probeMs){ destroyLiveEl(next); return; }
+    dropLiveProbe();             // one at a time; the previous attempt is stale
+    liveProbeEl = next;
+    liveProbeTimer = setTimeout(dropLiveProbe, probeMs);
+  }
+  // The refused attempt above, still holding its connection open. It is nobody's
+  // audio — no branch reads it — so the only thing owed to it is a clean death.
+  function dropLiveProbe(){
+    if(liveProbeTimer){ clearTimeout(liveProbeTimer); liveProbeTimer = null; }
+    if(liveProbeEl){ destroyLiveEl(liveProbeEl); liveProbeEl = null; }
   }
   document.addEventListener('visibilitychange', resyncLive);
   window.addEventListener('focus', resyncLive);
