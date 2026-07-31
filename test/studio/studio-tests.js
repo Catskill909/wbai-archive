@@ -243,6 +243,27 @@ async function run() {
       && /cookie/i.test(health.headers.get('vary') || ''),
       `cache-control=${health.headers.get('cache-control')}`);
 
+    // -- operational health (phase 3) ----------------------------------------
+    const wantHealth = ['upstream', 'process'];
+    ok('health carries the operational blocks',
+      wantHealth.every((k) => k in data), JSON.stringify(Object.keys(data)));
+    ok('feeds report names its problems rather than only counting them',
+      Array.isArray(data.feeds.failures) && Array.isArray(data.feeds.stale)
+      && typeof data.feeds.nextSweepInMs === 'number',
+      JSON.stringify(Object.keys(data.feeds)));
+    ok('process block reports uptime, memory and cache effectiveness',
+      typeof data.process.uptimeSec === 'number' && data.process.rssMb > 0
+      && data.process.caches.archive && data.process.caches.nowplaying,
+      JSON.stringify(data.process).slice(0, 140));
+
+    // A 404 must never be counted as a failure. 33 of the slugs the listing
+    // advertises have no feed behind them, so probing them 404s by design —
+    // folding that into an error count shows a permanently unhealthy upstream
+    // and trains everyone to ignore the panel.
+    ok('upstream counts 404 separately from failure',
+      data.upstream.every((h) => typeof h.missing === 'number' && typeof h.fail === 'number'),
+      JSON.stringify(data.upstream).slice(0, 160));
+
     // -- the stats endpoint ---------------------------------------------------
     const statsNoCookie = await get(PORT_ON, '/api/studio/stats');
     ok('no cookie: stats is 401', statsNoCookie.status === 401, `status ${statsNoCookie.status}`);

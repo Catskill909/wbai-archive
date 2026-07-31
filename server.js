@@ -98,17 +98,59 @@ function unescapeHtml(s) {
     .trim();
 }
 
+/**
+ * Per-host upstream health, recorded from the traffic we already make.
+ *
+ * Deliberately NOT a set of probe requests on a timer: WBAI runs a small Apache
+ * (see FEED_CONCURRENCY) and adding synthetic pings to watch it would be adding
+ * load in order to measure load. Everything here is a by-product of a request
+ * the app needed anyway, so the monitoring costs nothing.
+ */
+const upstreamDiag = new Map();   // host -> counters below
+function trackUpstream(url, startedAt, status, failed) {
+  let host;
+  try { host = new URL(url).host; } catch (e) { host = 'unknown'; }
+  const d = upstreamDiag.get(host)
+    || { ok: 0, missing: 0, fail: 0, lastMs: 0, slowestMs: 0, lastAt: 0, lastStatus: 0 };
+  const ms = Date.now() - startedAt;
+  d.lastMs = ms;
+  d.lastAt = Date.now();
+  d.lastStatus = status || 0;
+  if (ms > d.slowestMs) d.slowestMs = ms;
+
+  // A 404 is counted separately and is NOT a failure. 33 of the slugs the
+  // listing advertises have no feed behind them, so `catchUpFeeds` probing them
+  // 404s by design — folding that into an error count would show a permanently
+  // unhealthy upstream and train everyone to ignore the panel. Only transport
+  // errors, other 4xx and 5xx are faults.
+  if (failed || !status) d.fail++;
+  else if (status === 404) d.missing++;
+  else if (status >= 400) d.fail++;
+  else d.ok++;
+  upstreamDiag.set(host, d);
+}
+
 async function fetchText(url, opts) {
   opts = opts || {};
-  const res = await fetch(url, {
-    method: opts.method || 'GET',
-    headers: Object.assign(
-      { 'User-Agent': 'wbai-archive/1.0 (+https://github.com/Catskill909/wbai-archive)' },
-      opts.headers
-    ),
-    body: opts.body,
-    signal: AbortSignal.timeout(12000),
-  });
+  const started = Date.now();
+  let res;
+  try {
+    res = await fetch(url, {
+      method: opts.method || 'GET',
+      headers: Object.assign(
+        { 'User-Agent': 'wbai-archive/1.0 (+https://github.com/Catskill909/wbai-archive)' },
+        opts.headers
+      ),
+      body: opts.body,
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch (e) {
+    // A timeout or a DNS failure never reaches the line below, and that is
+    // exactly the condition worth seeing on the dashboard.
+    trackUpstream(url, started, 0, true);
+    throw e;
+  }
+  trackUpstream(url, started, res.status);
   if (!res.ok) throw new Error(`upstream ${res.status} for ${url}`);
   // Most upstream pages (the listings) are declared ISO-8859-1, so latin1 is the
   // default and keeps their bytes intact. The now-playing JSON feed, however, is
@@ -122,10 +164,19 @@ async function fetchText(url, opts) {
 function makeCache(ttlMs) {
   let value = null;
   let ts = 0;
+  let hits = 0;
+  let misses = 0;
   return {
-    get() { return (Date.now() - ts < ttlMs) ? value : null; },
+    get() {
+      const fresh = value !== null && Date.now() - ts < ttlMs;
+      if (fresh) hits++; else misses++;
+      return fresh ? value : null;
+    },
     set(v) { value = v; ts = Date.now(); },
     stale() { return value; },
+    // A miss is an upstream request. The ratio is the difference between
+    // proxying a small station politely and hammering it.
+    stats() { return { hits, misses, ageMs: ts ? Date.now() - ts : 0 }; },
   };
 }
 
@@ -273,6 +324,7 @@ const feedsDiag = {
   notModified: 0,
   failed: 0,
   lastSweep: null,   // { at, asked, notModified, failed } — set by harvestFeeds
+  failures: [],      // last 20 { slug, at, error } — named, so they are actionable
 };
 /**
  * When every held feed was last confirmed current. Drives the FEEDS_TTL sweep.
@@ -360,10 +412,16 @@ async function fetchFeed(slug, force = false) {
   // that cannot help.
   if (!force && prev && prev.lastModified) headers['If-Modified-Since'] = prev.lastModified;
 
-  const res = await fetch(`${UPSTREAM.archive}xml/${encodeURIComponent(slug)}.xml`, {
-    headers,
-    signal: AbortSignal.timeout(12000),
-  });
+  const feedUrl = `${UPSTREAM.archive}xml/${encodeURIComponent(slug)}.xml`;
+  const startedAt = Date.now();
+  let res;
+  try {
+    res = await fetch(feedUrl, { headers, signal: AbortSignal.timeout(12000) });
+  } catch (e) {
+    trackUpstream(feedUrl, startedAt, 0, true);
+    throw e;
+  }
+  trackUpstream(feedUrl, startedAt, res.status);
 
   // 304: the content is unchanged, but we just *verified* that — so move
   // fetchedAt forward. It means "last confirmed current", not "last changed",
@@ -409,6 +467,8 @@ async function harvestFeeds(slugs, full = true, force = false) {
         if (rec) feedStore[slug] = rec;
       } catch (e) {
         feedsDiag.failed++;
+        feedsDiag.failures.unshift({ slug, at: Date.now(), error: String(e.message || e).slice(0, 120) });
+        feedsDiag.failures.length = Math.min(feedsDiag.failures.length, 20);
       }
     }
   });
@@ -2135,6 +2195,29 @@ function studioApi(req, res, pathOnly) {
         failed: feedsDiag.failed,
         // The one with a denominator — see feedsDiag's header.
         lastSweep: feedsDiag.lastSweep,
+        failures: feedsDiag.failures,
+        // Feeds we have not confirmed current within a whole TTL. `fetchedAt`
+        // now moves on a 304, so this means "not checked", not "not changed".
+        stale: Object.entries(feedStore)
+          .filter(([, r]) => !r || !r.fetchedAt || Date.now() - r.fetchedAt > FEEDS_TTL)
+          .map(([slug, r]) => ({ slug, fetchedAt: (r && r.fetchedAt) || 0 }))
+          .sort((a, b) => a.fetchedAt - b.fetchedAt)
+          .slice(0, 30),
+        nextSweepInMs: Math.max(0, FEEDS_TTL - (Date.now() - feedsHarvestedAt)),
+      },
+      // Every upstream host we actually talked to, timed from real traffic.
+      upstream: [...upstreamDiag.entries()]
+        .map(([host, d]) => Object.assign({ host }, d))
+        .sort((a, b) => b.lastAt - a.lastAt),
+      process: {
+        uptimeSec: Math.round(process.uptime()),
+        rssMb: Math.round(process.memoryUsage().rss / 1048576),
+        heapMb: Math.round(process.memoryUsage().heapUsed / 1048576),
+        node: process.version,
+        caches: {
+          archive: archiveCache.stats(),
+          nowplaying: nowCache.stats(),
+        },
       },
       counts: {
         showinfo: Object.keys(showInfo).length,

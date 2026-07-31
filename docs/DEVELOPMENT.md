@@ -631,6 +631,13 @@ double-encode the bar's own length. The coverage meters are the one ordered case
 and use a validated ramp whose steps differ per theme — fading toward a *dark*
 surface loses contrast, so the dark steps stay much closer to full.
 
+The operational half of the page (Feed harvest, Upstream, Process) is timed from
+the requests the app already makes — there are no synthetic probes, because
+monitoring a small station's server by adding traffic to it is self-defeating.
+Note that a **404 is counted apart from a failure**: 33 of the slugs the listing
+advertises have no feed behind them, so probing them 404s by design, and folding
+that into an error count showed a permanently unhealthy upstream.
+
 **Tests.** `test/studio/studio-tests.js` drives a real server process
 (`npm test`), against a small fixed feed fixture so the stats assertions have
 something real to be wrong about rather than passing vacuously on an empty

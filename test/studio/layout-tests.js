@@ -108,21 +108,40 @@ const OVERFLOW_PROBE = `(() => {
     ok(`${w}px — the document itself does not scroll sideways`, !r.docScrolls);
   }
 
-  // ---- 3. the probe must be able to SEE the bug it was written for
-  console.log('\n3. self-test — put the original bug back');
+  /* ---- 3. the probe must be able to SEE the bug it was written for
+   *
+   * There are now TWO independent defences against the original overflow, and
+   * this section removes them one at a time — which both proves the probe works
+   * and documents that either one alone is sufficient:
+   *
+   *   1. `min-width: 0` on `.studio-section`, so a grid item may shrink below
+   *      its content's minimum (the 122-row table).
+   *   2. An explicit track floor — `minmax(min(21rem, 100%), 1fr)` — added when
+   *      the layout was widened. A bare `1fr` track has an *automatic* minimum
+   *      of `auto`, which is what let the column grow to fit min-content in the
+   *      first place; `minmax()` replaces that with a real number.
+   *
+   * Tampering goes through the CSSOM because the app's CSP forbids injecting a
+   * <style> element — itself worth knowing about this page.
+   */
+  console.log('\n3. self-test — remove each defence and watch it come back');
   await size(390);
   await go();
   const before = JSON.parse(await ev(OVERFLOW_PROBE));
   ok('clean at 390px before tampering', before.count === 0);
-  // Restore `min-width: auto` on the grid items, which is exactly the shipped
-  // bug. Applied through the CSSOM because the app's CSP forbids injecting a
-  // <style> element — which is itself worth knowing about this page.
+
   await ev(`[].forEach.call(document.querySelectorAll('.studio-section'),
     function (s) { s.style.minWidth = 'auto'; }); true`);
   await new Promise((r) => setTimeout(r, 250));
-  const after = JSON.parse(await ev(OVERFLOW_PROBE));
-  ok('the probe reports overflow once the bug is restored', after.count > 0,
-    `saw ${after.count} — if this is 0 the probe is blind and section 2 proves nothing`);
+  const oneGone = JSON.parse(await ev(OVERFLOW_PROBE));
+  ok('the explicit track floor alone still holds the layout', oneGone.count === 0,
+    `saw ${oneGone.count}: ${oneGone.worst.join(', ')}`);
+
+  await ev("document.querySelector('.studio-main').style.gridTemplateColumns = '1fr'; true");
+  await new Promise((r) => setTimeout(r, 250));
+  const bothGone = JSON.parse(await ev(OVERFLOW_PROBE));
+  ok('with both defences removed the probe reports the overflow', bothGone.count > 0,
+    `saw ${bothGone.count} — if this is 0 the probe is blind and section 2 proves nothing`);
 
   console.log(failures ? `\n${failures} failure(s)` : '\nOK — all layout checks passed');
   process.exit(failures ? 1 : 0);

@@ -381,11 +381,69 @@
         ['Failures since boot', d.feeds.failed, d.feeds.failed ? 'is-bad' : ''],
       ]);
 
+      // ---- feed problems, named rather than counted
+      var probs = document.getElementById('feedProblems');
+      probs.textContent = '';
+      if (d.feeds.failures && d.feeds.failures.length) {
+        var f = document.createElement('details');
+        f.className = 'gap-list';
+        f.open = true;   // an actual failure should not need a click to be seen
+        var fs = document.createElement('summary');
+        fs.appendChild(el('strong', '', d.feeds.failures.length + ' recent fetch failure(s)'));
+        f.appendChild(fs);
+        d.feeds.failures.forEach(function (x) {
+          f.appendChild(el('p', 'gap-slugs', x.slug + ' — ' + x.error + ' (' + ago(x.at) + ')'));
+        });
+        probs.appendChild(f);
+      }
+      if (d.feeds.stale && d.feeds.stale.length) {
+        var st = document.createElement('details');
+        st.className = 'gap-list';
+        var ss = document.createElement('summary');
+        ss.appendChild(el('strong', '', d.feeds.stale.length + ' feeds not confirmed recently'));
+        st.appendChild(ss);
+        st.appendChild(el('p', 'gap-why',
+          'Not re-checked within a full TTL. `fetchedAt` moves on a 304, so this '
+          + 'means not checked — not unchanged.'));
+        st.appendChild(el('p', 'gap-slugs', d.feeds.stale.map(function (x) {
+          return x.slug + (x.fetchedAt ? ' (' + ago(x.fetchedAt) + ')' : ' (never)');
+        }).join(', ')));
+        probs.appendChild(st);
+      }
+
+      // ---- upstream hosts
+      var hosts = document.getElementById('upstream');
+      hosts.textContent = '';
+      (d.upstream || []).forEach(function (h) {
+        var row = el('div', 'host');
+        row.appendChild(el('div', 'host-name', h.host));
+        row.appendChild(el('div', 'host-stat', h.lastMs + 'ms · slowest ' + h.slowestMs + 'ms'));
+        var meta = el('div', 'host-meta');
+        meta.appendChild(document.createTextNode(
+          h.ok + ' ok · ' + h.missing + ' not found · '));
+        var fail = el('span', h.fail ? 'is-bad' : '', h.fail + ' failed');
+        meta.appendChild(fail);
+        meta.appendChild(document.createTextNode(
+          ' · last ' + (h.lastStatus || 'error') + ' ' + ago(h.lastAt)));
+        row.appendChild(meta);
+        hosts.appendChild(row);
+      });
+
+      var p = d.process;
+      facts('processFacts', [
+        ['Uptime', duration(p.uptimeSec)],
+        ['Node', p.node],
+        ['Memory', p.rssMb + ' MB resident · ' + p.heapMb + ' MB heap'],
+        ['Archive cache', p.caches.archive.hits + ' hits / ' + p.caches.archive.misses + ' misses'],
+        ['Now-playing cache', p.caches.nowplaying.hits + ' hits / ' + p.caches.nowplaying.misses + ' misses'],
+        ['Next full feed sweep', d.feeds.nextSweepInMs
+          ? 'in ' + duration(Math.round(d.feeds.nextSweepInMs / 1000)) : 'due now'],
+      ]);
+
+      // Uptime and Node live in Process now; repeating them here was just noise.
       facts('buildFacts', [
         ['App bundle', d.version],
         ['Studio bundle', d.studioVersion],
-        ['Node', d.node],
-        ['Uptime', duration(d.uptimeSec)],
         ['Booted', new Date(d.startedAt).toLocaleString()],
       ]);
 

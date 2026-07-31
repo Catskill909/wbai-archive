@@ -1,7 +1,7 @@
 # The Studio — a private view for the people who run this thing
 
-**Status: Phases 1b, 1 and 2 are built and verified (2026-07-30). Phases 3–5
-are still proposals.** Per [ROADMAP.md](ROADMAP.md)'s rule this file describes
+**Status: Phases 1b, 1, 2 and 3 are built and verified (2026-07-30/31). Phases
+4–5 are still proposals.** Per [ROADMAP.md](ROADMAP.md)'s rule this file describes
 intent, so treat everything below Phase 1 as a plan rather than a description —
 each phase says which it is.
 
@@ -628,13 +628,45 @@ and **section 3 of it restores the bug and requires the probe to report it** —
 an overflow test that has never seen overflow is indistinguishable from a blind
 one (CLAUDE.md §3a).
 
-### Phase 3 — operational health
+### Phase 3 — operational health — **BUILT 2026-07-31**
 
-- Feed harvest: last run, 304s, failures, and **which** feeds failed and when (`feedsDiag` currently counts failures but does not name them — a small server change).
-- Per-feed staleness: anything not refreshed in N hours.
-- Storage: the §5.4 identity fields as a single pass/fail badge — "this volume has persisted for 14 days" or "the volume was replaced on the last deploy" — with `writable` / `feedsOnDisk` as detail beneath. **This is the panel that would have caught the production volume bug in CLAUDE.md §4 the day it started, and it is the panel every new station will need most.**
-- Upstream reachability: the existing `probeLiveStream()` plus a light latency record per upstream host.
-- Process: uptime, RSS, cache hit/miss on the archive and now-playing caches (needs counters added — trivial, in-memory).
+Added to `/api/studio/health`, and rendered as three panels (Feed harvest,
+Upstream, Process).
+
+- ✅ **Named feed failures**, not just a count — a ring buffer of the last 20
+  `{slug, at, error}`. Shown expanded, because an actual failure should not need
+  a click to be noticed.
+- ✅ **Per-feed staleness** — feeds not *confirmed* within a whole TTL, listed
+  oldest first. Meaningful only because `fetchedAt` now moves on a 304, so this
+  reads "not checked" rather than "not changed".
+- ✅ **Upstream latency and status per host**, recorded from the traffic the app
+  already makes. Deliberately no synthetic probes: WBAI runs a small Apache and
+  monitoring it by adding requests to it would be self-defeating.
+- ✅ **Process** — uptime, RSS, heap, and cache hit/miss on the archive and
+  now-playing caches, which is what makes "is the TTL doing anything" answerable.
+- ✅ Storage verdict: already shipped in Phase 1.
+
+**A 404 is not a failure.** The first version counted it as one, and
+`archive2.wbai.org` immediately showed a permanent fault: 33 of the slugs the
+listing advertises have no feed behind them, so `catchUpFeeds` probing them 404s
+*by design*. Those are counted as `missing` and reported separately. A panel that
+is always red teaches everyone to stop reading it.
+
+### Phase 2.5 — full width (2026-07-31)
+
+The dashboard was capped at 60rem, which put two narrow columns on a wide
+monitor and made comparing any two panels a long scroll. Now `100rem` with
+`repeat(auto-fit, minmax(min(21rem, 100%), 1fr))` — four columns at 1440px,
+three at 1180 — plus `grid-auto-flow: dense` so a short panel backfills a hole
+instead of leaving dead space. The two smallest charts were merged into one
+"Shape of the archive" panel so the row's heights are comparable rather than
+ragged. **Page height went from ~6,650px to ~2,480px at 1440px.**
+
+That change also removed the original overflow bug's root cause a second time,
+by accident worth keeping: a bare `1fr` track has an *automatic* minimum of
+`auto`, which is what let the column grow to its content; `minmax()` gives it a
+real floor. `test/studio/run.sh` section 3 now removes each defence in turn and
+asserts that either one alone holds the layout.
 
 ### Phase 4 — actions
 

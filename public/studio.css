@@ -34,7 +34,7 @@
 }
 
 .studio-bar-inner {
-  max-width: 60rem;
+  max-width: var(--studio-width);
   margin: 0 auto;
   min-height: 3.5rem;
   display: flex;
@@ -77,31 +77,44 @@
 
 /* ------------------------------------------------------------------ main */
 
+/* The dashboard is for comparing panels, so the layout's job is to get as many
+   of them on screen at once as it can. 60rem put two narrow columns on a 27"
+   monitor and made the reader scroll a very long page to hold two numbers in
+   their head at the same time. */
+:root { --studio-width: 100rem; }
+
 .studio-main {
-  max-width: 60rem;
+  max-width: var(--studio-width);
   margin: 0 auto;
-  padding: 1.5rem var(--page-gutter) 4rem;
+  padding: 1.25rem var(--page-gutter) 4rem;
   display: grid;
-  gap: 1.5rem;
+  /* As many ~21rem columns as fit: one on a phone, two at ~46rem, three at
+     ~69rem, four at ~92rem. `min(21rem, 100%)` rather than a bare 21rem —
+     otherwise the track floor exceeds the container below ~360px and the grid
+     overflows, which is the same class of bug as the min-width one below. */
+  grid-template-columns: repeat(auto-fit, minmax(min(21rem, 100%), 1fr));
+  align-items: start;
+  /* Panels are different heights, so a strictly in-order fill leaves gaps. Dense
+     lets a later short panel backfill a hole rather than leaving a column of
+     dead space in the middle of the dashboard. Reading order is unaffected for
+     assistive tech — dense only moves the painted boxes. */
+  grid-auto-flow: row dense;
+  gap: 1rem;
 }
+
+/* Panels that earn the whole row: the KPI strip, the 72-column histogram, and
+   the table. Safe at every width now that the grid is always explicit — with
+   `repeat(auto-fit, …)` there is a real track list to resolve -1 against even
+   when it collapses to a single column. */
+.studio-section--wide { grid-column: 1 / -1; }
 
 /* One column below ~52rem, two above. A dashboard of small fact tables reads
    badly as a single tall column on a wide screen and badly as two squeezed
    ones on a phone; there is no third case worth a breakpoint. */
-@media (min-width: 52rem) {
-  .studio-main { grid-template-columns: 1fr 1fr; align-items: start; }
-  /* Full-width rows for the panels that need the space: the KPI strip, the
-     72-column histogram, and the table.
-     ONLY inside this query. `grid-column: 1 / -1` resolves -1 against the
-     EXPLICIT grid, and below this breakpoint there are no explicit columns —
-     so declared globally it stretched these sections to 619px inside a 390px
-     phone viewport and clipped every panel on the right. The document did not
-     scroll, which is why it looked fine to a scrollWidth check and only showed
-     up in a screenshot. */
-  .studio-section--wide { grid-column: 1 / -1; }
-}
+
 
 .studio-section {
+  padding: 1rem 1.1rem 1.15rem;
   /* Grid items default to `min-width: auto`, which means "never shrink below
      your content's minimum" — and the content here includes a 122-row table of
      nowrap cells. That floor propagated up and sized the whole grid column to
@@ -114,7 +127,6 @@
   border: 1px solid var(--outline);
   border-radius: 12px;
   box-shadow: var(--elev-1);
-  padding: 1.15rem 1.25rem 1.35rem;
 }
 
 .studio-h2 {
@@ -127,10 +139,21 @@
   color: var(--ink-dim);
 }
 
+/* Sub-heading, for a panel that holds more than one chart. Quieter than the
+   panel title so the hierarchy stays legible at a glance. */
+.studio-h3 {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+}
+.studio-h3:first-of-type { margin-top: 0.2rem; }
+
 .studio-note {
-  margin: 0 0 0.9rem;
-  font-size: 0.85rem;
-  line-height: 1.45;
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
   color: var(--ink-faint);
   max-width: 46ch;
 }
@@ -483,6 +506,39 @@
   overflow-wrap: anywhere;
 }
 
+/* ------------------------------------------------------------- hosts */
+
+.hosts { display: grid; gap: 0.55rem; }
+
+.host {
+  display: grid;
+  grid-template-columns: 1fr max-content;
+  align-items: baseline;
+  gap: 0.2rem 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--outline);
+}
+.host:last-child { border-bottom: 0; padding-bottom: 0; }
+
+.host-name {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.host-stat {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+.host-meta {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+}
+.host-meta .is-bad { color: var(--danger); }
+
 /* --------------------------------------------------------- svg charts */
 
 .chart { width: 100%; }
@@ -530,7 +586,7 @@
    page stays a page. The header sticks so the columns stay named while scrolling. */
 .table-wrap {
   overflow: auto;
-  max-height: 26rem;
+  max-height: 30rem;
   overscroll-behavior: contain;
   border-bottom: 1px solid var(--outline);
 }
