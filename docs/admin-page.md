@@ -718,6 +718,17 @@ over-report. Two bugs found by measuring rather than reasoning: the baseline was
 being set on the first sample tick rather than at `play` (a 50s listen recorded
 29s), and the final partial interval was dropped at `pause`.
 
+**Adding a counter turned out to be a migration, and that shipped broken.** Time
+listened read zero in production while plays worked perfectly. The cause was not
+in the client at all: `statsDay()` initialised the new fields only when it
+*created* a day, so the day record already written by the previous build had
+`plays` but no `listenSeconds`, and `+= 30` on it produced NaN → `null` on disk
+→ a confident zero in the report. No error, no warning, and one metric working
+beside the broken one — which reads as "the feature doesn't work" and sends you
+looking in the wrong file. The shape is now asserted on every access, and a test
+boots a server against a legacy stats file and fails if that regresses. It was
+verified by reverting the fix and watching the test go red.
+
 **The rate limit was raised from 120 to 600 beacons per address per minute** on
 the same evidence. A listener sends ~2 a minute, so 120 tolerated only ~60
 concurrent listeners *per address* — and carrier-grade NAT puts thousands of

@@ -713,6 +713,17 @@ counter because a play and every listen sample resolve a slug through it — it
 used to rebuild ~474 entries per beacon, which cost no measurable throughput but
 generated garbage on the hottest path (RSS 98 MB → 79 MB over 2,000 beacons).
 
+**Adding a counter is a migration.** `statsDay()` backfills every field on
+*every* access, not just when it creates a day. This shipped broken: a day
+record written by an earlier build had `plays` but no `listenSeconds`, so
+`+= 30` evaluated `undefined + 30` → NaN, `JSON.stringify` wrote `null`, and the
+report's `|| 0` rendered a confident zero. Plays kept working because their key
+existed, so the symptom was "the new metric doesn't work" with no error
+anywhere — the hardest kind to notice and the easiest to misread as a client
+bug. If you add a counter, add it to the `NUMBERS`/`MAPS` lists and nothing
+else; `test/studio/` boots a server against a legacy stats file and fails if the
+backfill regresses.
+
 Two things that were wrong first time and are easy to reintroduce: the baseline
 must be set at the `play` event (setting it on the first sample tick discards the
 opening interval of every listen — a 50s listen measured 29s), and the `pause`

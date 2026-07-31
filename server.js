@@ -1921,16 +1921,27 @@ function statsDay() {
       || { station: STATION_ID, month: m, days: {} });
   }
   const d = today();
-  if (!statsStore.days[d]) {
-    statsStore.days[d] = {
-      pageviews: 0, plays: 0, live: 0, searches: 0, shares: 0,
-      byShow: {},
-      // Seconds actually listened — the stat that means something. A play is a
-      // click; this is whether anyone stayed.
-      listenSeconds: 0, liveSeconds: 0, secondsByShow: {},
-    };
-  }
-  return statsStore.days[d];
+  /**
+   * Backfill EVERY counter, not just on creation.
+   *
+   * This bit in production the day listening-time shipped. A day record written
+   * by an earlier build has `plays` but no `listenSeconds`, so `+= 30` on the
+   * existing object evaluated `undefined + 30` → NaN, `JSON.stringify` wrote
+   * `null`, and the report's `|| 0` turned that into a silent zero. Plays kept
+   * working (their key existed) while listening time read zero forever — a
+   * failure that looks exactly like "the feature doesn't work" and leaves no
+   * error anywhere.
+   *
+   * So the shape is asserted on every access, not once. Any counter added later
+   * is covered by the same loop rather than needing another migration.
+   */
+  const day = statsStore.days[d] || (statsStore.days[d] = {});
+  const NUMBERS = ['pageviews', 'plays', 'live', 'searches', 'shares',
+    'listenSeconds', 'liveSeconds'];
+  const MAPS = ['byShow', 'secondsByShow'];
+  for (const k of NUMBERS) if (typeof day[k] !== 'number' || !Number.isFinite(day[k])) day[k] = 0;
+  for (const k of MAPS) if (!day[k] || typeof day[k] !== 'object') day[k] = {};
+  return day;
 }
 
 function saveStatsSoon() {

@@ -31,6 +31,7 @@ const fs = require('fs');
 const PASSWORD = 'correct-horse-battery-staple';
 const PORT_ON = 8123;
 const PORT_OFF = 8124;
+const PORT_OLD = 8125;
 const ROOT = path.join(__dirname, '..', '..');
 
 let failures = 0;
@@ -118,6 +119,26 @@ const post = (port, p, body, headers) => fetch(`http://127.0.0.1:${port}${p}`, {
 function sign(exp, secret) {
   const key = crypto.createHash('sha256').update('wbai-studio-session\0' + secret).digest();
   return `${exp}.${crypto.createHmac('sha256', key).update(String(exp)).digest('base64url')}`;
+}
+
+/**
+ * A stats file written by an EARLIER build — counters that existed then, and
+ * none of the ones added later.
+ *
+ * This shipped and broke production silently: `day.listenSeconds += 30` on a
+ * record with no such key evaluates `undefined + 30` → NaN, JSON writes `null`,
+ * and the report's `|| 0` renders a confident zero. Plays kept working because
+ * their key existed, so the symptom was "one metric works and the new one
+ * doesn't" with no error anywhere.
+ */
+function legacyStats() {
+  const month = new Date().toISOString().slice(0, 7);
+  const day = new Date().toISOString().slice(0, 10);
+  return {
+    station: 'wbai',
+    month,
+    days: { [day]: { pageviews: 40, plays: 6, live: 2, searches: 3, shares: 1, byShow: { alpha: 6 } } },
+  };
 }
 
 async function run() {
@@ -579,6 +600,41 @@ async function run() {
       `status ${postElsewhere.status}`);
   } finally {
     on.kill('SIGKILL');
+  }
+
+  // ------------------------------------------------- upgrading an older file
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wbai-legacy-'));
+  fs.writeFileSync(path.join(dataDir, 'feeds.json'), JSON.stringify(FIXTURE));
+  fs.mkdirSync(path.join(dataDir, 'stats'), { recursive: true });
+  const legacy = legacyStats();
+  fs.writeFileSync(path.join(dataDir, 'stats', `${legacy.month}.json`), JSON.stringify(legacy));
+
+  const upg = spawn(process.execPath, ['server.js'], {
+    cwd: ROOT,
+    env: Object.assign({}, process.env,
+      { PORT: String(PORT_OLD), DATA_DIR: dataDir, STUDIO_PASSWORD: PASSWORD }),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  upg.stdout.on('data', () => {});
+  upg.stderr.on('data', () => {});
+  try {
+    await waitReady(PORT_OLD);
+    const login2 = await post(PORT_OLD, '/api/studio/login', { password: PASSWORD });
+    const cookie2 = { Cookie: (login2.headers.get('set-cookie') || '').split(';')[0] };
+
+    await post(PORT_OLD, '/api/ev', { t: 'listen', u: 'a1', s: 30 });
+    await post(PORT_OLD, '/api/ev', { t: 'listen', u: 'a1', s: 30 });
+    await post(PORT_OLD, '/api/ev', { t: 'play', u: 'a1' });
+
+    const u2 = await (await get(PORT_OLD, '/api/studio/usage', cookie2)).json();
+    ok('a stats file from an older build still records listening time',
+      u2.totals.listenSeconds === 60,
+      `expected 60, got ${u2.totals.listenSeconds} (NaN here means the backfill regressed)`);
+    ok('and its existing counters survive the upgrade',
+      u2.totals.plays === 7 && u2.totals.pageviews === 40,
+      `plays ${u2.totals.plays} (6 + 1), pageviews ${u2.totals.pageviews}`);
+  } finally {
+    upg.kill('SIGKILL');
   }
 
   console.log(failures ? `\n${failures} failure(s)` : '\nall passed');
