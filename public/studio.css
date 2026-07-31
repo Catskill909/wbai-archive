@@ -506,6 +506,26 @@
   overflow-wrap: anywhere;
 }
 
+/* ----------------------------------------------------------- actions */
+
+.actions { display: grid; gap: 0.5rem; }
+
+.action-btn {
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  border-radius: 8px;
+  border: 1px solid var(--outline-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  padding: 0.6rem 0.8rem;
+  min-height: 2.75rem;
+  cursor: pointer;
+}
+.action-btn:hover:not(:disabled) { background: var(--surface-3); }
+.action-btn:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.action-btn:disabled { opacity: 0.55; cursor: default; }
+
 /* ------------------------------------------------------------- usage */
 
 .usage-split {

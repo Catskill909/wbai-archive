@@ -646,6 +646,14 @@ archive. Per CLAUDE.md §3a every refusal is paired with the same request
 *succeeding* under a valid session — a suite of pure refusals passes perfectly
 once the probe goes blind.
 
+**Actions** are the only state-changing routes: re-check every feed, refresh the
+program directory, re-probe the stream, drop the archive cache. Each is
+idempotent, cooled down (a forced feed sweep is 122 requests to a small server),
+coalesced with any in-flight run, logged, and guarded by a CSRF token derived
+from the session cookie rather than stored. If you add one, keep those five
+properties — they are the difference between a maintenance button and a way to
+accidentally DoS WBAI.
+
 `test/studio/run.sh` is the layout suite, and it exists because the dashboard
 shipped with every panel clipped on the right at phone widths while **every**
 non-visual check stayed green: HTTP tests, no console errors, no CSP violations,

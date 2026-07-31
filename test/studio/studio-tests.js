@@ -249,6 +249,53 @@ async function run() {
       && /cookie/i.test(health.headers.get('vary') || ''),
       `cache-control=${health.headers.get('cache-control')}`);
 
+    // -- actions (phase 4) ----------------------------------------------------
+    //
+    // The only state-changing routes in the app. `archive` is used for the
+    // happy path because it touches nothing upstream — a test suite should not
+    // fire 122 requests at a small station's server to prove a button works.
+    const csrf = (await (await get(PORT_ON, '/api/studio/health', authed)).json()).csrf;
+    ok('health hands the page a CSRF token', typeof csrf === 'string' && csrf.length > 20);
+
+    const act = (body, headers) => post(PORT_ON, '/api/studio/action', body, headers);
+
+    ok('action without a session: 401',
+      (await act({ action: 'archive' }, { 'X-Studio-CSRF': csrf })).status === 401);
+    ok('action with a session but no token: 403',
+      (await act({ action: 'archive' }, authed)).status === 403);
+    ok('action with a wrong token: 403',
+      (await act({ action: 'archive' },
+        Object.assign({ 'X-Studio-CSRF': 'nope' }, authed))).status === 403);
+
+    /* The token must be bound to THIS session, not a constant the server would
+     * accept from anyone. Signing one against a different secret is what an
+     * attacker who guessed the scheme but not the key would have. */
+    const foreign = crypto.createHmac('sha256',
+      crypto.createHash('sha256').update('wbai-studio-session\0other').digest())
+      .update('csrf\0' + session.split('=')[1]).digest('base64url');
+    ok('a token minted with the wrong key is refused',
+      (await act({ action: 'archive' },
+        Object.assign({ 'X-Studio-CSRF': foreign }, authed))).status === 403,
+      'the token is not bound to the session key');
+
+    const authedCsrf = Object.assign({ 'X-Studio-CSRF': csrf }, authed);
+    ok('an unknown action is rejected rather than guessed at',
+      (await act({ action: 'rm -rf /' }, authedCsrf)).status === 400);
+
+    const ran = await act({ action: 'archive' }, authedCsrf);
+    const ranBody = await ran.json();
+    ok('a real action runs and reports what it did',
+      ran.status === 200 && ranBody.ok === true && typeof ranBody.result === 'string',
+      JSON.stringify(ranBody));
+
+    // The cooldown is what stops "re-check every feed" from being a button that
+    // hammers WBAI. Asserted by effect: the same action immediately again.
+    const again = await act({ action: 'archive' }, authedCsrf);
+    const againBody = await again.json();
+    ok('the same action immediately again is refused with a wait',
+      again.status === 429 && againBody.retryInSec > 0,
+      `status ${again.status} ${JSON.stringify(againBody)}`);
+
     // -- usage counters (phase 5) --------------------------------------------
     //
     // The ingest route is public and answers 204 to everything, so its

@@ -389,6 +389,52 @@
         ['Failures since boot', d.feeds.failed, d.feeds.failed ? 'is-bad' : ''],
       ]);
 
+      // ---- actions
+      //
+      // Rendered from what the server says it supports, so the page cannot
+      // offer a button the server will reject. Built once; re-rendering on
+      // every 30s poll would steal focus and wipe a running result.
+      var actionsBox = document.getElementById('actions');
+      if (actionsBox && !actionsBox.children.length && d.actions) {
+        d.actions.forEach(function (a) {
+          var b = el('button', 'action-btn', a.label);
+          b.type = 'button';
+          b.addEventListener('click', function () {
+            // These are cheap and idempotent, but "re-check every feed" reaches
+            // out to WBAI 122 times — worth one deliberate keystroke.
+            if (!window.confirm(a.label + '?\n\nThis refreshes our cache from WBAI.')) return;
+            var result = document.getElementById('actionResult');
+            b.disabled = true;
+            var was = b.textContent;
+            b.textContent = 'Working…';
+            result.textContent = '';
+            fetch('/api/studio/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Studio-CSRF': d.csrf },
+              body: JSON.stringify({ action: a.name }),
+            }).then(function (res) {
+              return res.json().then(function (body) { return { status: res.status, body: body }; });
+            }).then(function (r) {
+              if (r.status === 429) {
+                result.textContent = 'Just ran — try again in ' + r.body.retryInSec + 's.';
+              } else if (r.body && r.body.ok) {
+                result.textContent = a.label + ': ' + r.body.result;
+                load();     // the panels above are now stale
+              } else {
+                result.textContent = a.label + ' failed: '
+                  + ((r.body && (r.body.error || r.body.result)) || 'unknown error');
+              }
+            }).catch(function (e) {
+              result.textContent = a.label + ' failed: ' + e.message;
+            }).then(function () {
+              b.disabled = false;
+              b.textContent = was;
+            });
+          });
+          actionsBox.appendChild(b);
+        });
+      }
+
       // ---- feed problems, named rather than counted
       var probs = document.getElementById('feedProblems');
       probs.textContent = '';

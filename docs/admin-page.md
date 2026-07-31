@@ -1,7 +1,7 @@
 # The Studio — a private view for the people who run this thing
 
-**Status: Phases 1b, 1, 2, 3 and 5 are built and verified (2026-07-30/31).
-Phase 4 (actions) is the only one still a proposal.** Per [ROADMAP.md](ROADMAP.md)'s rule this file describes
+**Status: every phase is built and verified (2026-07-30/31).** What follows is
+a record of what was built and why, not a plan. Per [ROADMAP.md](ROADMAP.md)'s rule this file describes
 intent, so treat everything below Phase 1 as a plan rather than a description —
 each phase says which it is.
 
@@ -668,12 +668,36 @@ by accident worth keeping: a bare `1fr` track has an *automatic* minimum of
 real floor. `test/studio/run.sh` section 3 now removes each defence in turn and
 asserts that either one alone holds the layout.
 
-### Phase 4 — actions
+### Phase 4 — actions — **BUILT 2026-07-31**
 
-Read-only until now. This adds buttons: force a feed re-harvest, refresh the
-program directory, re-probe the stream, clear a cache. Write operations, so:
-`SameSite=Strict` plus an explicit CSRF token, each action idempotent and
-logged, each with a confirmation. Small phase, high satisfaction.
+The studio's first and only *write* operations: re-check every feed, refresh the
+program directory, re-probe the live stream, drop the archive cache. All four
+operate on **our** caches; nothing writes to WBAI.
+
+- **Idempotent by construction** — each is "go and refresh X", so a double-click
+  or a retry cannot compound.
+- **Cooled down and coalesced.** "Re-check every feed" is 122 requests to a
+  small station's Apache; a button that does that on every press is a loaded gun
+  pointed at WBAI. It is rate-limited per action *and* joins the in-flight sweep
+  rather than starting a rival one. Asserted by effect in the tests, not by
+  reading a timer.
+- **Logged**, because there is no undo and a line in the log is the only record.
+- **CSRF token derived from the session**, not stored: an HMAC of the cookie
+  under the same key that signs it. No token table, nothing to expire
+  separately, and rotating `STUDIO_PASSWORD` invalidates tokens exactly as it
+  invalidates sessions. A test mints a token with the wrong key and requires a
+  403, so "the token is a constant the server would take from anyone" cannot
+  creep in.
+
+**A bug the button found in code five days older than it.** "Refresh the program
+directory" returned *"0 programs" in 1ms* — `refreshPrograms()` guarded itself
+with a boolean and returned immediately when a refresh was already running,
+which on a cold boot it always was. The action then reported a count from before
+any work happened. Fixed by making it hold its in-flight **promise** instead of a
+flag, so a second caller awaits the running refresh rather than being told
+nothing and guessing — the pattern `feedsInFlight` already used. It now reports
+149 programs in ~3.5s. Nothing before Phase 4 ever awaited that function, which
+is why the flag had gone unnoticed.
 
 ### Phase 5 — listener analytics — **BUILT 2026-07-31**
 

@@ -168,6 +168,18 @@
   </section>
 
   <section class="studio-section">
+    <h2 class="studio-h2">Actions</h2>
+    <p class="studio-note">
+      The only controls here that change anything. Each one refreshes one of
+      <em>our</em> caches from WBAI — nothing writes to the station's systems,
+      and running one twice is the same as running it once. Re-checking every
+      feed is 122 requests to a small server, so it is rate limited.
+    </p>
+    <div class="actions" id="actions"></div>
+    <p class="studio-note" id="actionResult" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="studio-section">
     <h2 class="studio-h2">Storage</h2>
     <p class="studio-note">
       Whether this deployment keeps its data across a redeploy. The only field

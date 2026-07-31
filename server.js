@@ -174,6 +174,9 @@ function makeCache(ttlMs) {
     },
     set(v) { value = v; ts = Date.now(); },
     stale() { return value; },
+    // Forget the cached value AND the last-good fallback, so the next request
+    // genuinely refetches instead of being served the same bytes back.
+    clear() { value = null; ts = 0; },
     // A miss is an upstream request. The ratio is the difference between
     // proxying a small station politely and hammering it.
     stats() { return { hits, misses, ageMs: ts ? Date.now() - ts : 0 }; },
@@ -1311,7 +1314,12 @@ async function getShowDetail(altid) {
  * only thing the two systems share is the show's name.
  */
 const programCache = readJsonFile(PROGRAMS_PATH, { updated: 0, programs: {} });
-let programsRefreshing = false;
+// The in-flight refresh, not a boolean — so a second caller can *await* the
+// running one instead of being told "already busy" and having to guess when it
+// finished. `feedsInFlight` already works this way; the studio's "refresh the
+// directory" button is what made the difference matter: with a bare flag it
+// returned instantly and reported a count from before the work started.
+let programsInFlight = null;
 
 function normTitle(s) {
   return unescapeHtml(String(s || ''))
@@ -1385,9 +1393,13 @@ async function mapPool(items, limit, fn) {
   return results;
 }
 
-async function refreshPrograms() {
-  if (programsRefreshing) return;
-  programsRefreshing = true;
+function refreshPrograms() {
+  if (programsInFlight) return programsInFlight;
+  programsInFlight = doRefreshPrograms().finally(() => { programsInFlight = null; });
+  return programsInFlight;
+}
+
+async function doRefreshPrograms() {
   try {
     const listing = parseProgramList(await fetchText(UPSTREAM.programList));
     if (!listing.length) throw new Error('parsed zero programs');
@@ -1415,8 +1427,6 @@ async function refreshPrograms() {
     console.log(`[programs] directory refreshed: ${Object.keys(programs).length} shows`);
   } catch (e) {
     console.warn('[programs] refresh failed, keeping cache:', e.message);
-  } finally {
-    programsRefreshing = false;
   }
 }
 
@@ -2417,6 +2427,125 @@ function studioStats() {
   };
 }
 
+// ------------------------------------------------------------ studio actions
+/**
+ * The studio's first *write* operations. Everything before this only read.
+ *
+ * Three properties each action must have, and the reasons are specific:
+ *
+ *   1. **Idempotent.** Every one of these is "go and refresh X". Running it
+ *      twice is running it once, so a double-click, a retry or an impatient
+ *      operator cannot compound.
+ *   2. **Cooled down and coalesced.** "Re-harvest all feeds" is 122 requests to
+ *      a small station's Apache. A button that does that on every press is a
+ *      loaded gun pointed at WBAI, so a forced sweep is rate-limited *and*
+ *      joins the in-flight one rather than starting a second.
+ *   3. **Logged.** These change server state; a line in the log is the only
+ *      record of who kicked what, and there is no undo.
+ *
+ * They operate strictly on OUR caches. Nothing here writes to WBAI.
+ */
+const actionLastRun = new Map();
+
+const STUDIO_ACTIONS = {
+  harvest: {
+    label: 'Re-check every feed',
+    cooldownMs: 5 * 60 * 1000,
+    async run() {
+      const slugs = Object.keys(feedStore);
+      if (!slugs.length) return 'Nothing held yet — nothing to re-check.';
+      // Join the running sweep instead of starting a rival one.
+      if (!feedsInFlight) {
+        feedsInFlight = harvestFeeds(slugs)
+          .catch((e) => console.warn('[feeds] forced harvest failed:', e.message))
+          .finally(() => { feedsInFlight = null; });
+      }
+      await feedsInFlight;
+      const s = feedsDiag.lastSweep;
+      return s
+        ? `${s.asked} feeds checked · ${s.notModified} unchanged · ${s.failed} failed`
+        : `${slugs.length} feeds checked`;
+    },
+  },
+  programs: {
+    label: 'Refresh the program directory',
+    cooldownMs: 10 * 60 * 1000,
+    async run() {
+      await refreshPrograms();
+      return `${Object.keys(programCache.programs || {}).length} programs in the directory`;
+    },
+  },
+  stream: {
+    label: 'Re-probe the live stream',
+    cooldownMs: 30 * 1000,
+    async run() {
+      const s = await probeLiveStream();
+      return s && s.ok ? 'Live stream reachable' : `Live stream unreachable — ${(s && s.reason) || 'no reason given'}`;
+    },
+  },
+  archive: {
+    label: 'Drop the archive cache',
+    cooldownMs: 60 * 1000,
+    async run() {
+      // Only clears OUR copy; the next request re-scrapes. Safe by definition —
+      // everything in this cache is derived from upstream.
+      archiveCache.clear();
+      nowCache.clear();
+      return 'Archive and now-playing caches cleared — the next request rebuilds them';
+    },
+  },
+};
+
+/**
+ * CSRF token, derived from the session rather than stored.
+ *
+ * `SameSite=Strict` already means another site cannot make the browser send the
+ * cookie, so this is belt and braces — but these are state-changing routes and
+ * the belt costs four lines. Derived from the cookie with the same key that
+ * signs it, so there is no token table to keep, nothing to expire separately,
+ * and rotating STUDIO_PASSWORD invalidates tokens exactly as it invalidates
+ * sessions.
+ */
+function studioCsrf(req) {
+  const raw = parseCookies(req.headers.cookie)[STUDIO_COOKIE] || '';
+  return crypto.createHmac('sha256', studioKey).update('csrf\0' + raw).digest('base64url');
+}
+
+async function studioAction(req, res) {
+  if (!studioAuthed(req)) return sendStudioJson(res, { error: 'unauthorized' }, 401);
+  if (!secretEquals(req.headers['x-studio-csrf'] || '', studioCsrf(req))) {
+    return sendStudioJson(res, { error: 'bad token' }, 403);
+  }
+
+  let name = '';
+  try { name = (JSON.parse(await readBody(req, 256)) || {}).action; } catch (e) { name = ''; }
+  const action = Object.prototype.hasOwnProperty.call(STUDIO_ACTIONS, name)
+    ? STUDIO_ACTIONS[name] : null;
+  if (!action) return sendStudioJson(res, { error: 'unknown action' }, 400);
+
+  const last = actionLastRun.get(name) || 0;
+  const wait = action.cooldownMs - (Date.now() - last);
+  if (wait > 0) {
+    return sendStudioJson(res, {
+      error: 'cooling down',
+      retryInSec: Math.ceil(wait / 1000),
+    }, 429);
+  }
+  actionLastRun.set(name, Date.now());
+
+  const started = Date.now();
+  try {
+    const result = await action.run();
+    console.log(`[studio] action "${name}" — ${result} (${Date.now() - started}ms)`);
+    return sendStudioJson(res, { ok: true, action: name, result, ms: Date.now() - started });
+  } catch (e) {
+    console.warn(`[studio] action "${name}" failed:`, e.message);
+    // Let it be retried: a failed action did not do the thing.
+    actionLastRun.delete(name);
+    return sendStudioJson(res, { ok: false, action: name, error: String(e.message || e) }, 502);
+  }
+}
+
 function studioApi(req, res, pathOnly) {
   if (!studioAuthed(req)) return sendStudioJson(res, { error: 'unauthorized' }, 401);
   if (pathOnly === '/api/studio/usage') {
@@ -2429,6 +2558,10 @@ function studioApi(req, res, pathOnly) {
   if (pathOnly === '/api/studio/health') {
     return sendStudioJson(res, {
       station: STATION_ID,
+      csrf: studioCsrf(req),
+      actions: Object.entries(STUDIO_ACTIONS).map(([name, a]) => ({
+        name, label: a.label, cooldownSec: Math.round(a.cooldownMs / 1000),
+      })),
       version: appVersion(),
       studioVersion: studioVersion(),
       node: process.version,
@@ -2491,6 +2624,10 @@ const server = http.createServer(async (req, res) => {
     if (USAGE_TRACKING && pathOnly === '/api/ev') {
       try { return await ingestEvent(req, res); }
       catch (e) { res.writeHead(204, securityHeaders()); return res.end(); }
+    }
+    if (STUDIO_ENABLED && pathOnly === '/api/studio/action') {
+      try { return await studioAction(req, res); }
+      catch (e) { return sendStudioJson(res, { error: 'bad request' }, 400); }
     }
     if (STUDIO_ENABLED && (pathOnly === '/api/studio/login' || pathOnly === '/api/studio/logout')) {
       try {
