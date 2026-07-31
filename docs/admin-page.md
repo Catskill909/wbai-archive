@@ -750,6 +750,29 @@ looking in the wrong file. The shape is now asserted on every access, and a test
 boots a server against a legacy stats file and fails if that regresses. It was
 verified by reverting the fix and watching the test go red.
 
+**The write debounce was eating plays, and it disguised itself as an
+attribution bug.** On 2026-07-31 the table showed "On The Ground" with *4
+minutes listened and 0 plays* — one show, one listen, two counters that appeared
+to disagree about it. Everything upstream was correct: the beacon was sent, the
+mp3 resolved to the slug, `plays` was incremented. It was then held in memory by
+a 60-second flush debounce, and the container was replaced inside that window.
+
+The asymmetry is structural and worth internalising, because any counter added
+later inherits it. **A play is one beacon that has to survive the window;
+listening time is a stream that keeps re-sending itself.** A restart costs the
+stream a single flush and every later beacon lands in the new process, so the
+minutes heal and the play is simply gone. The same outage therefore always
+presents as "listened, never played" — never the reverse — which points at
+attribution instead of at persistence.
+
+`flushOnExit` covers the graceful stop and did its job; a SIGKILL, an OOM or a
+host reboot has no signal to catch. The debounce is now **5 seconds** — still
+tens of beacons per write on a busy minute, with 12× less to lose — and
+`test/usage/durability-tests.js` kills a server with SIGKILL after the window
+and fails unless the play is on disk, with the killed-immediately case as its
+self-test so it cannot pass blind (CLAUDE.md §3a). Verified by restoring the
+60-second value and watching it go red.
+
 **The abuse ceiling was raised from 120 to 600 beacons per address per minute**
 on the same evidence. A listener sends ~2 a minute, so 120 tolerated only ~60
 concurrent listeners *per address* — and carrier-grade NAT puts thousands of

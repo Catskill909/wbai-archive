@@ -1881,7 +1881,32 @@ const USAGE_TRACKING = (process.env.USAGE_TRACKING || 'on').toLowerCase() !== 'o
  * written, so the removal is retroactive rather than merely forward-looking.
  */
 const STATS_DIR = path.join(DATA_DIR, 'stats');
-const STATS_FLUSH_MS = 60 * 1000;
+/**
+ * How long a counter may sit in memory before it is on disk.
+ *
+ * This was 60 seconds, and it lost plays in production — reproduced 2026-07-31:
+ * a listener started "On The Ground", the container went away inside the window,
+ * and the studio then showed **4m listened against 0 plays** for that show. The
+ * numbers looked like an attribution bug and were not one; the play was counted
+ * correctly and then never written.
+ *
+ * The asymmetry is structural, not bad luck. A play is ONE beacon that has to
+ * survive the whole window in memory. Listening time is a stream — a beacon
+ * every ~20-30s for as long as someone listens — so a restart costs it one
+ * flush and every later beacon lands in the new process. Same outage, and the
+ * metric that keeps re-sending itself heals while the metric that fires once
+ * disappears. "Listened with no plays" is what that looks like in the table.
+ *
+ * `flushOnExit` already covers the graceful stop, but a SIGKILL, an OOM, a host
+ * reboot or a container replaced without a signal reaching us have no such
+ * courtesy, and these counters cannot be re-derived from anywhere.
+ *
+ * Five seconds keeps the point of the debounce — a busy minute is still tens of
+ * beacons per write, not one write per beacon — and shrinks the loss window by
+ * 12x. It does not close it; nothing short of writing per event does, and that
+ * is not a trade this station's volume asks for.
+ */
+const STATS_FLUSH_MS = 5 * 1000;
 // `searchterm` carries the words and does NOT increment the search count — the
 // count already fired on the shorter timer. Splitting them is what stops a
 // mid-word pause from recording a truncated stem. See track.js.
