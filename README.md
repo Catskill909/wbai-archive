@@ -41,8 +41,13 @@ an archived broadcast.
   shareable links to any show or search.
 - **Works on any device** — a clean, responsive design with light and dark
   themes.
-- **Accessible to everyone** — built for keyboard and screen-reader use, with
-  clear focus, readable contrast and touch-friendly controls.
+- **Accessibility features:**
+  - Full keyboard navigation, with a visible focus so you always know where you are
+  - Works with screen readers
+  - Every pop-up closes with one key press and returns you right where you were
+  - Touch targets sized for real fingers, not just a mouse
+  - Respects your device's "reduce motion" setting
+  - No flash of the wrong light/dark theme when the page loads
 - **Private station dashboard** — a password-protected view for staff: archive
   stats, listening figures, and one-click maintenance tools.
 - **Listener insights, with privacy built in** — see how long people actually
