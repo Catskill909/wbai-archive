@@ -19,116 +19,37 @@ an archived broadcast.
 
 ## Features
 
-- **Live archive listing** — ~500 recent broadcasts read live from WBAI's own
-  podcast feeds, with search, category filters, and sortable columns (show, air
-  date, retention, duration).
-- **Working audio** — a persistent bottom player for archived shows and a
-  header live player for the 99.5 FM stream, each with a loading spinner that
-  resolves to a pause control once connected.
-- **Remembers where you stopped** — these are 1–2 hour talk broadcasts, so the
-  player keeps your position in every episode you've started and picks it up on
-  replay, with a *Start over* control whenever you'd rather not. Positions live
-  in the browser, not on the server; nothing is uploaded and no account exists.
-- **Installable** — a web app manifest, real home-screen icon, and browser
-  chrome tinted to match the appbar, so *Add to Home Screen* (iOS) or *Install
-  app* (Android/desktop Chrome) gives a standalone player. Deliberately **no**
-  offline mode: the listing is a live view of an archive that rotates, and a
-  cached copy would mostly serve shows that are already gone.
-- **Show info modal** — clicking a show's title (or its **More** link) opens a
-  clean dark sheet with large artwork, host, full description, air date, length,
-  retention, and the show's own website and social links. Playback controls
-  and a scrubber stay pinned at the bottom of the sheet, and any field WBAI
-  doesn't publish for a show is simply left out rather than shown empty.
-- **Real show artwork** — thumbnails for each show, proxied from WBAI's schedule
-  system, with a tasteful category-tinted placeholder when a show has no photo.
-- **List or gallery view** — switch between a compact table and an artwork-led
-  gallery of cards, whichever you'd rather browse by. Remembered on your device.
-- **On-air / up-next** — the header shows what's playing now and what's next,
-  refreshed from WBAI's now-playing feed. Tapping it opens a full now-playing
-  screen with artwork, host, air times and a volume control; closing it doesn't
-  stop the stream — it keeps playing from the bottom bar so you can carry on
-  browsing while you listen.
-- **Lock screen & hardware controls** — full Media Session support: show title,
-  host, and artwork on the iOS/Android lock screen, macOS Now Playing, and car
-  head units, with play/pause, ±15s skip, scrubbing, and next/previous show from
-  headset buttons. The live stream publishes the current on-air show and
-  re-titles itself as the schedule rolls over.
-- **Keyboard and transport controls** — ±15s buttons in the player bar, plus
-  Space for play/pause and ←/→ to skip, which stay out of the way while you're
-  typing in the search field.
-- **Back to top** — the listing runs ~500 shows deep, so a quiet circle appears
-  once you're well into it, ducks out of the way while you're scrolling, and
-  returns when you stop — instantly if you were already scrolling back up. It
-  sits in the page margin on desktop and centres above the player bar on tablets
-  and phones. Clicking it moves keyboard focus as well as the viewport.
-- **Linkable views** — search, category and the open show live in the URL, so a
-  view can be shared and the Back button closes the info sheet instead of
-  leaving the app.
-- **Responsive** — a multi-column table on desktop/tablet that collapses to
-  stacked cards on phones. Light and dark themes both supported (follows the
-  system preference).
-- **Accessibility** — fully usable by keyboard
-  and screen reader alike, with visible focus so you always know where you are.
-  Every overlay (show info, live player, menu) closes with a single key press
-  and returns you right where you left off. Touch targets are sized for real
-  fingers, animations stand down for anyone who's asked their device to reduce
-  motion, and the page never flashes the wrong theme for a split second on load.
-- **A private station view at `/studio`** — password-gated, off entirely unless
-  `STUDIO_PASSWORD` is set (unset, the routes are never registered, so it is
-  indistinguishable from any unknown path). Same design language and the same
-  light/dark control as the app. It holds:
-  - **the archive in numbers** — shows, episodes, hours, size, the category mix,
-    a per-day air-date histogram that shows the empty days rather than closing
-    them up, episode lengths, and which shows have the *least* in the window
-    (the top is a flat tie, because upstream caps every feed at five episodes);
-  - **listening figures** — plays by show, live tune-ins, page views, searches;
-  - **operational health** — storage persistence, feed harvest with failures
-    named rather than counted, per-host upstream latency timed from real
-    traffic, and process/cache stats;
-  - **four maintenance actions** — re-check every feed, refresh the program
-    directory, re-probe the stream, drop the archive cache. Idempotent, rate
-    limited, CSRF-guarded, and all operating on *our* caches; nothing writes to
-    WBAI.
-
-  Charts are hand-drawn SVG and CSS with no charting library — the app's CSP
-  forbids a CDN script, and the marks inherit the same design tokens, so both
-  themes work with no extra code. Sessions are signed cookies with no
-  server-side store, so a restart never signs anyone out.
-- **Counts, without tracking anyone** — the station can see **how long people
-  actually listened**, per show, alongside plays, live tune-ins, page views,
-  searches and shares. Time is the honest number: a play is a click, and the two
-  rankings genuinely differ — a show people open and abandon should not outrank
-  one they sit through. It is measured as media *consumed* (sampling the
-  player's position, so pauses, buffering and scrubbing forward are all
-  excluded), which under-reports slightly and can never over-report. It cannot see *who*, and that is structural rather than a promise:
-  there is **no event log, no cookie, no session, and no stored or hashed IP**.
-  A request increments a number in memory and is dropped, so
-  nothing links two events to the same person — which means "unique listeners"
-  is a number this app cannot produce. Search *volume* is counted; **the words
-  someone types never leave the browser**. One coarse attribute is collected:
-  a page view sends **the timezone the browser reports**, which the server files
-  under one of three buckets — the station's own timezone, elsewhere in the US,
-  or international — before anything is written, so what reaches the disk is a
-  count with nothing attached to it. It answers whether the station reaches past
-  its own signal without ever reading an address. A timezone is not a location
-  (most browsers in the eastern US say `America/New_York` wherever they are) and
-  it is not a fingerprint here, because there is nothing to join it to — but it
-  is the one visitor attribute this app looks at, which is why it is named here
-  rather than left to be discovered. Set `STATION_TZ` to your own zone.
-  Counters live in plain monthly JSON
-  under
-  `DATA_DIR/stats/`, a few KB a month, readable by anyone who opens the file.
-  The tracker is a 100-line file loaded separately from the app, so it can never
-  affect playback. A test sends a search term anyway — the way a stale cached
-  page would — and fails if it reaches the report or the disk, so the promise
-  cannot quietly stop being true. Set `USAGE_TRACKING=off` to count nothing at
-  all.
-- **Keeps what it learns across deploys** — show descriptions are harvested only
-  while a show is on air, so the cache accrues slowly and is worth protecting.
-  Writes are atomic and flushed on shutdown, and `/healthz` reports whether the
-  data volume is genuinely persisting rather than leaving it to be inferred —
-  this deployment ran for weeks silently rebuilding from scratch every deploy
-  before that was measurable.
+- **Full show archive** — hundreds of recent broadcasts, searchable by name and
+  filterable by category, sortable however you like.
+- **Built-in player** — listen to any archived show or the live 99.5 FM stream
+  right in the app.
+- **Picks up where you left off** — for long talk shows, playback resumes
+  exactly where you stopped, with the option to start over.
+- **Installable app** — add it to your phone or desktop home screen for a full,
+  standalone listening experience.
+- **Show details at a glance** — artwork, host, description, air date and
+  links, one tap away for every show.
+- **List or gallery view** — browse as a simple list or a visual gallery of
+  show art, whichever you prefer.
+- **On-air now, and what's next** — a full now-playing screen with artwork,
+  host, air times and volume control; keep browsing while it plays.
+- **Lock screen controls** — play, pause, skip and see artwork right from your
+  phone's lock screen, car display or desktop media controls.
+- **Keyboard shortcuts** — quick play/pause and skip controls for desktop
+  listeners.
+- **Easy navigation** — a quick way back to the top of a long list, and
+  shareable links to any show or search.
+- **Works on any device** — a clean, responsive design with light and dark
+  themes.
+- **Accessible to everyone** — built for keyboard and screen-reader use, with
+  clear focus, readable contrast and touch-friendly controls.
+- **Private station dashboard** — a password-protected view for staff: archive
+  stats, listening figures, and one-click maintenance tools.
+- **Listener insights, with privacy built in** — see how long people actually
+  listen, plays, searches, and how far the station's reach extends — without
+  ever tracking who anyone is.
+- **Reliable behind the scenes** — the app keeps what it's learned even after
+  updates, so nothing is lost.
 
 ## Why a server?
 
