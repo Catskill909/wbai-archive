@@ -18,3 +18,6 @@ desktop/src-tauri/gen/
 test/feed-scan/state.json
 studio-profile
 chrome.log
+
+# local brainstorming doc, never pushed
+future-dev.md
