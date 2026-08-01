@@ -21,9 +21,7 @@ an archived broadcast.
 
 - **Live archive listing** — ~500 recent broadcasts read from WBAI's own podcast
   feeds (`archive2.wbai.org/xml/<show>.xml`), with search, category filters, and
-  sortable columns (show, air date, retention, duration). Structured XML is the
-  content source; the HTML listing supplies the shape around it. See
-  [docs/xml-feed-migration.md](docs/xml-feed-migration.md).
+  sortable columns (show, air date, retention, duration).
 - **Working audio** — a persistent bottom player for archived shows and a
   header live player for the 99.5 FM stream, each with a loading spinner that
   resolves to a pause control once connected.
@@ -105,11 +103,21 @@ an archived broadcast.
   one they sit through. It is measured as media *consumed* (sampling the
   player's position, so pauses, buffering and scrubbing forward are all
   excluded), which under-reports slightly and can never over-report. It cannot see *who*, and that is structural rather than a promise:
-  there is **no event log, no cookie, no session, no fingerprint, and no stored
-  or hashed IP**. A request increments a number in memory and is dropped, so
+  there is **no event log, no cookie, no session, and no stored or hashed IP**.
+  A request increments a number in memory and is dropped, so
   nothing links two events to the same person — which means "unique listeners"
   is a number this app cannot produce. Search *volume* is counted; **the words
-  someone types never leave the browser**. Counters live in plain monthly JSON
+  someone types never leave the browser**. One coarse attribute is collected:
+  a page view sends **the timezone the browser reports**, which the server files
+  under one of three buckets — the station's own timezone, elsewhere in the US,
+  or international — before anything is written, so what reaches the disk is a
+  count with nothing attached to it. It answers whether the station reaches past
+  its own signal without ever reading an address. A timezone is not a location
+  (most browsers in the eastern US say `America/New_York` wherever they are) and
+  it is not a fingerprint here, because there is nothing to join it to — but it
+  is the one visitor attribute this app looks at, which is why it is named here
+  rather than left to be discovered. Set `STATION_TZ` to your own zone.
+  Counters live in plain monthly JSON
   under
   `DATA_DIR/stats/`, a few KB a month, readable by anyone who opens the file.
   The tracker is a 100-line file loaded separately from the app, so it can never
@@ -148,7 +156,7 @@ attack surface at zero.
 | `GET /api/showinfo` | Richer per-show records harvested from the on-air feed over time  | 1 min  |
 | `GET /api/showinfo/<altid>` | One show, resolved on demand from archive2's per-show endpoint — works for any show, not just what's on air | 1 hr |
 | `GET /pix/<file>`  | Image proxy for show artwork (allow-listed `*_med_*.jpg` names)    | 1 day  |
-| `POST /api/ev`     | Usage beacon from the page — an event name, and for a play the media URL. No identifier of any kind; answers `204` to everything. Not registered at all when `USAGE_TRACKING=off` | — |
+| `POST /api/ev`     | Usage beacon from the page — an event name, and for a play the media URL, and for a page view the browser's timezone (bucketed to one of three labels and discarded). No identifier of any kind; answers `204` to everything. Not registered at all when `USAGE_TRACKING=off` | — |
 | `GET /studio`      | Password-gated station view. **Only exists when `STUDIO_PASSWORD` is set** — otherwise the route is never registered and the path falls through like any other unknown one | — |
 | `GET /healthz`     | Health check for the container / load balancer, plus the bundle version, storage identity (`storage.mounted` and `storage.instanceId` are what tell you a persistent volume is really mounted — see below) and feed state (`feeds.held: 0` with `lastHarvest` set is the one condition that empties the listing) | —      |
 

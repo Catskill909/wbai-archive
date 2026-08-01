@@ -22,6 +22,7 @@ referenced from `server.js` and four other docs, so they stay put.
 | **3 — operational health** | Feed failures **named**, per-feed staleness, per-host upstream latency from real traffic, process and cache stats. | [§6](#phase-3-operational-health-built-2026-07-31) |
 | **4 — actions** | Re-check feeds, refresh the directory, re-probe the stream, drop a cache. Idempotent, cooled down, CSRF-guarded, logged. | [§6](#phase-4-actions-built-2026-07-31) |
 | **5 — listener analytics** | **Time listened** per show (the headline), plus plays, live tune-ins, page views, searches, shares. No identifier of any kind. | [§6](#phase-5-listener-analytics-built-2026-07-31) |
+| **5.1 — reach** | Does the station reach past its own signal? Page views split local / rest of US / international, from the **browser's timezone** — never from an IP. | [§6](#phase-51--reach-without-geolocation--built-2026-08-01) |
 
 ### Next up — nothing committed
 
@@ -807,11 +808,13 @@ across restarts — and `droppedBeacons` now reports when it bites, so the
 dashboard says the figures are low rather than leaving it to be guessed.
 
 **What it cannot do, structurally.** No event log, no cookie, no session, no
-fingerprint, no stored or hashed IP. A request increments a counter in memory
+stored or hashed IP. A request increments a counter in memory
 and is dropped. Nothing links two events to the same person, so **"unique
 listeners" is not a number this app can produce** — a deliberate trade, not an
 oversight. A station that asks its audience for money should be able to say what
-it collects in three sentences and have them be true.
+it collects in three sentences and have them be true. (One coarse attribute was
+added in 5.1 below; the linkage claim is unchanged, because there is still
+nothing to link it *to*.)
 
 **Search terms: collected on 2026-07-31, removed the same day.** Worth recording
 because the reason was not the one you would expect.
@@ -828,6 +831,76 @@ stems, capturing the settled phrase meant guessing around pauses in typing (a
 first attempt recorded `"democ"` and dropped `"democracy now"`), and the whole
 mechanism cost two timers and a threshold to produce data nobody could act on.
 The count of searches is genuinely useful. The words were not worth having.
+
+### Phase 5.1 — reach, without geolocation — **BUILT 2026-08-01**
+
+The ask was "add location to the admin view". §10.4 had parked geography from IP
+on the grounds that it would make the README's privacy paragraph longer and more
+conditional — so the first move was to ask what the location was *for*, and the
+answer was the one question a community station actually has: **does this
+station reach past its own signal.**
+
+That question does not need an address. The browser will volunteer its own IANA
+timezone, so a page view now carries `z`, the server files it under one of four
+buckets, and the string is discarded in the same expression that classifies it.
+What reaches the disk is `{"local":41,"national":9,"intl":3,"unknown":0}`.
+
+**Why not IP.** There is no Cloudflare in front of this — Coolify's Traefik
+only — so there is no `CF-IPCountry` header to read for free. Resolving it
+ourselves meant either shipping a multi-MB IP→country table that every forking
+station then has to keep current, or calling a third-party lookup, which would
+send listener addresses to someone else and is *worse* than storing them. A
+timezone costs one counter and a static `Set`.
+
+**What it is honestly worth, and the label that says so.** A timezone is not a
+location. Nearly every browser east of Ohio reports `America/New_York` whether
+it sits in Brooklyn or Miami, so the local bucket is **a clock, not a city** —
+and the temptation to label that row "New York area" is exactly the failure this
+design is trying to avoid, a number that reads as more than it is. So the
+*server* ships the labels with the data (`reach.buckets[].label`), the local row
+is titled with the raw zone name, and the studio note says outright that
+travellers and VPNs count wherever their clock is set. `unknown` is shown while
+non-zero and hidden once it empties: right after a deploy it is simply everyone
+still on a cached page, and folding those into `local` would have manufactured a
+surge of local listeners on the day the feature shipped.
+
+**The migration hazard from Phase 5 was already handled and this proves it.**
+`byZone` was added to the `MAPS` list in `statsDay()`, which asserts the shape on
+every access rather than at creation — so day records written by the previous
+build picked up the new map without the `undefined + 1 → NaN → null` failure that
+broke listening time. The existing legacy-stats-file test covers it and stayed
+green with no change.
+
+**Two things that could have gone wrong quietly, and the tests that watch them:**
+
+- **`America/` is not "the United States".** `America/Sao_Paulo`,
+  `America/Bogota` and `America/Toronto` all share the prefix. A prefix check
+  would have counted South America as domestic and nobody would have noticed,
+  because the number would still look plausible. `US_ZONES` is an explicit set
+  including the territories and the legacy `US/*` aliases, and a test asserts
+  Sao Paulo lands in `intl`.
+- **An absence assertion that goes blind.** "The raw timezone is not on disk"
+  passes perfectly if the beacons stopped arriving, which is CLAUDE.md §3a
+  exactly. Every absence check here is paired with a count that had to move, and
+  the disk check *polls for `byZone` to appear* before asserting the string is
+  not beside it. Verified by mutation, not by assumption: bucketing everything
+  as `local` reddens three tests, and writing the raw zone as the key reddens the
+  disk check and its self-test together.
+
+**Per-station.** `STATION_TZ` (default `America/New_York`) is the only new
+setting — one env var, per the template rule. Verified by booting a second
+server as a west-coast station: `America/Los_Angeles` became `local` and
+`America/New_York` moved to `Elsewhere in the US`. A station outside the US
+never matches `US_ZONES`, so `national` stays empty and everything non-local
+reads as `intl` — mislabelled rather than miscounted, and ROADMAP item 4
+(per-station profiles) is where the wording would be fixed.
+
+**The README changed in the same commit**, per CLAUDE.md §5: the word
+"fingerprint" came out of the promise list, because a timezone *is* a classic
+fingerprinting signal even though it is not being used as one here (there is
+nothing to join it to). Naming it plainly is the point — this is the first
+visitor attribute the app has ever collected, which is a change of kind, not of
+degree, and it should be read that way rather than discovered.
 
 So the promise is back to its strongest form — the words never leave the
 browser — and the test asserts it that way: send a term the way a stale cached
@@ -1056,10 +1129,13 @@ pairs naturally with F. **Effort: medium.**
 ### 10.4 Deliberately parked
 
 - **Any form of per-person measurement** — §10.1. Not a maybe.
-- **Geography from IP.** Country-level counts without retaining the address are
-  technically possible, but it is the first feature that would make the privacy
-  paragraph in the README longer and more conditional. The current promise fits
-  in three sentences. That is worth something.
+- **Geography from IP.** Still parked, and now for a second reason: the question
+  it was wanted for — *does this station reach past its own signal* — got a
+  cheaper answer that never reads an address at all. See Phase 5.1 (reach by
+  timezone). If someone asks again for IP geography, the thing to establish
+  first is what the extra resolution is *for*, because city-level counts cost a
+  multi-MB table every forking station must keep current, plus the longer and
+  more conditional privacy paragraph this bullet was always about.
 - **A database.** §7 still holds. If a station outgrows JSON files, that is a
   happy problem and a different design.
 - **Multiple studio users with roles.** §7. Revisit only if a station asks, and

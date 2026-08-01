@@ -44,6 +44,10 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 // volume that gets restored or attached to the wrong app is caught rather than
 // silently merged. The full per-station configuration story is ROADMAP.md item 4.
 const STATION_ID = process.env.STATION_ID || 'wbai';
+// The station's own timezone, used only to decide which listeners count as
+// local in the studio's reach breakdown (see geoBucket). One setting rather
+// than a code edit, because every station forking this has a different answer.
+const STATION_TZ = process.env.STATION_TZ || 'America/New_York';
 const SHOWINFO_PATH = process.env.SHOWINFO_PATH || path.join(DATA_DIR, 'showinfo.json');
 // Read-only starting set for the harvest cache, baked into the image. Lives
 // outside the data dir on purpose: a mounted volume shadows whatever the image
@@ -1913,6 +1917,64 @@ const STATS_FLUSH_MS = 5 * 1000;
 // No `searchterm`: the words are not collected. See the note above.
 const EVENT_TYPES = ['pageview', 'play', 'live', 'listen', 'search', 'share'];
 
+/**
+ * Reach, without geolocation — the three buckets a pageview's timezone becomes.
+ *
+ * docs/admin-page.md §10.4 parked geography from IP, and this does not unpark
+ * it: no address is read, resolved, retained or sent to anyone. The browser
+ * volunteers its own IANA zone and we keep a bucket, so the answer to "does this
+ * station reach past its own signal" costs one counter instead of a multi-MB
+ * IP table every forking station would have to keep current.
+ *
+ * **What it is not.** A timezone is not a location. Nearly every browser east of
+ * Ohio reports `America/New_York` whether it sits in Brooklyn or Miami, so the
+ * local bucket is *the station's timezone*, not the station's city, and the UI
+ * must say so — labelling it "New York area" would be a number that reads as
+ * more than it is. VPNs and travellers are counted wherever their clock is set.
+ * It is a coarse three-way split, honest at that resolution and no finer.
+ *
+ * **Why bucket at ingest.** The raw string never reaches the disk. What gets
+ * written is `{ local: 41 }` — a count with nothing to attach it to — so the
+ * finer attribute exists only for the microseconds it takes to classify.
+ */
+// Canonical US zones plus the legacy aliases browsers still report, including
+// the territories. A station outside the US simply never matches: `national`
+// stays empty and everything non-local lands in `intl`, which is wrong-labelled
+// rather than wrong-counted. ROADMAP item 4 (per-station profiles) is where a
+// non-US fork would fix the wording.
+const US_ZONES = new Set([
+  'America/New_York', 'America/Detroit', 'America/Kentucky/Louisville',
+  'America/Kentucky/Monticello', 'America/Indiana/Indianapolis',
+  'America/Indiana/Vincennes', 'America/Indiana/Winamac',
+  'America/Indiana/Marengo', 'America/Indiana/Petersburg',
+  'America/Indiana/Vevay', 'America/Indiana/Tell_City', 'America/Indiana/Knox',
+  'America/Chicago', 'America/Menominee', 'America/North_Dakota/Center',
+  'America/North_Dakota/New_Salem', 'America/North_Dakota/Beulah',
+  'America/Denver', 'America/Boise', 'America/Phoenix', 'America/Los_Angeles',
+  'America/Anchorage', 'America/Juneau', 'America/Sitka', 'America/Metlakatla',
+  'America/Yakutat', 'America/Nome', 'America/Adak', 'Pacific/Honolulu',
+  'America/Puerto_Rico', 'America/St_Thomas', 'America/Virgin',
+  'Pacific/Guam', 'Pacific/Saipan', 'Pacific/Pago_Pago',
+  // aliases
+  'US/Eastern', 'US/Central', 'US/Mountain', 'US/Pacific', 'US/Alaska',
+  'US/Hawaii', 'US/Arizona', 'US/East-Indiana', 'US/Indiana-Starke',
+  'US/Aleutian', 'US/Samoa', 'America/Indianapolis', 'America/Louisville',
+  'America/Fort_Wayne', 'America/Knox_IN', 'America/Shiprock', 'America/Atka',
+  'Navajo',
+]);
+const ZONE_BUCKETS = ['local', 'national', 'intl', 'unknown'];
+
+function geoBucket(z) {
+  if (typeof z !== 'string') return 'unknown';
+  const tz = z.trim();
+  // Shape-check rather than trust: an arbitrary 64-byte string from a POST body
+  // must never become a key in a file we write.
+  if (!tz || tz.length > 64 || !/^[A-Za-z][A-Za-z0-9+_\-/]*$/.test(tz)) return 'unknown';
+  if (tz === STATION_TZ) return 'local';
+  if (US_ZONES.has(tz)) return 'national';
+  return 'intl';
+}
+
 function statsMonthPath(month) { return path.join(STATS_DIR, `${month}.json`); }
 function today() { return new Date().toISOString().slice(0, 10); }
 function thisMonth() { return today().slice(0, 7); }
@@ -1963,7 +2025,7 @@ function statsDay() {
   const day = statsStore.days[d] || (statsStore.days[d] = {});
   const NUMBERS = ['pageviews', 'plays', 'live', 'searches', 'shares',
     'listenSeconds', 'liveSeconds'];
-  const MAPS = ['byShow', 'secondsByShow'];
+  const MAPS = ['byShow', 'secondsByShow', 'byZone'];
   for (const k of NUMBERS) if (typeof day[k] !== 'number' || !Number.isFinite(day[k])) day[k] = 0;
   for (const k of MAPS) if (!day[k] || typeof day[k] !== 'object') day[k] = {};
   return day;
@@ -2029,7 +2091,16 @@ async function ingestEvent(req, res) {
 
   const day = statsDay();
   switch (body.t) {
-    case 'pageview': day.pageviews++; break;
+    case 'pageview': {
+      day.pageviews++;
+      // Bucketed here and discarded here — `body.z` never reaches the store.
+      // A client too old to send one counts as `unknown` rather than being
+      // folded into `local`, so the day the feature shipped is visible in the
+      // data instead of looking like a sudden surge of local listeners.
+      const bucket = geoBucket(body.z);
+      day.byZone[bucket] = (day.byZone[bucket] || 0) + 1;
+      break;
+    }
     case 'live': day.live++; break;
     case 'share': day.shares++; break;
     case 'search':
@@ -2128,6 +2199,10 @@ function usageReport(days = 30) {
   }
   const byShow = sumBySlug(window, 'byShow');
   const secsByShow = sumBySlug(window, 'secondsByShow');
+  // Reach. Goes through sumBySlug for the same reason every other total does —
+  // reading statsStore.days directly falls off the cliff at the month rollover.
+  const byZone = sumBySlug(window, 'byZone');
+  const zoneTotal = ZONE_BUCKETS.reduce((n, b) => n + (byZone.get(b) || 0), 0);
   const titles = feedStore;
   const firstWithData = window.find((w) => w.rec);
   return {
@@ -2138,6 +2213,23 @@ function usageReport(days = 30) {
     // figures above are an undercount, which is worth knowing before quoting
     // them. See EV_MAX_PER_MIN.
     droppedBeacons: evDropped,
+    // Reach, from the browser's own clock — never from an address. The labels
+    // ship with the data so the UI cannot quietly describe a timezone as a
+    // city; `local` is a ZONE, which for an Eastern-US station is most of the
+    // seaboard, not the metro. See geoBucket.
+    reach: {
+      stationTz: STATION_TZ,
+      total: zoneTotal,
+      buckets: ZONE_BUCKETS.map((b) => ({
+        key: b,
+        label: b === 'local' ? STATION_TZ
+          : b === 'national' ? 'Elsewhere in the US'
+          : b === 'intl' ? 'International'
+          : 'Not reported',
+        count: byZone.get(b) || 0,
+        pct: zoneTotal ? Math.round(((byZone.get(b) || 0) / zoneTotal) * 1000) / 10 : 0,
+      })),
+    },
     days: out,
     totals: out.reduce((t, d) => ({
       pageviews: t.pageviews + d.pageviews,

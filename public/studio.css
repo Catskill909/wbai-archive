@@ -340,6 +340,39 @@
   border-color: transparent;
 }
 
+.studio-input-group { position: relative; display: block; }
+
+.studio-input--has-reveal { padding-right: 2.6rem; }
+
+.studio-reveal-btn {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 2.4rem;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; padding: 0;
+  color: var(--ink-faint);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.studio-reveal-btn:hover { color: var(--ink); }
+.studio-reveal-btn:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+.studio-reveal-icon {
+  width: 20px; height: 20px;
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* One icon shown at a time, chosen by aria-pressed rather than a duplicate
+   JS-managed class — the attribute is already the source of truth. */
+.studio-reveal-btn[aria-pressed="false"] .studio-reveal-icon--eye-off,
+.studio-reveal-btn[aria-pressed="true"]  .studio-reveal-icon--eye { display: none; }
+
 .studio-error {
   margin: 0;
   font-size: 0.85rem;
@@ -462,6 +495,17 @@
   color: var(--ink);
   text-align: right;
 }
+
+/* Reach is three or four rows, not twelve. Left unconstrained it stretches a
+   100rem section for a handful of bars, which reads as a chart with missing
+   data rather than a short one. The value column is wider than the default
+   because each row carries a count AND a percentage. */
+   The label column is widened from the 9rem default because these labels are
+   sentences, not show titles — "Elsewhere in the US" and a full IANA zone name
+   both clip at 9rem, and a truncated "America/New_Yo…" is exactly the kind of
+   label that gets misread as a city. */
+.bars--reach { max-width: 46rem; }
+.bars--reach .bar-row { grid-template-columns: minmax(0, 14rem) 1fr max-content; }
 
 /* ------------------------------------------------------------ meters */
 

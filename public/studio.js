@@ -43,6 +43,17 @@
     var input = document.getElementById('password');
     var submit = document.getElementById('submit');
     var error = document.getElementById('loginError');
+    var reveal = document.getElementById('revealPassword');
+
+    if (reveal) {
+      reveal.addEventListener('click', function () {
+        var showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        reveal.setAttribute('aria-pressed', String(!showing));
+        reveal.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+        input.focus();
+      });
+    }
 
     function fail(msg) {
       error.textContent = msg;
@@ -735,6 +746,36 @@
           return { label: s.title, value: s.seconds, display: listenTime(s.seconds) };
         }), 'listened');
       }
+
+      renderReach(u.reach);
+    }
+
+    // Reach — page views by reported timezone. Bars rather than a pie: three or
+    // four categories where one usually dwarfs the rest is exactly the case a
+    // pie reads worst, and the bar shares an axis with everything else here.
+    function renderReach(r) {
+      var node = document.getElementById('usageReach');
+      if (!node) return;
+      node.textContent = '';
+      if (!r || !r.total) {
+        node.appendChild(el('p', 'usage-empty',
+          'No page views counted yet. Reach began recording when this was '
+          + 'deployed — like every counter here, it does not backfill.'));
+        return;
+      }
+      // `unknown` is dropped once nothing is landing in it, but kept visible
+      // while it is non-zero: right after a deploy it is simply everyone still
+      // running a cached page, and hiding it would make the other three read as
+      // shares of a whole they are not yet a whole of.
+      barChart(node, r.buckets
+        .filter(function (b) { return b.key !== 'unknown' || b.count > 0; })
+        .map(function (b) {
+          return {
+            label: b.label,
+            value: b.count,
+            display: num(b.count) + '  ·  ' + b.pct + '%',
+          };
+        }), 'page views');
     }
 
     function load() {

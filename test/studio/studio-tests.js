@@ -176,7 +176,11 @@ async function run() {
   }
 
   // ----------------------------------------------------------------- enabled
-  const on = startServer(PORT_ON, { STUDIO_PASSWORD: PASSWORD }, FIXTURE);
+  // STATION_TZ is pinned rather than inherited: the reach tests below assert
+  // which zone counts as "local", and that must not depend on the timezone of
+  // whatever machine is running the suite.
+  const on = startServer(PORT_ON,
+    { STUDIO_PASSWORD: PASSWORD, STATION_TZ: 'America/New_York' }, FIXTURE);
   try {
     await waitReady(PORT_ON);
 
@@ -440,6 +444,79 @@ async function run() {
     ok('the retired searchterm event does not count as a search',
       afterTerm.totals.searches === usage.totals.searches + 1,
       `expected exactly one more search, got ${afterTerm.totals.searches}`);
+
+    /* REACH — the one visitor attribute collected, and the promise around it.
+     *
+     * A page view carries the browser's IANA timezone. The whole privacy claim
+     * rests on it being bucketed at ingest and discarded, so the fine-grained
+     * string exists only long enough to be classified: what may reach a file is
+     * `{ local: 41 }` and never `America/New_York`.
+     *
+     * That is an assertion of ABSENCE, which CLAUDE.md §3a warns is exactly the
+     * kind that keeps passing after the probe goes blind — a bucketer that threw
+     * away the event entirely would satisfy "the string is not on disk"
+     * perfectly. So each absence check below is paired with a count that MUST
+     * have moved, which fails if the beacons stopped arriving. */
+    const reachBefore = (await (await get(PORT_ON, '/api/studio/usage', authed)).json()).reach;
+    const zoneSecret = 'Australia/Broken_Hill';   // distinctive; greppable
+    await beacon({ t: 'pageview', z: 'America/New_York' });   // == STATION_TZ → local
+    await beacon({ t: 'pageview', z: 'America/Chicago' });    // → national
+    await beacon({ t: 'pageview', z: 'America/Sao_Paulo' });  // NOT US, despite America/
+    await beacon({ t: 'pageview', z: zoneSecret });           // → intl
+    await beacon({ t: 'pageview' });                          // stale client → unknown
+    await beacon({ t: 'pageview', z: '<script>x</script>' }); // junk → unknown, never a key
+    const reach = (await (await get(PORT_ON, '/api/studio/usage', authed)).json()).reach;
+    const grew = (k) => {
+      const now = reach.buckets.find((x) => x.key === k).count;
+      const was = reachBefore.buckets.find((x) => x.key === k).count;
+      return now - was;
+    };
+
+    ok('the station\'s own timezone counts as local',
+      grew('local') === 1, `local grew by ${grew('local')}`);
+    ok('another US zone counts as national, not local',
+      grew('national') === 1, `national grew by ${grew('national')}`);
+    // The America/ prefix is a trap: Sao_Paulo is not the United States. Both
+    // it and the Australian zone must land in intl, so +2 proves the prefix is
+    // not being used as the test for "US".
+    ok('America/Sao_Paulo is international, not US',
+      grew('intl') === 2, `intl grew by ${grew('intl')}`);
+    ok('a client that sends no zone, and a junk zone, both count as unknown',
+      grew('unknown') === 2, `unknown grew by ${grew('unknown')}`);
+    ok('the label names the timezone, never a city',
+      reach.buckets.find((x) => x.key === 'local').label === 'America/New_York'
+      && reach.stationTz === 'America/New_York',
+      JSON.stringify(reach.buckets.map((b) => b.label)));
+
+    // The absence checks, each backed by a count above that had to move.
+    ok('the raw timezone never reaches the report',
+      JSON.stringify(reach).indexOf(zoneSecret) < 0,
+      JSON.stringify(reach).slice(0, 200));
+    ok('a junk zone never becomes a bucket key',
+      reach.buckets.every((b) => ['local', 'national', 'intl', 'unknown'].indexOf(b.key) >= 0)
+      && JSON.stringify(reach).indexOf('script') < 0,
+      JSON.stringify(reach.buckets.map((b) => b.key)));
+
+    /* The disk. Polled rather than slept on, because the counters are written
+     * behind a 5s debounce — and the poll waits for `byZone` to APPEAR, which
+     * is what stops this from being the vacuous "nothing was written yet, so
+     * the secret is not in it" pass. */
+    let zoneDisk = '';
+    for (let i = 0; i < 80; i++) {
+      const dir = path.join(dataDirOf(on), 'stats');
+      zoneDisk = fs.existsSync(dir)
+        ? fs.readdirSync(dir).map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('')
+        : '';
+      if (zoneDisk.indexOf('byZone') >= 0) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    ok('self-test: the buckets really did reach the disk (so the check below can see)',
+      zoneDisk.indexOf('byZone') >= 0 && /"local":\s*\d+/.test(zoneDisk),
+      zoneDisk.slice(0, 200));
+    ok('the raw timezone never reaches the disk either',
+      zoneDisk.indexOf(zoneSecret) < 0 && zoneDisk.indexOf('Sao_Paulo') < 0
+      && zoneDisk.indexOf('America/') < 0,
+      zoneDisk.slice(0, 300));
 
     ok('the usage report carries a day series, not just totals',
       Array.isArray(usage.days) && usage.days.length === 30

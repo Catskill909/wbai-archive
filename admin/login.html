@@ -56,9 +56,23 @@
 
     <label class="studio-field">
       <span class="studio-field-label">Password</span>
-      <input class="studio-input" id="password" type="password" name="password"
-             autocomplete="current-password" required autofocus
-             aria-describedby="loginError">
+      <span class="studio-input-group">
+        <input class="studio-input studio-input--has-reveal" id="password" type="password" name="password"
+               autocomplete="current-password" required autofocus
+               aria-describedby="loginError">
+        <button class="studio-reveal-btn" id="revealPassword" type="button"
+                aria-pressed="false" aria-label="Show password" aria-controls="password">
+          <svg class="studio-reveal-icon studio-reveal-icon--eye" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <svg class="studio-reveal-icon studio-reveal-icon--eye-off" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+            <circle cx="12" cy="12" r="3"/>
+            <line x1="2" y1="2" x2="22" y2="22"/>
+          </svg>
+        </button>
+      </span>
     </label>
 
     <button class="studio-btn studio-btn--primary" id="submit" type="submit">Enter</button>

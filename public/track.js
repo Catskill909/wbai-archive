@@ -51,7 +51,33 @@
   }
 
   // ---- page view -----------------------------------------------------------
-  send({ t: 'pageview' });
+  //
+  // The pageview carries the browser's own IANA timezone (`America/New_York`),
+  // and it is the ONLY attribute of a visitor this file has ever sent. It is
+  // here to answer one question — does this station reach past its own signal —
+  // without going near an address: the IP is never read, resolved, retained or
+  // sent anywhere, so the "no stored or hashed IP" promise is untouched.
+  //
+  // What it costs, stated plainly because the README has to say it too: a
+  // timezone is a classic fingerprinting *signal*. It is not one here, because
+  // there is nothing to join it to — the server files it under one of four
+  // fixed buckets (local / national / intl / unknown) and increments a counter,
+  // so what reaches the disk is `{ local: 41 }`, not a string attached to a
+  // visit. But it is the first
+  // visitor attribute collected at all, and that is a real change of kind, not
+  // just of degree.
+  //
+  // Bucketing happens SERVER-side, for the same reason show attribution does:
+  // this file stays ignorant, the buckets can be changed without a stale cached
+  // page sending the wrong shape, and the fine-grained string never lands in a
+  // file. A browser that refuses to say (or an old cached page) sends nothing
+  // and counts as `unknown` rather than being guessed at.
+  function timezone() {
+    try {
+      return (Intl.DateTimeFormat().resolvedOptions().timeZone || '').slice(0, 64);
+    } catch (e) { return ''; }
+  }
+  send({ t: 'pageview', z: timezone() });
 
   // ---- plays ---------------------------------------------------------------
   //
