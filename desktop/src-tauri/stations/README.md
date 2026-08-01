@@ -61,43 +61,28 @@ between stations.
   Signing an affiliate's app with Pacifica's certificate would name Pacifica as
   the developer of software they don't own.
 
-## What the server side already parameterizes
+## What's the same across stations, and what isn't
 
-Only the desktop shell reads *these* profiles, but the server a station deploys
-is no longer entirely hardcoded. As of 2026-07-30 it takes four environment
-variables, each with a working default, and the full annotated list is
-[`.env.example`](../../../.env.example):
+Every station deployed from this template gets, without touching any code:
 
-| Variable | Per station |
-| --- | --- |
-| `STATION_ID` | Which station this deployment is. Stamped into `.instance.json` so a data volume restored or attached to the wrong app is caught rather than silently merged. |
-| `DATA_DIR` | Everything the server persists, under one path — the same string as the volume mount. One setting, not three. |
-| `STUDIO_PASSWORD` | Enables that station's private view at `/studio`. Unset and the routes do not exist at all, which is the right default for a station that doesn't want one. |
-| `STUDIO_SECRET`, `STUDIO_SESSION_HOURS` | Optional session tuning. |
-| `USAGE_TRACKING` | Whether to count plays, live tune-ins, page views, searches and shares at all. `off` and the ingest route is never registered — nothing is counted. |
+- **Its own name, icon and installer artwork** — the desktop app is built and
+  signed per station, so it never looks like, or gets mistaken for, another
+  station's app.
+- **A private dashboard it can turn on or leave off** — a password-gated view
+  for the station's own staff, invisible to everyone else until a password is
+  set.
+- **A say in whether visitor usage is measured at all** — a station can turn
+  usage counting off entirely, or leave it on; nothing about a visitor is
+  identifiable either way.
+- **Its own storage, kept separate** — each station's data is stamped with the
+  station's identity, so it can't end up mixed with, or mistaken for, another
+  station's.
 
-The rule these follow, and the one to keep following: **a per-station difference
-should be a setting, never a code edit.** The moment it is a code edit, every
-station is a fork, and forks do not get each other's fixes.
+Not yet turned into a simple per-station setting: which archive, schedule,
+artwork and stream sources the app pulls from, the branding and display copy
+throughout the app, and the starting set of show descriptions. Today, adapting
+these for a new station is a code change rather than a switch to flip.
 
-Storage in particular has a station-independent gotcha worth reading before the
-second deployment: Coolify has been observed ignoring the compose `volumes:`
-block, and a Dockerfile `VOLUME` line with no explicit mount silently creates a
-throwaway anonymous volume. `/healthz` now reports `storage.mounted` and
-`storage.instanceId` so this is *read* rather than assumed. See
-[DEPLOYMENT.md](../../../docs/DEPLOYMENT.md) step 5.
-
-## What is still not parameterized
-
-The web app the shell points at still has the station baked into its **content**:
-
-- the upstream hosts in the `UPSTREAM` object in `server.js` — the biggest piece,
-  since every station has its own archive, schedule, artwork and stream hosts;
-- display copy, the station name and logo, and the non-affiliation notice across
-  `public/`;
-- `seed/showinfo.json`, which is WBAI's harvested descriptions;
-- the studio's own header, which reads `STATION_ID` for the badge but nothing
-  else.
-
-A profile here only renames the window around all of that. The full plan is
-item 4 in [ROADMAP.md](../../../docs/ROADMAP.md).
+The technical detail behind all of this — environment variables, file paths,
+and exactly what's still hardcoded — is in
+[docs/station-config.md](../../../docs/station-config.md).

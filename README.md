@@ -19,9 +19,9 @@ an archived broadcast.
 
 ## Features
 
-- **Live archive listing** — ~500 recent broadcasts read from WBAI's own podcast
-  feeds (`archive2.wbai.org/xml/<show>.xml`), with search, category filters, and
-  sortable columns (show, air date, retention, duration).
+- **Live archive listing** — ~500 recent broadcasts read live from WBAI's own
+  podcast feeds, with search, category filters, and sortable columns (show, air
+  date, retention, duration).
 - **Working audio** — a persistent bottom player for archived shows and a
   header live player for the 99.5 FM stream, each with a loading spinner that
   resolves to a pause control once connected.
@@ -41,8 +41,13 @@ an archived broadcast.
   doesn't publish for a show is simply left out rather than shown empty.
 - **Real show artwork** — thumbnails for each show, proxied from WBAI's schedule
   system, with a tasteful category-tinted placeholder when a show has no photo.
+- **List or gallery view** — switch between a compact table and an artwork-led
+  gallery of cards, whichever you'd rather browse by. Remembered on your device.
 - **On-air / up-next** — the header shows what's playing now and what's next,
-  refreshed from WBAI's now-playing feed.
+  refreshed from WBAI's now-playing feed. Tapping it opens a full now-playing
+  screen with artwork, host, air times and a volume control; closing it doesn't
+  stop the stream — it keeps playing from the bottom bar so you can carry on
+  browsing while you listen.
 - **Lock screen & hardware controls** — full Media Session support: show title,
   host, and artwork on the iOS/Android lock screen, macOS Now Playing, and car
   head units, with play/pause, ±15s skip, scrubbing, and next/previous show from
@@ -62,18 +67,12 @@ an archived broadcast.
 - **Responsive** — a multi-column table on desktop/tablet that collapses to
   stacked cards on phones. Light and dark themes both supported (follows the
   system preference).
-- **Accessible, and audited rather than assumed** — a skip link, semantic
-  landmarks, visible focus rings, and a focus trap that returns focus where it
-  came from on every overlay (info sheet, live player, menu, lightbox), each
-  closable with `Escape`. The category dropdown is a real keyboard listbox
-  (Arrow/Home/End/`Escape`, `role="listbox"`, `aria-selected`), loading and
-  search results are announced through live regions, decorative icons are hidden
-  from screen readers and duplicate controls are kept out of the tab order,
-  touch targets meet WCAG 2.2 § 2.5.8, and 23 `prefers-reduced-motion` blocks
-  mean the animation-heavy parts stand down when asked. The theme is applied
-  before first paint, so a light-mode reader on a dark phone never gets a flash.
-  The standing audit — including what is still open — is
-  [docs/accessibility.md](docs/accessibility.md).
+- **Accessibility** — fully usable by keyboard
+  and screen reader alike, with visible focus so you always know where you are.
+  Every overlay (show info, live player, menu) closes with a single key press
+  and returns you right where you left off. Touch targets are sized for real
+  fingers, animations stand down for anyone who's asked their device to reduce
+  motion, and the page never flashes the wrong theme for a split second on load.
 - **A private station view at `/studio`** — password-gated, off entirely unless
   `STUDIO_PASSWORD` is set (unset, the routes are never registered, so it is
   indistinguishable from any unknown path). Same design language and the same
@@ -94,8 +93,7 @@ an archived broadcast.
   Charts are hand-drawn SVG and CSS with no charting library — the app's CSP
   forbids a CDN script, and the marks inherit the same design tokens, so both
   themes work with no extra code. Sessions are signed cookies with no
-  server-side store, so a restart never signs anyone out. See
-  [docs/admin-page.md](docs/admin-page.md).
+  server-side store, so a restart never signs anyone out.
 - **Counts, without tracking anyone** — the station can see **how long people
   actually listened**, per show, alongside plays, live tune-ins, page views,
   searches and shares. Time is the honest number: a play is a click, and the two
