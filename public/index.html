@@ -430,6 +430,16 @@
                   <path d="m4.6 8.2 6.3 4.5a2 2 0 0 0 2.2 0l6.3-4.5" />
                 </svg>
                 <span>Contact</span></a></li>
+            <!-- Opens the same framed modal as Donate (app.js, drawer IIFE), just
+               pointed at the privacy policy URL instead. -->
+            <li><a href="https://docs.pacifica.org/wbai/wbai-archive-privacy.php" id="menuPrivacy" target="_blank"
+                rel="noopener noreferrer" aria-haspopup="dialog" aria-controls="donateModal">
+                <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 3.5l7 2.5v5.4c0 4.6-3 8.2-7 9.6-4-1.4-7-5-7-9.6V6l7-2.5z" />
+                  <path d="M9.3 12.2l1.9 1.9 3.5-3.9" />
+                </svg>
+                <span>Privacy Policy</span></a></li>
             <li><a href="https://wbai.org" target="_blank" rel="noopener noreferrer">
                 <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -483,11 +493,14 @@
     <img id="lightboxImg" alt="">
   </div>
 
-  <!-- Donate modal: embeds WBAI's real donate page (docs.pacifica.org) in an
-     iframe so the flow never leaves the site. The page has a white background,
-     so the close control is styled for a light surface. The iframe src is set
-     on first open (lazy) so the donate page isn't fetched on every page load.
-     Reuses the scrim/dialog/focus-trap/inert pattern of the other overlays. -->
+  <!-- Framed content modal: embeds a docs.pacifica.org page (Donate, Privacy
+     Policy) in an iframe so the flow never leaves the site. Shared by both the
+     Donate button/menu item and the Privacy Policy menu item — app.js swaps
+     the iframe src and dialog label per opener. The page has a white
+     background, so the close control is styled for a light surface. The
+     iframe src is set on first open (lazy) so nothing is fetched until someone
+     actually opens it. Reuses the scrim/dialog/focus-trap/inert pattern of the
+     other overlays. -->
   <div class="donate-scrim" id="donateScrim"></div>
   <div class="donate-modal" id="donateModal" role="dialog" aria-modal="true" aria-label="Donate to WBAI"
     aria-hidden="true">

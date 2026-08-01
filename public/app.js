@@ -2495,23 +2495,28 @@
     closeLightbox();
   });
 
-  // ---------------- Donate modal ----------------
-  // The Donate button embeds WBAI's real donate page in an iframe so the flow
-  // never leaves the site. Same scrim/dialog/focus-trap/inert lifecycle as the
-  // live player. The iframe src is set on first open so the page isn't fetched
-  // until someone actually wants to donate.
+  // ---------------- Framed content modal (Donate, Privacy Policy) ----------------
+  // The Donate button and the drawer's Privacy Policy item both embed a
+  // docs.pacifica.org page in the same iframe modal so the flow never leaves
+  // the site. Same scrim/dialog/focus-trap/inert lifecycle as the live player.
+  // The iframe src is only (re)set when it actually changes, so switching
+  // between the two doesn't refetch on every open.
   var DONATE_URL = 'https://docs.pacifica.org/wbai/donate/';
+  var PRIVACY_URL = 'https://docs.pacifica.org/wbai/wbai-archive-privacy.php';
   var donateBtn = document.getElementById('donateBtn');
   var donateModal = document.getElementById('donateModal');
   var donateScrim = document.getElementById('donateScrim');
   var donateClose = document.getElementById('donateClose');
   var donateFrame = document.getElementById('donateFrame');
   var donateReturnFocus = null;
+  var donateFrameSrc = '';
   function donateOpen(){ return donateModal.classList.contains('show'); }
-  function openDonate(){
+  function openFrameModal(url, dialogLabel, closeLabel){
     if(donateOpen()) return;
     donateReturnFocus = document.activeElement;
-    if(!donateFrame.src) donateFrame.src = DONATE_URL;   // lazy: load on first open
+    if(donateFrameSrc !== url){ donateFrame.src = url; donateFrameSrc = url; }
+    donateModal.setAttribute('aria-label', dialogLabel);
+    donateClose.setAttribute('aria-label', closeLabel);
     donateScrim.classList.add('show');
     donateModal.classList.add('show');
     donateModal.setAttribute('aria-hidden', 'false');
@@ -2520,6 +2525,8 @@
     donateClose.focus();
     document.addEventListener('keydown', onDonateKey);
   }
+  function openDonate(){ openFrameModal(DONATE_URL, 'Donate to WBAI', 'Close donate window'); }
+  function openPrivacy(){ openFrameModal(PRIVACY_URL, 'Privacy Policy', 'Close privacy policy window'); }
   function closeDonate(){
     if(!donateOpen()) return;
     donateScrim.classList.remove('show');
@@ -3067,6 +3074,13 @@
       e.preventDefault();
       closeMenu();
       openDonate();
+    });
+    var privacyLink = document.getElementById('menuPrivacy');
+    if(privacyLink) privacyLink.addEventListener('click', function(e){
+      if(e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;  // let modified clicks use the href
+      e.preventDefault();
+      closeMenu();
+      openPrivacy();
     });
   })();
 
