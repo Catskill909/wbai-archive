@@ -32,6 +32,7 @@ const PASSWORD = 'correct-horse-battery-staple';
 const PORT_ON = 8123;
 const PORT_OFF = 8124;
 const PORT_OLD = 8125;
+const PORT_ROLL = 8126;
 const ROOT = path.join(__dirname, '..', '..');
 
 let failures = 0;
@@ -635,6 +636,92 @@ async function run() {
       `plays ${u2.totals.plays} (6 + 1), pageviews ${u2.totals.pageviews}`);
   } finally {
     upg.kill('SIGKILL');
+  }
+
+  // ------------------------------------------------ surviving a month rollover
+  /**
+   * The per-show numbers must survive 00:00 UTC on the 1st. They did not.
+   *
+   * `topShows` and the table's plays/listened columns all iterated
+   * `statsStore.days` — one *calendar* month, replaced with an empty object at
+   * the rollover — while the day chart beside them already read the month files
+   * and carried on regardless. So at midnight UTC on 2026-08-01 the ranking
+   * emptied and every per-show figure read zero, with nothing logged, no error,
+   * and every other number on the page healthy. Only the shape of the failure
+   * ("all the show data at once, on the 1st") pointed anywhere.
+   *
+   * The window is 30 rolling days, so it reaches into the previous month's file
+   * on every day of the month except the 30th and 31st — on those two the whole
+   * window genuinely fits inside one month and there is nothing cross-month to
+   * assert. Seed a day in the previous month, add a current-month day live, and
+   * require the total to include both: a probe that stops seeing either half
+   * fails rather than passing quietly.
+   */
+  const rollDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wbai-rollover-'));
+  fs.writeFileSync(path.join(rollDir, 'feeds.json'), JSON.stringify(FIXTURE));
+  fs.mkdirSync(path.join(rollDir, 'stats'), { recursive: true });
+
+  const nowUTC = new Date();
+  const firstOfMonth = Date.UTC(nowUTC.getUTCFullYear(), nowUTC.getUTCMonth(), 1);
+  const prevLastMs = firstOfMonth - 86400000;
+  const prevLast = new Date(prevLastMs).toISOString().slice(0, 10);
+  const todayMs = Date.UTC(nowUTC.getUTCFullYear(), nowUTC.getUTCMonth(), nowUTC.getUTCDate());
+  const prevInWindow = Math.round((todayMs - prevLastMs) / 86400000) <= 29;
+
+  fs.writeFileSync(path.join(rollDir, 'stats', `${prevLast.slice(0, 7)}.json`), JSON.stringify({
+    station: 'wbai',
+    month: prevLast.slice(0, 7),
+    days: {
+      [prevLast]: {
+        pageviews: 5, plays: 2, live: 0, searches: 0, shares: 0,
+        listenSeconds: 120, liveSeconds: 0,
+        byShow: { alpha: 2 }, secondsByShow: { alpha: 120 },
+      },
+    },
+  }));
+
+  const roll = spawn(process.execPath, ['server.js'], {
+    cwd: ROOT,
+    env: Object.assign({}, process.env,
+      { PORT: String(PORT_ROLL), DATA_DIR: rollDir, STUDIO_PASSWORD: PASSWORD }),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  roll.stdout.on('data', () => {});
+  roll.stderr.on('data', (d) => process.stderr.write(`[server:${PORT_ROLL}] ${d}`));
+  try {
+    await waitReady(PORT_ROLL);
+    const login3 = await post(PORT_ROLL, '/api/studio/login', { password: PASSWORD });
+    const cookie3 = { Cookie: (login3.headers.get('set-cookie') || '').split(';')[0] };
+
+    await post(PORT_ROLL, '/api/ev', { t: 'play', u: 'a1' });
+    await post(PORT_ROLL, '/api/ev', { t: 'listen', u: 'a1', s: 30 });
+
+    // What the numbers must be if BOTH months are in view, and what the bug
+    // produced: the current month alone.
+    const wantPlays = prevInWindow ? 3 : 1;
+    const wantSecs = prevInWindow ? 150 : 30;
+    const both = prevInWindow ? ' across a month boundary' : ' (window is inside one month today)';
+
+    const u3 = await (await get(PORT_ROLL, '/api/studio/usage', cookie3)).json();
+    const top = (u3.topShows || []).find((s) => s.slug === 'alpha');
+    ok(`top shows sum the whole 30-day window${both}`,
+      top && top.plays === wantPlays && top.seconds === wantSecs,
+      `expected ${wantPlays}p/${wantSecs}s, got ${JSON.stringify(top)}`);
+
+    const s3 = await (await get(PORT_ROLL, '/api/studio/stats', cookie3)).json();
+    const rowA = (s3.shows || []).find((s) => s.slug === 'alpha');
+    ok(`the per-show columns sum the whole 30-day window${both}`,
+      rowA && rowA.plays === wantPlays && rowA.listened === wantSecs,
+      `expected ${wantPlays}p/${wantSecs}s, got ${JSON.stringify(rowA)}`);
+
+    // The day series already read the month files; assert it still agrees with
+    // the aggregates above, so the two can't drift apart again.
+    const prevRow = (u3.days || []).find((d) => d.day === prevLast);
+    ok('the day series and the per-show totals cover the same window',
+      prevInWindow ? (prevRow && prevRow.listenSeconds === 120) : !prevRow,
+      `${prevLast}: ${JSON.stringify(prevRow)}`);
+  } finally {
+    roll.kill('SIGKILL');
   }
 
   console.log(failures ? `\n${failures} failure(s)` : '\nall passed');

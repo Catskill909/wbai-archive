@@ -765,6 +765,29 @@ minutes heal and the play is simply gone. The same outage therefore always
 presents as "listened, never played" — never the reverse — which points at
 attribution instead of at persistence.
 
+**Every per-show number vanished at midnight UTC on the 1st.** On 2026-08-01
+"Most listened shows" went to its empty state and the table's *Plays* and
+*Listened* columns all read zero, while the day chart, the totals and everything
+else on the page stayed correct. The counters were fine and nothing was lost:
+the three aggregates iterated `statsStore.days`, which holds **one calendar
+month** and is swapped for an empty object at the rollover. The day series
+already fell back to the previous month's file; the show aggregates never did,
+so they collapsed the moment the month changed.
+
+All of them now go through `recentDays(30)`, which returns the day records for a
+**rolling** 30-day window — memory for the current month, the month file for
+anything earlier, cached per call so a 30-day window costs at most two reads.
+The 1st now looks like the 2nd. `test/studio/` seeds a day in the previous month
+plus one in the current month and requires the totals to include both, so
+neither half can go missing unnoticed; on the 30th and 31st the window genuinely
+fits inside one month, and the test says so rather than passing vacuously.
+Verified by reverting the aggregation and watching it go red.
+
+The general lesson is the one in CLAUDE.md §3a: *the reporting window and the
+storage layout are different things, and code that conflates them works fine
+until the calendar disagrees.* Anything summing usage must go through
+`recentDays`, never `statsStore.days` directly.
+
 `flushOnExit` covers the graceful stop and did its job; a SIGKILL, an OOM or a
 host reboot has no signal to catch. The debounce is now **5 seconds** — still
 tens of beacons per write on a busy minute, with 12× less to lose — and

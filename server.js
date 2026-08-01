@@ -2069,15 +2069,52 @@ async function ingestEvent(req, res) {
   return done();
 }
 
-/** Recent days, newest last, plus the totals the dashboard leads with. */
-function usageReport(days = 30) {
+/**
+ * The day records for the last `days` days, newest last, as `{ day, rec }`.
+ *
+ * **Every usage aggregate must come through here.** Iterating `statsStore.days`
+ * directly reads one *calendar* month, and that store is replaced with an empty
+ * one at 00:00 UTC on the 1st — which is exactly how the top-shows chart and the
+ * table's play counts went blank on 2026-08-01 while the day chart, which
+ * already read the month files, carried on fine. A rolling window has no such
+ * cliff: the 1st of the month looks like the 2nd.
+ *
+ * The current month is read live from memory (a day's counters are only on disk
+ * after the debounce); earlier months come from their file, cached per call, so
+ * a 30-day window costs at most two reads rather than thirty.
+ */
+function recentDays(days = 30) {
   const out = [];
+  const files = new Map();
   const now = Date.now();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now - i * 86400000).toISOString().slice(0, 10);
-    const rec = (d.slice(0, 7) === statsMonth ? statsStore.days[d] : null)
-      || (readJsonFile(statsMonthPath(d.slice(0, 7)), { days: {} }).days || {})[d]
-      || null;
+    const m = d.slice(0, 7);
+    if (m !== statsMonth && !files.has(m)) {
+      files.set(m, readJsonFile(statsMonthPath(m), { days: {} }).days || {});
+    }
+    const rec = (m === statsMonth ? statsStore.days[d] : files.get(m)[d]) || null;
+    out.push({ day: d, rec });
+  }
+  return out;
+}
+
+/** Sum a per-slug map (`byShow`, `secondsByShow`) across a window of days. */
+function sumBySlug(window, key) {
+  const total = new Map();
+  for (const { rec } of window) {
+    for (const [slug, n] of Object.entries((rec && rec[key]) || {})) {
+      if (Number.isFinite(n)) total.set(slug, (total.get(slug) || 0) + n);
+    }
+  }
+  return total;
+}
+
+/** Recent days, newest last, plus the totals the dashboard leads with. */
+function usageReport(days = 30) {
+  const out = [];
+  const window = recentDays(days);
+  for (const { day: d, rec } of window) {
     out.push({
       day: d,
       pageviews: rec ? rec.pageviews : 0,
@@ -2089,20 +2126,12 @@ function usageReport(days = 30) {
       liveSeconds: (rec && rec.liveSeconds) || 0,
     });
   }
-  const byShow = new Map();
-  const secsByShow = new Map();
-  for (const rec of Object.values(statsStore.days)) {
-    if (!rec) continue;
-    for (const [slug, n] of Object.entries(rec.byShow || {})) {
-      byShow.set(slug, (byShow.get(slug) || 0) + n);
-    }
-    for (const [slug, n] of Object.entries(rec.secondsByShow || {})) {
-      secsByShow.set(slug, (secsByShow.get(slug) || 0) + n);
-    }
-  }
+  const byShow = sumBySlug(window, 'byShow');
+  const secsByShow = sumBySlug(window, 'secondsByShow');
   const titles = feedStore;
+  const firstWithData = window.find((w) => w.rec);
   return {
-    since: Object.keys(statsStore.days).sort()[0] || today(),
+    since: (firstWithData && firstWithData.day) || today(),
     month: statsMonth,
     searchTermsRecorded: false,
     // Beacons refused by the per-address ceiling since boot. Non-zero means the
@@ -2446,21 +2475,13 @@ function studioStats() {
     }
   }
 
-  // Plays this month, by slug — merged into the rows below so the table can
-  // answer "how many plays did THIS show get", which a top-12 chart cannot.
-  const playsBySlug = new Map();
-  for (const rec of Object.values(statsStore.days || {})) {
-    if (!rec || !rec.byShow) continue;
-    for (const [slug, n] of Object.entries(rec.byShow)) {
-      playsBySlug.set(slug, (playsBySlug.get(slug) || 0) + n);
-    }
-  }
-  const secondsBySlug = new Map();
-  for (const rec of Object.values(statsStore.days || {})) {
-    for (const [slug, n] of Object.entries((rec && rec.secondsByShow) || {})) {
-      secondsBySlug.set(slug, (secondsBySlug.get(slug) || 0) + n);
-    }
-  }
+  // Plays over the last 30 days, by slug — merged into the rows below so the
+  // table can answer "how many plays did THIS show get", which a top-12 chart
+  // cannot. Same window as the usage report, and for the same reason: see
+  // recentDays().
+  const usageWindow = recentDays(30);
+  const playsBySlug = sumBySlug(usageWindow, 'byShow');
+  const secondsBySlug = sumBySlug(usageWindow, 'secondsByShow');
   shows.forEach((s) => {
     s.plays = playsBySlug.get(s.slug) || 0;
     s.listened = secondsBySlug.get(s.slug) || 0;
