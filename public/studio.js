@@ -519,7 +519,7 @@
     /* ---------------- the archive stats ---------------- */
 
     var stats = null;                 // kept for re-render on resize and sort
-    var sortKey = 'seconds', sortAsc = false;
+    var sortKey = 'title', sortAsc = true;
 
     function num(n) { return Number(n).toLocaleString(); }
     // Listening time spans seconds on day one and hundreds of hours later, so
@@ -716,7 +716,10 @@
       // already draws a measured zero as a baseline tick, which matters more
       // here — a quiet day and a broken collector must not look alike.
       // A silent cap is the worst kind: the numbers just read low. Say so.
-      var note = document.getElementById('usageNote');
+      // usageNote now lives inside the hover popover off the "Listening"
+      // heading, so this warning is anchored to the heading itself instead —
+      // it needs to stay visible without a hover, unlike the explainer prose.
+      var heading = document.getElementById('usageNote').closest('h2');
       var warn = document.getElementById('usageDropped');
       if (warn) warn.remove();
       if (u.droppedBeacons) {
@@ -724,7 +727,7 @@
           + ' beacons were refused by the per-address rate limit since this server '
           + 'started, so the figures below are an undercount.');
         w.id = 'usageDropped';
-        note.parentNode.insertBefore(w, note.nextSibling);
+        heading.parentNode.insertBefore(w, heading.nextSibling);
       }
 
       // Minutes listened per day, not plays — the same reason the ranking below

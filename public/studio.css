@@ -42,17 +42,15 @@
   gap: 0.75rem;
 }
 
+/* The logo+text lockup is .brand / .brand-text / .brand-logo / .brand-name
+   from styles.css — the listener app's own top-left wordmark, reused as-is so
+   the studio and the public site read as the same product. This rule is just
+   the <h1> reset around it. */
 .studio-brand {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
   min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .studio-brand-station {
@@ -156,6 +154,87 @@
   line-height: 1.4;
   color: var(--ink-faint);
   max-width: 46ch;
+}
+
+/* ------------------------------------------------------------ info popover */
+
+/* Explainer prose that used to sit permanently under a heading, now folded
+   into a hover/focus card off a small (i) trigger. The heading is
+   text-transform:uppercase with tracked letter-spacing — both are reset here
+   so the popover text reads as normal prose, not a continuation of the title. */
+.info-wrap {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 0.45rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border: 1px solid var(--outline-strong);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--ink-faint);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 0.68rem;
+  line-height: 1;
+  cursor: help;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.info-btn:hover,
+.info-btn:focus-visible {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: var(--accent-2-ink);
+  outline: none;
+}
+
+/* An elevated card, not a speech-bubble — same --elev-2 the rest of the page
+   uses for anything raised off the surface. Hidden with opacity+visibility
+   (not display) so the hover/focus transition can animate and so a
+   screen-reader in focus mode still finds it in the DOM. */
+.info-pop {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.5rem);
+  /* Centred on the trigger rather than left- or right-anchored: the grid is
+     auto-fit with dense packing, so a panel's column position isn't known
+     ahead of time and a fixed side would run off one edge or the other
+     depending on where it lands. */
+  left: 50%;
+  margin: 0;
+  width: max-content;
+  max-width: min(22rem, 90vw);
+  padding: 0.7rem 0.85rem;
+  background: var(--surface-3);
+  border: 1px solid var(--outline-strong);
+  border-radius: 10px;
+  box-shadow: var(--elev-2);
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.45;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%) translateY(-2px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+  pointer-events: none;
+}
+.info-wrap:hover .info-pop,
+.info-wrap:focus-within .info-pop {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
 }
 
 /* --------------------------------------------------------------- verdict */
@@ -671,7 +750,10 @@
 .table-wrap {
   overflow: auto;
   max-height: 30rem;
-  overscroll-behavior: contain;
+  /* NOT overscroll-behavior:contain — that stops scroll chaining once the
+     table hits its own top/bottom, trapping the page under the cursor until
+     it's moved off the table. Default (auto) lets the page keep scrolling
+     the instant the table runs out of room, same as a normal scrollable div. */
   border-bottom: 1px solid var(--outline);
 }
 

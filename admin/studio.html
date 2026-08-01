@@ -18,8 +18,15 @@
 <header class="studio-bar">
   <div class="studio-bar-inner">
     <h1 class="studio-brand">
-      <span class="studio-brand-name">Studio</span>
-      <span class="studio-brand-station" id="station">wbai</span>
+      <a class="brand" href="/" aria-label="Station studio">
+        <span class="brand-text">
+          <img class="brand-logo" src="/assets/header.png" width="1024" height="248" alt="WBAI">
+          <span class="brand-name">
+            Studio
+            <span class="studio-brand-station" id="station">wbai</span>
+          </span>
+        </span>
+      </a>
     </h1>
     <div class="studio-bar-actions">
       <!-- Same markup and behaviour as the listener app's toggle: the icon is
@@ -56,22 +63,30 @@
        app publishes — not a second source that can disagree with it. -->
 
   <section class="studio-section studio-section--wide">
-    <h2 class="studio-h2">The archive right now</h2>
-    <p class="studio-note">
-      Upstream keeps a rolling window — at most five episodes per show — so this
-      is a current inventory, not a running total. It goes down as well as up.
-    </p>
+    <h2 class="studio-h2">The archive right now
+      <span class="info-wrap">
+        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="archiveNote">i</button>
+        <p class="info-pop" id="archiveNote" role="tooltip">
+          Upstream keeps a rolling window — at most five episodes per show — so this
+          is a current inventory, not a running total. It goes down as well as up.
+        </p>
+      </span>
+    </h2>
     <div class="kpi-row" id="kpis"></div>
   </section>
 
   <section class="studio-section studio-section--wide">
-    <h2 class="studio-h2">Listening</h2>
-    <p class="studio-note" id="usageNote">
-      Counters only — there is no event log, no cookie, no session and no stored
-      or hashed IP, so nothing links two events to the same person. That means
-      <strong>unique listeners is not a number this app can produce</strong>, by
-      choice. Searches are counted; the words typed never leave the browser.
-    </p>
+    <h2 class="studio-h2">Listening
+      <span class="info-wrap">
+        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="usageNote">i</button>
+        <p class="info-pop" id="usageNote" role="tooltip">
+          Counters only — there is no event log, no cookie, no session and no stored
+          or hashed IP, so nothing links two events to the same person. That means
+          <strong>unique listeners is not a number this app can produce</strong>, by
+          choice. Searches are counted; the words typed never leave the browser.
+        </p>
+      </span>
+    </h2>
     <div class="kpi-row" id="usageKpis"></div>
     <div class="usage-split">
       <div>
@@ -83,29 +98,37 @@
         <div class="bars" id="usageShows"></div>
       </div>
     </div>
-    <h3 class="studio-h3">Reach</h3>
-    <p class="studio-note" id="reachNote">
-      Page views grouped by the <strong>timezone the browser reports</strong> —
-      never by IP address, which is still never read, resolved or stored. A
-      timezone is not a location: almost every browser in the eastern US reports
-      <code>America/New_York</code> whether it sits in Brooklyn or Miami, so the
-      first row is <strong>a clock, not a city</strong>. Read it as one question
-      only — does this station reach past its own signal — and at no finer
-      resolution than that. Travellers and VPNs count wherever their clock is set.
-    </p>
+    <h3 class="studio-h3">Reach
+      <span class="info-wrap">
+        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="reachNote">i</button>
+        <p class="info-pop" id="reachNote" role="tooltip">
+          Page views grouped by the <strong>timezone the browser reports</strong> —
+          never by IP address, which is still never read, resolved or stored. A
+          timezone is not a location: almost every browser in the eastern US reports
+          <code>America/New_York</code> whether it sits in Brooklyn or Miami, so the
+          first row is <strong>a clock, not a city</strong>. Read it as one question
+          only — does this station reach past its own signal — and at no finer
+          resolution than that. Travellers and VPNs count wherever their clock is set.
+        </p>
+      </span>
+    </h3>
     <div class="bars bars--reach" id="usageReach"></div>
   </section>
 
   <section class="studio-section">
-    <h2 class="studio-h2">Thinnest coverage</h2>
-    <p class="studio-note">
-      The 12 shows with the least audio in the window. Deliberately the bottom
-      of the ranking, not the top: upstream caps every feed at five episodes and
-      <span id="atCap">—</span> of <span id="capOf">—</span> shows sit at that
-      cap, so the top is a flat tie and says nothing. A show with a single
-      episode has either just launched, airs rarely, or has a feed that stopped
-      publishing — and only the last is a problem.
-    </p>
+    <h2 class="studio-h2">Thinnest coverage
+      <span class="info-wrap">
+        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="thinnestNote">i</button>
+        <p class="info-pop" id="thinnestNote" role="tooltip">
+          The 12 shows with the least audio in the window. Deliberately the bottom
+          of the ranking, not the top: upstream caps every feed at five episodes and
+          <span id="atCap">—</span> of <span id="capOf">—</span> shows sit at that
+          cap, so the top is a flat tie and says nothing. A show with a single
+          episode has either just launched, airs rarely, or has a feed that stopped
+          publishing — and only the last is a problem.
+        </p>
+      </span>
+    </h2>
     <div class="bars" id="thinnest"></div>
   </section>
 
@@ -124,38 +147,50 @@
   </section>
 
   <section class="studio-section">
-    <h2 class="studio-h2">Coverage</h2>
-    <p class="studio-note">
-      How complete the data behind each feed is. These are three separate
-      ratios, not a funnel: the program directory is keyed by title and the
-      feeds by archive slug, so a show can be missing from one and present in
-      the other. The title match is approximate for that reason.
-    </p>
+    <h2 class="studio-h2">Coverage
+      <span class="info-wrap">
+        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="coverageNote">i</button>
+        <p class="info-pop" id="coverageNote" role="tooltip">
+          How complete the data behind each feed is. These are three separate
+          ratios, not a funnel: the program directory is keyed by title and the
+          feeds by archive slug, so a show can be missing from one and present in
+          the other. The title match is approximate for that reason.
+        </p>
+      </span>
+    </h2>
     <div class="meters" id="coverage"></div>
     <div class="gaps" id="gaps"></div>
   </section>
 
   <section class="studio-section studio-section--wide">
-    <h2 class="studio-h2">Episodes by air date</h2>
-    <p class="studio-note">
-      Every day in the window, including the empty ones — the gaps are the
-      point. Each show holds only its five most recent episodes, so a daily show
-      covers five days and a monthly one covers five months. That is why the
-      right-hand side is dense and the left is sparse and broken: what survives
-      out there is a handful of infrequent shows, not a full schedule.
-    </p>
+    <h2 class="studio-h2">Episodes by air date
+      <span class="info-wrap">
+        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="perDayNote">i</button>
+        <p class="info-pop" id="perDayNote" role="tooltip">
+          Every day in the window, including the empty ones — the gaps are the
+          point. Each show holds only its five most recent episodes, so a daily show
+          covers five days and a monthly one covers five months. That is why the
+          right-hand side is dense and the left is sparse and broken: what survives
+          out there is a handful of infrequent shows, not a full schedule.
+        </p>
+      </span>
+    </h2>
     <div class="chart" id="perDay"></div>
   </section>
 
   <section class="studio-section studio-section--wide">
-    <h2 class="studio-h2">Every feed</h2>
-    <p class="studio-note">
-      Every show, with its plays <em>and time listened</em> over the last 30
-      days — sortable
-      and searchable, so a single show's figures are one filter away rather than
-      only visible if it reaches the top twelve. A play is a click; the listened
-      column is whether anyone stayed.
-    </p>
+    <h2 class="studio-h2">Every feed
+      <span class="info-wrap">
+        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="everyFeedNote">i</button>
+        <p class="info-pop" id="everyFeedNote" role="tooltip">
+          Every show, with its plays <em>and time listened</em> over the last 30
+          days — sortable
+          and searchable, so a single show's figures are one filter away rather than
+          only visible if it reaches the top twelve. A play is a click; the listened
+          column is whether anyone stayed.
+        </p>
+      </span>
+    </h2>
     <label class="studio-field studio-field--inline">
       <span class="studio-field-label">Filter</span>
       <input class="studio-input" id="showFilter" type="search"
@@ -181,23 +216,31 @@
   </section>
 
   <section class="studio-section">
-    <h2 class="studio-h2">Actions</h2>
-    <p class="studio-note">
-      The only controls here that change anything. Each one refreshes one of
-      <em>our</em> caches from WBAI — nothing writes to the station's systems,
-      and running one twice is the same as running it once. Re-checking every
-      feed is 122 requests to a small server, so it is rate limited.
-    </p>
+    <h2 class="studio-h2">Actions
+      <span class="info-wrap">
+        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="actionsNote">i</button>
+        <p class="info-pop" id="actionsNote" role="tooltip">
+          The only controls here that change anything. Each one refreshes one of
+          <em>our</em> caches from WBAI — nothing writes to the station's systems,
+          and running one twice is the same as running it once. Re-checking every
+          feed is 122 requests to a small server, so it is rate limited.
+        </p>
+      </span>
+    </h2>
     <div class="actions" id="actions"></div>
     <p class="studio-note" id="actionResult" role="status" aria-live="polite"></p>
   </section>
 
   <section class="studio-section">
-    <h2 class="studio-h2">Storage</h2>
-    <p class="studio-note">
-      Whether this deployment keeps its data across a redeploy. The only field
-      that proves it is the instance id staying the same across two deploys.
-    </p>
+    <h2 class="studio-h2">Storage
+      <span class="info-wrap">
+        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="storageNote">i</button>
+        <p class="info-pop" id="storageNote" role="tooltip">
+          Whether this deployment keeps its data across a redeploy. The only field
+          that proves it is the instance id staying the same across two deploys.
+        </p>
+      </span>
+    </h2>
     <div class="studio-verdict" id="storageVerdict" data-state="unknown">
       <span class="studio-verdict-dot" aria-hidden="true"></span>
       <span class="studio-verdict-text" id="storageVerdictText">Checking…</span>
@@ -217,14 +260,18 @@
   </section>
 
   <section class="studio-section">
-    <h2 class="studio-h2">Upstream</h2>
-    <p class="studio-note">
-      Timed from the requests the app already makes — no synthetic pings. WBAI
-      runs a small server, and monitoring it by adding traffic to it would be
-      self-defeating. A 404 is counted apart from a failure: 33 of the slugs the
-      listing advertises have no feed behind them, so probing them 404s by
-      design.
-    </p>
+    <h2 class="studio-h2">Upstream
+      <span class="info-wrap">
+        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="upstreamNote">i</button>
+        <p class="info-pop" id="upstreamNote" role="tooltip">
+          Timed from the requests the app already makes — no synthetic pings. WBAI
+          runs a small server, and monitoring it by adding traffic to it would be
+          self-defeating. A 404 is counted apart from a failure: 33 of the slugs the
+          listing advertises have no feed behind them, so probing them 404s by
+          design.
+        </p>
+      </span>
+    </h2>
     <div class="hosts" id="upstream"></div>
   </section>
 
