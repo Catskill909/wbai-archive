@@ -864,13 +864,13 @@
     updatePlayButtons();
   });
 
-  rowsEl.addEventListener('click', function(e){
+  function activateRowTarget(target){
     // the title/category block and the "More" link under it open the info sheet;
     // the play control keeps working exactly as before
-    var opener = e.target.closest('.more-link, .show-open');
+    var opener = target.closest('.more-link, .show-open');
     if(opener){ openSheetById(opener.dataset.id, opener); return; }
 
-    var btn = e.target.closest('.play-btn');
+    var btn = target.closest('.play-btn');
     if(btn){
       // On a gallery card the artwork play control does what the title/More do —
       // it opens the info sheet. It does *not* autoplay; playback is started
@@ -889,13 +889,46 @@
     // wasn't. Excluded: .row-actions (the play column owns its own taps, and a
     // near-miss there should do nothing rather than something else) and
     // .rss-badge, which navigates.
-    var row = e.target.closest('.row.body[data-id]');
-    if(row && !e.target.closest('.row-actions, .rss-badge')){
+    var row = target.closest('.row.body[data-id]');
+    if(row && !target.closest('.row-actions, .rss-badge')){
       // A drag that selected text ends in a click too; that isn't a tap.
       var sel = window.getSelection && window.getSelection();
       if(sel && sel.toString() && !sel.isCollapsed) return;
       openSheetById(row.dataset.id, row.querySelector('.show-text .show-open'));
     }
+  }
+
+  // iOS Safari swallows the click on a tap that lands while the page is still
+  // decelerating from a swipe: that tap's job is to halt the momentum scroll,
+  // and the synthetic click it would otherwise dispatch just never fires —
+  // touchstart/touchend still do. The result was "slide the list, tap a row,
+  // nothing happens; tap again and the sheet opens." Detect the tap ourselves
+  // from touchend (short move distance = tap, not a scroll/drag) and act on
+  // it directly, then have the click handler skip anything touchend already
+  // handled so a normal (non-mid-scroll) tap doesn't open the sheet twice.
+  var rowTouchStart = null;   // {x, y, target} | null
+  var lastRowTapAt = 0;
+  var ROW_TAP_SLOP = 10;      // px of finger movement still counted as a tap
+  var ROW_TAP_CLICK_GUARD_MS = 500;
+
+  rowsEl.addEventListener('touchstart', function(e){
+    var t = e.touches[0];
+    rowTouchStart = { x: t.clientX, y: t.clientY, target: e.target };
+  }, { passive: true });
+
+  rowsEl.addEventListener('touchend', function(e){
+    var start = rowTouchStart;
+    rowTouchStart = null;
+    if(!start) return;
+    var t = e.changedTouches[0];
+    if(Math.abs(t.clientX - start.x) > ROW_TAP_SLOP || Math.abs(t.clientY - start.y) > ROW_TAP_SLOP) return;
+    lastRowTapAt = Date.now();
+    activateRowTarget(start.target);
+  }, { passive: true });
+
+  rowsEl.addEventListener('click', function(e){
+    if(Date.now() - lastRowTapAt < ROW_TAP_CLICK_GUARD_MS) return;
+    activateRowTarget(e.target);
   });
 
   // Any element carrying the play button's data-* attributes can drive playback:
