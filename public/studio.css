@@ -199,18 +199,19 @@
 }
 
 /* An elevated card, not a speech-bubble — same --elev-2 the rest of the page
-   uses for anything raised off the surface. Hidden with opacity+visibility
-   (not display) so the hover/focus transition can animate and so a
-   screen-reader in focus mode still finds it in the DOM. */
+   uses for anything raised off the surface.
+   Positioned like .chart-tip: `position:fixed` at a --ix/--iy computed and
+   clamped to the viewport in JS (see wireInfoPopovers), not CSS-centred on
+   the trigger. A centred popover looked right until the trigger sat near the
+   left edge of the page (the very first headings do), where half the card
+   rendered off-screen. Toggled with .is-open, set by JS after it places the
+   card, rather than :hover — showing before the position is known would
+   flash the card at (0,0) for a frame. */
 .info-pop {
-  position: absolute;
+  position: fixed;
   z-index: 20;
-  top: calc(100% + 0.5rem);
-  /* Centred on the trigger rather than left- or right-anchored: the grid is
-     auto-fit with dense packing, so a panel's column position isn't known
-     ahead of time and a fixed side would run off one edge or the other
-     depending on where it lands. */
-  left: 50%;
+  left: var(--ix, 0);
+  top: var(--iy, 0);
   margin: 0;
   width: max-content;
   max-width: min(22rem, 90vw);
@@ -225,16 +226,12 @@
   line-height: 1.45;
   opacity: 0;
   visibility: hidden;
-  transform: translateX(-50%) translateY(-2px);
-  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+  transition: opacity 0.12s ease, visibility 0.12s;
   pointer-events: none;
 }
-.info-wrap:hover .info-pop,
-.info-wrap:focus-within .info-pop {
+.info-pop.is-open {
   opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(0);
-  pointer-events: auto;
 }
 
 /* --------------------------------------------------------------- verdict */

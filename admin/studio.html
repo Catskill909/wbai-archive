@@ -92,27 +92,27 @@
       <div>
         <h3 class="studio-h3">Minutes listened per day</h3>
         <div class="chart" id="usageDays"></div>
+        <h3 class="studio-h3">Reach
+          <span class="info-wrap">
+            <button class="info-btn" type="button" aria-label="About this section" aria-describedby="reachNote">i</button>
+            <p class="info-pop" id="reachNote" role="tooltip">
+              Page views grouped by the <strong>timezone the browser reports</strong> —
+              never by IP address, which is still never read, resolved or stored. A
+              timezone is not a location: almost every browser in the eastern US reports
+              <code>America/New_York</code> whether it sits in Brooklyn or Miami, so the
+              first row is <strong>a clock, not a city</strong>. Read it as one question
+              only — does this station reach past its own signal — and at no finer
+              resolution than that. Travellers and VPNs count wherever their clock is set.
+            </p>
+          </span>
+        </h3>
+        <div class="bars bars--reach" id="usageReach"></div>
       </div>
       <div>
         <h3 class="studio-h3">Most listened shows</h3>
         <div class="bars" id="usageShows"></div>
       </div>
     </div>
-    <h3 class="studio-h3">Reach
-      <span class="info-wrap">
-        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="reachNote">i</button>
-        <p class="info-pop" id="reachNote" role="tooltip">
-          Page views grouped by the <strong>timezone the browser reports</strong> —
-          never by IP address, which is still never read, resolved or stored. A
-          timezone is not a location: almost every browser in the eastern US reports
-          <code>America/New_York</code> whether it sits in Brooklyn or Miami, so the
-          first row is <strong>a clock, not a city</strong>. Read it as one question
-          only — does this station reach past its own signal — and at no finer
-          resolution than that. Travellers and VPNs count wherever their clock is set.
-        </p>
-      </span>
-    </h3>
-    <div class="bars bars--reach" id="usageReach"></div>
   </section>
 
   <section class="studio-section">

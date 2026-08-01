@@ -36,6 +36,46 @@
     label();
   })();
 
+  /* ---------------- info popovers ----------------
+     Same clamp-to-viewport idea as chart-tip below: a popover centred purely
+     in CSS on its trigger runs off-screen once the trigger sits near the left
+     edge of the page, which the first two section headings always do. */
+  (function () {
+    var btns = document.querySelectorAll('.info-btn');
+    if (!btns.length) return;
+    var openPop = null;
+
+    function place(btn, pop) {
+      var pad = 12;
+      var b = btn.getBoundingClientRect();
+      var r = pop.getBoundingClientRect();
+      var x = Math.min(Math.max(pad, b.left + b.width / 2 - r.width / 2),
+        window.innerWidth - r.width - pad);
+      var y = b.bottom + 8;
+      if (y + r.height + pad > window.innerHeight) y = b.top - r.height - 8;
+      pop.style.setProperty('--ix', x + 'px');
+      pop.style.setProperty('--iy', y + 'px');
+    }
+    function show(btn) {
+      var pop = btn.nextElementSibling;
+      if (!pop) return;
+      place(btn, pop);
+      pop.classList.add('is-open');
+      openPop = pop;
+    }
+    function hide() {
+      if (!openPop) return;
+      openPop.classList.remove('is-open');
+      openPop = null;
+    }
+    [].forEach.call(btns, function (btn) {
+      btn.addEventListener('pointerenter', function () { show(btn); });
+      btn.addEventListener('pointerleave', hide);
+      btn.addEventListener('focus', function () { show(btn); });
+      btn.addEventListener('blur', hide);
+    });
+  })();
+
   /* ---------------- login ---------------- */
   (function () {
     var form = document.getElementById('loginForm');
