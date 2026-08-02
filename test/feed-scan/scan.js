@@ -169,9 +169,11 @@ function parseFeed(xml) {
 
 async function probe(slug, prev) {
   const headers = {};
-  // Conditional GET: the feeds answer 304 with an empty body, which makes a full
-  // sweep almost free after the first one. No ETag and no gzip upstream, so
-  // If-Modified-Since is the whole optimisation.
+  // Conditional GET. Honoured upstream, but do not expect it to save anything on
+  // a daily run: archive2 rebuilds every feed in one batch, so every stored
+  // timestamp is older than the last rebuild and the answer is a full 200. It
+  // pays off only on back-to-back runs, and costs one header otherwise. See the
+  // Load section of README.md.
   if (!full && prev && prev.lastModified && prev.status === 200) {
     headers['If-Modified-Since'] = prev.lastModified;
   }

@@ -99,12 +99,35 @@ it.
 
 ## Load
 
-98 feeds, ~500 KB on a cold run, then near-zero: the feeds honour
-`If-Modified-Since` and answered **98/98 as `304`** on the second run. No `ETag`,
-no gzip upstream, so conditional GET is the whole optimisation.
+122 feeds, ~500 KB, **every run** — assume a full sweep and no savings.
+
+The scan sends `If-Modified-Since` and upstream honours it (verified 2026-08-02:
+a stored timestamp replayed against `/xml/dn.xml` returns `304`). It still almost
+never hits, because **archive2 rebuilds every feed in one batch**. Five unrelated
+shows, including ones with no new episode, all carried `Last-Modified` within a
+second of each other:
+
+```
+dn           Sun, 02 Aug 2026 13:04:43 GMT
+techtonic    Sun, 02 Aug 2026 13:04:44 GMT
+kwave        Sun, 02 Aug 2026 13:04:44 GMT
+salsasho     Sun, 02 Aug 2026 13:04:44 GMT
+dream        Sun, 02 Aug 2026 13:04:43 GMT
+```
+
+So any scan that runs hours after the last rebuild — which is every scheduled
+one — holds a timestamp older than the batch and gets a full body back. Live runs
+report `304s: 0`.
+
+An earlier note here claimed **98/98 `304`** and "near-zero after the first run".
+That was measured from two runs minutes apart, inside a single rebuild window. It
+was a true measurement of the wrong thing, and it does not describe the daily job.
+Conditional GET is kept because it costs nothing and pays off on back-to-back runs.
 
 Concurrency is pinned at **5** and should stay there. This is a small station's
-Apache, and the full sweep at 5-wide takes about ten seconds.
+Apache, and the full sweep at 5-wide takes about ten seconds — comfortably inside
+the workflow's 10-minute timeout, with the full sweep as the assumption rather
+than the exception.
 
 ## `selftest.js`, and why it is not optional
 
