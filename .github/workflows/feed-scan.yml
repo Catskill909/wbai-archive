@@ -37,9 +37,9 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'   # scan.js needs global fetch (18+). No dependencies to install.
 
@@ -48,7 +48,7 @@ jobs:
       # previous state and saves a fresh one. If the cache is ever evicted the
       # next run simply re-baselines and reports nothing — safe, not wrong.
       - name: Restore previous scan state
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: test/feed-scan/state.json
           key: feed-scan-state-${{ github.run_id }}
@@ -80,7 +80,7 @@ jobs:
       # and a standing change is not re-reported every single day.
       - name: Save scan state
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: test/feed-scan/state.json
           key: feed-scan-state-${{ github.run_id }}

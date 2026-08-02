@@ -33,7 +33,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -43,7 +43,7 @@ jobs:
         with:
           workspaces: desktop/src-tauri -> target
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
 
@@ -99,7 +99,7 @@ jobs:
           STATION_NAME: ${{ steps.cfg.outputs.name }}
         run: npm run build -- --bundles nsis --config src-tauri/stations/${{ steps.cfg.outputs.station }}.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: station-archive-windows-${{ steps.cfg.outputs.station }}
           if-no-files-found: error
@@ -111,7 +111,7 @@ jobs:
       # and Swatinem/rust-cache gets a real cache key.
       - name: Upload resolved Cargo.lock
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: cargo-lock
           if-no-files-found: warn
