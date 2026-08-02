@@ -18,7 +18,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { diff, parseFeed, slugsFromDropdown, slugsFromRows } = require('./scan.js');
+const { diff, parseFeed, slugsFromDropdown, slugsFromRows, NOTABLE } = require('./scan.js');
 
 let pass = 0;
 const failures = [];
@@ -202,6 +202,63 @@ check('the live baseline diffs clean against itself', () => {
   }
   const s = JSON.parse(fs.readFileSync(p, 'utf8'));
   assert.deepStrictEqual(diff(s, s), []);
+});
+
+console.log('\nnotable vs routine (this is what sets the exit status):');
+
+// Run #4 of the GitHub workflow failed on 79 changes, 77 of which were new
+// episodes and moving item counts. Left alone that is a failure mail every day,
+// and a daily failure mail is one nobody reads on the day the feeds die.
+check('an ordinary week of new episodes is NOT notable', () => {
+  // `dn` holds items at the cap on both sides, so this fixture is churn and
+  // nothing else — a moving cap is a separate, notable thing.
+  const prev = { dn: liveFeed({ slug: 'dn', items: 5, claimed: true }) };
+  const now = { dn: liveFeed({ slug: 'dn', items: 5, newest: '2026-08-02T12:00:00.000Z', claimed: true }) };
+  for (const s of ['kwave', 'techtonic']) {
+    prev[s] = liveFeed({ slug: s, items: 1, claimed: true });
+    now[s] = liveFeed({ slug: s, items: 2, newest: '2026-08-02T12:00:00.000Z', claimed: true });
+  }
+  const c = diff(state(prev, 5), { maxItems: 5, feeds: now });
+  assert.deepStrictEqual(kinds(c), ['ITEM_COUNT', 'ITEM_COUNT', 'NEW_EPISODE', 'NEW_EPISODE', 'NEW_EPISODE']);
+  assert.deepStrictEqual(c.filter((x) => NOTABLE.has(x.kind)), [], 'churn must not raise an alarm');
+});
+
+check('a new show with no feed yet is reported but NOT notable', () => {
+  const c = diff(state({}), { maxItems: 0, feeds: { cslatino: { slug: 'cslatino', status: 404 } } });
+  assert.deepStrictEqual(kinds(c), ['NEW_SLUG']);
+  assert.deepStrictEqual(c.filter((x) => NOTABLE.has(x.kind)), []);
+});
+
+// The other half of the split, and the half that matters: the kinds that killed
+// the site in July must still get through.
+check('the July failure mode IS notable', () => {
+  const c = diff(
+    state({ dn: liveFeed({ slug: 'dn' }) }),
+    { maxItems: 0, feeds: { dn: { slug: 'dn', status: 200, bytes: 0, items: 0, empty: true } } });
+  assert.deepStrictEqual(kinds(c.filter((x) => NOTABLE.has(x.kind))), ['FEED_LOST']);
+});
+
+check('a claim appearing without a feed IS notable', () => {
+  const c = diff(
+    state({ manrat: { slug: 'manrat', status: 404, claimed: false } }, 5),
+    { maxItems: 5, feeds: { manrat: { slug: 'manrat', status: 404, claimed: true } } });
+  assert.ok(c.filter((x) => NOTABLE.has(x.kind)).some((x) => x.kind === 'CLAIM_MISMATCH'), kinds(c));
+});
+
+check('a moved episode cap IS notable', () => {
+  const c = diff(
+    state({ dn: liveFeed({ slug: 'dn', items: 5 }) }, 5),
+    { maxItems: 20, feeds: { dn: liveFeed({ slug: 'dn', items: 20 }) } });
+  assert.ok(c.filter((x) => NOTABLE.has(x.kind)).some((x) => x.kind === 'CAP_CHANGED'), kinds(c));
+});
+
+// A kind nobody classified would be silently routine, i.e. silently invisible.
+check('every kind NOTABLE names is a kind diff can actually emit', () => {
+  const emitted = new Set(fs.readFileSync(path.join(__dirname, 'scan.js'), 'utf8')
+    .match(/kind: '[A-Z_]+'/g).map((m) => m.slice(7, -1)));
+  for (const k of NOTABLE) {
+    assert.ok(emitted.has(k), `NOTABLE lists ${k}, which diff never emits — a dead alarm`);
+  }
 });
 
 console.log('\nparsers:');

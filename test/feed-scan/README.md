@@ -24,11 +24,13 @@ node scan.js            # scan, diff against the last run, print a report
 node scan.js --json     # same, machine-readable
 node scan.js --no-save  # dry run, leave the snapshot alone
 node scan.js --full     # ignore stored Last-Modified, re-fetch every feed
+node scan.js --any-change  # exit 1 on routine churn too
 node selftest.js        # offline: prove the detector can still see changes
 ```
 
-Exit status is the point: **0 = nothing changed, 1 = something changed, 2 = the
-scan itself failed.** Cron it and only hear from it when it has something to say.
+Exit status is the point: **0 = nothing notable, 1 = something notable changed,
+2 = the scan itself failed.** Cron it and only hear from it when it has something
+to say.
 
 ```
 scan 2026-07-28T19:13:32.297Z
@@ -68,16 +70,32 @@ been visible from the feed directory, because there isn't one.
 
 ## What it reports
 
-| Change | Meaning |
+Every change is printed. Only the **notable** ones set the exit status, which is
+what decides whether the scheduled workflow fails and mails you.
+
+| Notable | Meaning |
 | --- | --- |
-| `NEW_FEED` | a slug we had never seen, already serving episodes |
-| `NEW_SLUG` | a new show, no feed yet — the one to watch |
-| `FEED_APPEARED` | a known 404 slug started serving. **This is the migration signal.** |
-| `FEED_LOST` | was serving, now isn't — including `200`-with-zero-bytes |
-| `ITEM_COUNT` | a feed's episode count moved |
-| `NEW_EPISODE` | newest `pubDate` advanced (routine; the healthy heartbeat) |
-| `SLUG_GONE` | a remembered slug is no longer offered anywhere |
 | `CAP_CHANGED` | **max episodes-per-feed moved — the migration plan is now out of date** |
+| `CLAIM_MISMATCH` | the listing advertises a feed that isn't there — the 2026-07-29 regression |
+| `FEED_UNFETCHED` | a live feed with no XML button: the harvest will never fetch it |
+| `FEED_LOST` | was serving, now isn't — including `200`-with-zero-bytes |
+| `FEED_APPEARED` | a known 404 slug started serving. **This is the migration signal.** |
+| `SLUG_GONE` | a remembered slug is no longer offered anywhere |
+
+| Routine | Meaning |
+| --- | --- |
+| `NEW_EPISODE` | newest `pubDate` advanced — the healthy heartbeat |
+| `ITEM_COUNT` | a feed's episode count moved |
+| `NEW_SLUG` | a new show, no feed yet — worth watching, not worth waking for |
+| `NEW_FEED` | a slug we had never seen, already serving episodes |
+| `CLAIM_RESOLVED` | a standing mismatch cleared — an alarm switching *off* |
+
+The split exists because it was got wrong first. The workflow's fourth run failed
+on 79 changes, 77 of them new episodes and item counts across three days: the
+archive working exactly as it should. Exiting `1` on any difference means a
+failure mail every single day, and a daily failure mail is one nobody opens on the
+day the feeds actually die. `--any-change` restores the old behaviour if you want
+it.
 
 ## Load
 

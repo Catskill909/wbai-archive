@@ -64,8 +64,8 @@ jobs:
           {
             echo '## WBAI feed scan'
             echo
-            if [ $CODE -eq 0 ]; then echo 'Nothing changed upstream.'
-            elif [ $CODE -eq 1 ]; then echo '**Something changed upstream — see below.**'
+            if [ $CODE -eq 0 ]; then echo 'Nothing notable upstream. Routine churn, if any, is listed below.'
+            elif [ $CODE -eq 1 ]; then echo '**Something notable changed upstream — see below.**'
             else echo '**The scan itself failed.** A scanner that has stopped working looks exactly like a quiet one, so this is treated as a failure too.'
             fi
             echo
@@ -88,6 +88,12 @@ jobs:
       # Failing the job is the notification: GitHub emails the repo owner when a
       # scheduled workflow fails, with no tokens, secrets or extra permissions.
       # A quiet day passes silently and sends nothing.
+      #
+      # scan.js exits 1 only for the NOTABLE change kinds. New episodes and moving
+      # item counts are the archive working, sixty-odd of them in an ordinary week;
+      # mailing those would be a daily failure notice, and a daily failure notice
+      # is one nobody reads on the day the feeds die. The summary above still lists
+      # them, so a green run is visibly green rather than merely quiet.
       - name: Report
         if: steps.scan.outputs.code != '0'
         run: |

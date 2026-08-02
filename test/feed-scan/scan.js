@@ -15,9 +15,16 @@
  *   node scan.js --json       same, machine-readable on stdout
  *   node scan.js --no-save    do not update state.json (dry run)
  *   node scan.js --full       ignore stored Last-Modified, re-fetch every feed
+ *   node scan.js --any-change exit 1 on routine churn too
  *
- * Exit status:  0 = nothing changed   1 = something changed   2 = scan failed
+ * Exit status:  0 = nothing notable   1 = something notable changed   2 = scan failed
  * So it is cron-able: non-zero means "a human should look."
+ *
+ * "Notable" is doing real work there. Sixty shows advance their newest pubDate
+ * in an ordinary week, so exiting 1 on *any* difference means a daily failure
+ * mail forever, and a daily failure mail is a mail nobody opens on the day the
+ * feeds actually die. Only NOTABLE kinds set the exit status; the rest are
+ * printed and then kept quiet about.
  */
 
 'use strict';
@@ -33,10 +40,29 @@ const UA = 'wbai-archive/1.0 (+https://github.com/Catskill909/wbai-archive)';
 const STATE_PATH = path.join(__dirname, 'state.json');
 const CONCURRENCY = 5; // a small station's Apache. Do not raise this.
 
+/**
+ * The kinds that mean a human should look now.
+ *
+ * Everything else is the archive working: new episodes arriving, item counts
+ * moving as the cap slides, a new show appearing in the listing before its feed
+ * exists. Those are reported — they are the evidence the scanner can still see —
+ * but they do not raise an alarm. CLAIM_RESOLVED is deliberately routine: it is
+ * an alarm switching *off*, which needs no one's attention.
+ */
+const NOTABLE = new Set([
+  'CAP_CHANGED',      // the cap moved; the migration arithmetic is stale
+  'CLAIM_MISMATCH',   // the 2026-07-29 regression, caught while it is still a claim
+  'FEED_UNFETCHED',   // a live feed the harvest will never fetch: silent content loss
+  'FEED_LOST',        // including 200-with-zero-bytes, the July failure mode
+  'FEED_APPEARED',    // the migration signal
+  'SLUG_GONE',        // a show we remember is no longer offered anywhere
+]);
+
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
 const noSave = args.includes('--no-save');
 const full = args.includes('--full');
+const anyChange = args.includes('--any-change');
 
 // ------------------------------------------------------------------ plumbing
 
@@ -282,7 +308,7 @@ function diff(prevState, now) {
 // always-saying-"no changes". selftest.js drives it offline; see §3a of
 // CLAUDE.md on why an assertion of absence has to prove it can still see the
 // thing it claims is absent.
-module.exports = { diff, parseFeed, slugsFromDropdown, slugsFromRows, slugsFromSchedule };
+module.exports = { diff, parseFeed, slugsFromDropdown, slugsFromRows, slugsFromSchedule, NOTABLE };
 
 if (require.main !== module) return;
 
@@ -341,9 +367,11 @@ if (require.main !== module) return;
   };
 
   const changes = diff(prevState, now);
+  const notable = changes.filter((c) => NOTABLE.has(c.kind));
+  const routine = changes.filter((c) => !NOTABLE.has(c.kind));
 
   if (asJson) {
-    console.log(JSON.stringify({ ...now, changes, firstRun: !prevState }, null, 2));
+    console.log(JSON.stringify({ ...now, changes, notable, firstRun: !prevState }, null, 2));
   } else {
     console.log(`scan ${now.scannedAt}`);
     console.log(`  slug sources: dropdown ${now.sources.dropdown}, rows ${now.sources.rows}, ` +
@@ -361,21 +389,35 @@ if (require.main !== module) return;
       console.log('    Publishing off `hasRSS` would put them in the app. Gate on the fetch.');
     }
 
+    const order = ['CAP_CHANGED', 'CLAIM_MISMATCH', 'FEED_UNFETCHED', 'FEED_LOST', 'FEED_APPEARED', 'SLUG_GONE', 'NEW_FEED', 'CLAIM_RESOLVED', 'NEW_SLUG', 'ITEM_COUNT', 'NEW_EPISODE'];
+    const list = (cs) => {
+      cs.slice().sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
+        .forEach((c) => console.log(`    ${c.kind.padEnd(15)} ${c.slug.padEnd(24)} ${c.detail}`));
+    };
+
     if (!prevState) {
       console.log('\n  first run — baseline written, nothing to diff against yet.');
     } else if (!changes.length) {
       console.log('\n  no changes since ' + prevState.scannedAt);
     } else {
-      console.log(`\n  ${changes.length} change(s) since ${prevState.scannedAt}:`);
-      const order = ['CAP_CHANGED', 'CLAIM_MISMATCH', 'FEED_UNFETCHED', 'FEED_LOST', 'NEW_FEED', 'FEED_APPEARED', 'CLAIM_RESOLVED', 'NEW_SLUG', 'SLUG_GONE', 'ITEM_COUNT', 'NEW_EPISODE'];
-      changes.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
-      for (const c of changes) console.log(`    ${c.kind.padEnd(15)} ${c.slug.padEnd(24)} ${c.detail}`);
+      if (notable.length) {
+        console.log(`\n  ${notable.length} NOTABLE change(s) since ${prevState.scannedAt}:`);
+        list(notable);
+      } else {
+        console.log(`\n  nothing notable since ${prevState.scannedAt}.`);
+      }
+      // Printed even though it is quiet, because "the archive is still moving" is
+      // the evidence that a silent scan is silent for the right reason.
+      if (routine.length) {
+        console.log(`\n  ${routine.length} routine change(s) — the archive working normally:`);
+        list(routine);
+      }
     }
   }
 
   if (!noSave) fs.writeFileSync(STATE_PATH, JSON.stringify(now, null, 1));
 
-  process.exit(prevState && changes.length ? 1 : 0);
+  process.exit(prevState && (anyChange ? changes.length : notable.length) ? 1 : 0);
 })().catch((e) => {
   console.error('scan failed:', (e && e.stack) || e);
   process.exit(2);
