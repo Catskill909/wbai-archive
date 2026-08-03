@@ -504,8 +504,19 @@ const feedMissAt = new Map();
 const FEED_MISS_RETRY_MS = 15 * 60 * 1000;
 const FEED_STALE_RETRY_MS = 10 * 60 * 1000;
 
+// The mirror case of the miss above: a slug the listing does NOT (or no longer)
+// claim, but whose feed may be live anyway. Confirmed 2026-08-03 — `poetandpoem`
+// had a working 5-item feed while the listing's button had quietly gone away, so
+// the show was invisible on the site with no signal anywhere that it should be
+// fetched at all. Checked far less often than a genuine claim: most of the ~20
+// unclaimed slugs really do have nothing behind them, so this is a slow backstop
+// for the one that occasionally does, not a second eager lane.
+const unclaimedMissAt = new Map();
+const UNCLAIMED_PROBE_MS = 6 * 60 * 60 * 1000;
+
 /**
- * Fetch feeds for shows the listing now advertises but we hold nothing for.
+ * Fetch feeds for shows we hold nothing for — both those the listing claims
+ * now, and (slowly) those it does not.
  *
  * Publication is gated on feeds we actually hold, so a show that *gains* a feed
  * is invisible until the next harvest — and on the hourly TTL that is up to an
@@ -518,16 +529,25 @@ const FEED_STALE_RETRY_MS = 10 * 60 * 1000;
  * than something to wait out. Only the unknown slugs are fetched, not all ~122,
  * and each is retried at most every FEED_MISS_RETRY_MS. Awaited rather than
  * backgrounded because its whole purpose is to affect the response being built.
+ * Once a slug lands in feedStore this way, `refreshStaleFeeds` keeps it current
+ * regardless of claim — this function only has to make the first catch happen.
  */
-async function catchUpFeeds(claimedSlugs) {
+async function catchUpFeeds(claimedSlugs, unclaimedSlugs = []) {
   const now = Date.now();
-  const unknown = claimedSlugs.filter((s) => {
+  const dueClaimed = claimedSlugs.filter((s) => {
     const held = feedStore[s];
     if (held && held.items && held.items.length) return false;
     return now - (feedMissAt.get(s) || 0) > FEED_MISS_RETRY_MS;
   });
+  const dueUnclaimed = unclaimedSlugs.filter((s) => {
+    const held = feedStore[s];
+    if (held && held.items && held.items.length) return false;
+    return now - (unclaimedMissAt.get(s) || 0) > UNCLAIMED_PROBE_MS;
+  });
+  const unknown = [...dueClaimed, ...dueUnclaimed];
   if (!unknown.length) return 0;
-  unknown.forEach((s) => feedMissAt.set(s, now));
+  dueClaimed.forEach((s) => feedMissAt.set(s, now));
+  dueUnclaimed.forEach((s) => unclaimedMissAt.set(s, now));
   const before = Object.keys(feedStore).length;
   await harvestFeeds(unknown, false);
   const gained = Object.keys(feedStore).length - before;
@@ -758,6 +778,7 @@ async function getArchive() {
     // feed TTL rather than the archive's, so a 5-minute re-scrape doesn't pull
     // 98 feeds with it.
     const feedSlugs = [...new Set(scraped.filter((r) => r.hasRSS).map((r) => r.sho))];
+    const unclaimedSlugs = [...new Set(scraped.filter((r) => !r.hasRSS).map((r) => r.sho))];
     if (Date.now() - feedsHarvestedAt > FEEDS_TTL) {
       if (!feedsInFlight) {
         feedsInFlight = harvestFeeds(feedSlugs)
@@ -776,8 +797,9 @@ async function getArchive() {
     //
     //   catchUpFeeds     — shows that gained a feed since the last sweep, which
     //                      would otherwise be absent from the site entirely
+    //                      (plus a slow check of unclaimed slugs, see UNCLAIMED_PROBE_MS)
     //   refreshStaleFeeds — shows whose feed is behind what the listing shows
-    await catchUpFeeds(feedSlugs);
+    await catchUpFeeds(feedSlugs, unclaimedSlugs);
     await refreshStaleFeeds(scraped);
 
     const { rows, droppedNoFeed, droppedFragment } = applyFeeds(scraped);

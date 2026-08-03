@@ -74,6 +74,21 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          # The lines worth surfacing as annotations, so a failure is diagnosable
+          # from the Annotations column / failure email without opening the job
+          # summary. Exit 1: the NOTABLE change lines themselves (4-space indented,
+          # named per scan.js's NOTABLE set). Exit 2+: the scanner's own error line.
+          {
+            echo 'detail<<SCAN_DETAIL_EOF'
+            if [ $CODE -eq 1 ]; then
+              printf '%s\n' "$OUT" \
+                | grep -E '^ {4}(CAP_CHANGED|CLAIM_MISMATCH|FEED_UNFETCHED|FEED_LOST|FEED_APPEARED|SLUG_GONE)\b' \
+                | sed 's/^ *//'
+            elif [ $CODE -ge 2 ]; then
+              printf '%s\n' "$OUT" | grep -E '^scan(:| failed:)' || printf '%s\n' "$OUT" | tail -3
+            fi
+            echo 'SCAN_DETAIL_EOF'
+          } >> "$GITHUB_OUTPUT"
           exit 0
 
       # Saved even when the scan reports changes, so tomorrow diffs against today
@@ -96,6 +111,18 @@ jobs:
       # them, so a green run is visibly green rather than merely quiet.
       - name: Report
         if: steps.scan.outputs.code != '0'
+        env:
+          DETAIL: ${{ steps.scan.outputs.detail }}
         run: |
           echo "Feed scan exit ${{ steps.scan.outputs.code }} — see the job summary."
+          # One ::error:: per line so each notable change (or the scanner's own
+          # failure message) shows up individually in the Annotations column and
+          # the failure email — not just the generic "exit code 1". Passed through
+          # an env var rather than interpolated into the script, since this is
+          # scan.js's dynamic output.
+          if [ -n "$DETAIL" ]; then
+            while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done <<< "$DETAIL"
+          fi
           exit 1
