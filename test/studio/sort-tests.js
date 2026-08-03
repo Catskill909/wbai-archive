@@ -141,7 +141,15 @@ function ok(label, cond, detail) {
   console.log('\n2. clicking each header sorts by that column, both ways');
   for (const key of KEYS) {
     for (const pass of [1, 2]) {
-      const asc = pass === 1 ? FIRST_DIR(key) === 'ascending' : FIRST_DIR(key) !== 'ascending';
+      /* What this click must produce depends on where the column already is:
+       * a sorted column toggles, an unsorted one starts at FIRST_DIR. The
+       * table loads sorted by title ascending, so assuming "unsorted" for
+       * every column mis-predicted the title column on both passes — the one
+       * column that is never unsorted when the loop reaches it. Read the
+       * state the page is actually in rather than the state pass 1 imagines. */
+      const cur = await ev(`document.querySelector('.th-sort[data-sort=${JSON.stringify(key)}]')
+        .parentNode.getAttribute('aria-sort')`);
+      const asc = cur ? cur === 'descending' : FIRST_DIR(key) === 'ascending';
       await clickHeader(key);
 
       const state = await json(`JSON.stringify([...document.querySelectorAll('.th-sort')]

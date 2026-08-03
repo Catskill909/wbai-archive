@@ -2203,6 +2203,52 @@ function sumBySlug(window, key) {
   return total;
 }
 
+/**
+ * The windows the studio may ask for. A fixed menu rather than a free integer:
+ * these values are what the UI offers, and accepting arbitrary numbers would
+ * let a mistyped query walk ten years of dates for no reason. `all` is resolved
+ * against the month files actually on disk — the rollups are kept forever (see
+ * the header above STATS_DIR), so "all time" is simply "since the oldest file".
+ */
+const USAGE_WINDOWS = new Set([7, 30, 90, 365]);
+
+/** Every stats month on disk plus the in-memory one, sorted ascending. */
+function listStatsMonths() {
+  let names = [];
+  try { names = fs.readdirSync(STATS_DIR); } catch (e) { /* no stats yet */ }
+  const months = new Set(names
+    .filter((f) => /^\d{4}-\d{2}\.json$/.test(f))
+    .map((f) => f.slice(0, 7)));
+  months.add(statsMonth);
+  return [...months].sort();
+}
+
+/** A month's day records — live from memory for the current month, from its
+ *  file otherwise. Same split as recentDays(), for the same reason. */
+function statsMonthDays(m) {
+  if (m === statsMonth) return statsStore.days;
+  return readJsonFile(statsMonthPath(m), { days: {} }).days || {};
+}
+
+/** How many days "all time" spans: from the 1st of the oldest month file to
+ *  today. Never less than 30, so a fresh install reads identically to the
+ *  default window rather than as a 1-day report. */
+function allTimeDays() {
+  const oldest = listStatsMonths()[0];
+  const start = Date.UTC(+oldest.slice(0, 4), +oldest.slice(5, 7) - 1, 1);
+  return Math.max(30, Math.floor((Date.now() - start) / 86400000) + 1);
+}
+
+/** `?days=` from a request URL → a day count. Anything not on the menu falls
+ *  back to 30 — the studio is the only client, so an unknown value is a stale
+ *  bundle, and the default is what that bundle expects. */
+function usageWindowFromUrl(url) {
+  const q = new URL(url, 'http://localhost').searchParams.get('days');
+  if (q === 'all') return allTimeDays();
+  const n = Number(q);
+  return USAGE_WINDOWS.has(n) ? n : 30;
+}
+
 /** Recent days, newest last, plus the totals the dashboard leads with. */
 function usageReport(days = 30) {
   const out = [];
@@ -2230,6 +2276,7 @@ function usageReport(days = 30) {
   return {
     since: (firstWithData && firstWithData.day) || today(),
     month: statsMonth,
+    windowDays: days,
     searchTermsRecorded: false,
     // Beacons refused by the per-address ceiling since boot. Non-zero means the
     // figures above are an undercount, which is worth knowing before quoting
@@ -2275,6 +2322,76 @@ function usageReport(days = 30) {
       .sort((a, b) => (b.seconds - a.seconds) || (b.plays - a.plays))
       .slice(0, 12),
   };
+}
+
+/** Sum one slug's plays and listened seconds across one month's day records. */
+function monthTotalsFor(slug, days) {
+  let plays = 0, seconds = 0;
+  for (const rec of Object.values(days || {})) {
+    if (!rec) continue;
+    const p = (rec.byShow || {})[slug];
+    const s = (rec.secondsByShow || {})[slug];
+    if (Number.isFinite(p)) plays += p;
+    if (Number.isFinite(s)) seconds += s;
+  }
+  return { plays, seconds };
+}
+
+/**
+ * One show's whole recorded life, month by month — the drill-down behind a row
+ * in the Every Feed table. Every month file is included, zeros and all: a show
+ * that recorded nothing in March should show a March at zero, not a gap the
+ * eye reads as a rendering hole. An unknown slug is not an error — it simply
+ * has zeros everywhere, which is also what a show nobody has played looks like.
+ */
+function showHistory(slug) {
+  const months = listStatsMonths().map((m) => {
+    const t = monthTotalsFor(slug, statsMonthDays(m));
+    return { month: m, plays: t.plays, seconds: t.seconds };
+  });
+  const rec = feedStore[slug];
+  return {
+    slug,
+    title: (rec && rec.channel && rec.channel.title) || slug,
+    months,
+  };
+}
+
+/**
+ * This calendar month against the previous one, per show. Calendar months on
+ * purpose, unlike everything else here (see recentDays for why the windows are
+ * rolling): "how did August compare to July" is the question a station asks,
+ * and a rolling pair of 30-day windows answers a question nobody asked.
+ * The current month is incomplete by definition; the payload says how far in
+ * we are so the UI can say it too rather than letting a half-month read low.
+ */
+function monthComparison() {
+  const cur = statsMonth;
+  const d = new Date(Date.UTC(+cur.slice(0, 4), +cur.slice(5, 7) - 1, 1) - 86400000);
+  const prev = d.toISOString().slice(0, 7);
+  const curDays = statsMonthDays(cur);
+  const prevDays = statsMonthDays(prev);
+  const slugs = new Set();
+  for (const days of [curDays, prevDays]) {
+    for (const rec of Object.values(days || {})) {
+      if (!rec) continue;
+      for (const s of Object.keys(rec.byShow || {})) slugs.add(s);
+      for (const s of Object.keys(rec.secondsByShow || {})) slugs.add(s);
+    }
+  }
+  const shows = [...slugs].map((slug) => {
+    const a = monthTotalsFor(slug, prevDays);
+    const b = monthTotalsFor(slug, curDays);
+    const rec = feedStore[slug];
+    return {
+      slug,
+      title: (rec && rec.channel && rec.channel.title) || slug,
+      prevPlays: a.plays, prevSeconds: a.seconds,
+      plays: b.plays, seconds: b.seconds,
+    };
+  }).sort((x, y) => (y.seconds + y.prevSeconds) - (x.seconds + x.prevSeconds)
+    || x.title.localeCompare(y.title));
+  return { prevMonth: prev, month: cur, dayOfMonth: +today().slice(8, 10), shows };
 }
 
 // -------------------------------------------------------------- the studio
@@ -2528,7 +2645,7 @@ const DURATION_BUCKETS = [
   { label: 'over 2h', max: Infinity },
 ];
 
-function studioStats() {
+function studioStats(usageDays = 30) {
   const entries = Object.entries(feedStore);
   const catMap = new Map();
   const dayMap = new Map();
@@ -2589,11 +2706,11 @@ function studioStats() {
     }
   }
 
-  // Plays over the last 30 days, by slug — merged into the rows below so the
-  // table can answer "how many plays did THIS show get", which a top-12 chart
-  // cannot. Same window as the usage report, and for the same reason: see
-  // recentDays().
-  const usageWindow = recentDays(30);
+  // Plays over the requested window, by slug — merged into the rows below so
+  // the table can answer "how many plays did THIS show get", which a top-12
+  // chart cannot. Same window as the usage report, and for the same reason:
+  // see recentDays().
+  const usageWindow = recentDays(usageDays);
   const playsBySlug = sumBySlug(usageWindow, 'byShow');
   const secondsBySlug = sumBySlug(usageWindow, 'secondsByShow');
   shows.forEach((s) => {
@@ -2660,6 +2777,10 @@ function studioStats() {
       noDescription: noDescription.slice(0, 60),
       noDirectory: noDirectory.slice(0, 60),
     },
+    // The window the plays/listened columns were summed over, echoed back so
+    // the table's labelling comes from the data it renders, not from what the
+    // page believes it asked for.
+    usageWindowDays: usageDays,
     shows: shows.sort((a, b) => a.title.localeCompare(b.title)),
   };
 }
@@ -2786,11 +2907,24 @@ async function studioAction(req, res) {
 function studioApi(req, res, pathOnly) {
   if (!studioAuthed(req)) return sendStudioJson(res, { error: 'unauthorized' }, 401);
   if (pathOnly === '/api/studio/usage') {
-    return sendStudioJson(res, usageReport(30));
+    return sendStudioJson(res, usageReport(usageWindowFromUrl(req.url)));
   }
   if (pathOnly === '/api/studio/stats') {
     refreshProgramsIfStale();
-    return sendStudioJson(res, studioStats());
+    return sendStudioJson(res, studioStats(usageWindowFromUrl(req.url)));
+  }
+  if (pathOnly === '/api/studio/showhistory') {
+    const slug = new URL(req.url, 'http://localhost').searchParams.get('slug') || '';
+    // Shape-check, not existence-check: a slug we have never seen returns
+    // zeros, but an arbitrary string should not get to parade through month
+    // sums. Feed slugs are lowercase-hyphen; be a little generous on length.
+    if (!/^[a-z0-9][a-z0-9-]{0,99}$/.test(slug)) {
+      return sendStudioJson(res, { error: 'bad slug' }, 400);
+    }
+    return sendStudioJson(res, showHistory(slug));
+  }
+  if (pathOnly === '/api/studio/months') {
+    return sendStudioJson(res, monthComparison());
   }
   if (pathOnly === '/api/studio/health') {
     return sendStudioJson(res, {

@@ -23,6 +23,7 @@ referenced from `server.js` and four other docs, so they stay put.
 | **4 — actions** | Re-check feeds, refresh the directory, re-probe the stream, drop a cache. Idempotent, cooled down, CSRF-guarded, logged. | [§6](#phase-4-actions-built-2026-07-31) |
 | **5 — listener analytics** | **Time listened** per show (the headline), plus plays, live tune-ins, page views, searches, shares. No identifier of any kind. | [§6](#phase-5-listener-analytics-built-2026-07-31) |
 | **5.1 — reach** | Does the station reach past its own signal? Page views split local / rest of US / international, from the **browser's timezone** — never from an IP. | [§6](#phase-51--reach-without-geolocation--built-2026-08-01) |
+| **5.2 — windows, history, export** | One 7d/30d/90d/year/all-time picker for every listening figure, per-show month-by-month drill-down, this-month-vs-last, CSV export. Presentation only — nothing new collected. | [§6](#phase-52--windows-history-comparison-export--built-2026-08-03) |
 
 ### Next up — nothing committed
 
@@ -35,7 +36,6 @@ Ranked by value ÷ effort. Full reasoning and the rest of the menu in [§10](#10
 | 3 | **Alerting (webhook)** | A dashboard only helps if someone opens it. The volume bug ran for weeks because nothing shouted. | S |
 | 4 | **Content QA panel** | Turns the coverage meters from a number into a to-do list. | S |
 | 5 | **Shows nobody played** | The actionable inverse of "most listened". | XS |
-| 6 | **CSV export** | Board reports are written in spreadsheets. | XS |
 
 **Before proposing anything:** [§10.1](#101-what-this-design-makes-impossible-read-before-proposing) lists what this
 design makes *arithmetically* impossible — unique listeners, returning-vs-new,
@@ -211,9 +211,11 @@ a way that helps; a single `401` with a `Retry-After` is enough.
 | `/studio` | GET | none | The login page (from `admin/`) if logged out; the dashboard shell if logged in |
 | `/api/studio/login` | POST | none, rate-limited | 204 + `Set-Cookie`, or 401 |
 | `/api/studio/logout` | POST | cookie | 204 + cleared cookie |
-| `/api/studio/stats` | GET | cookie | Content stats JSON (Phase 2) |
+| `/api/studio/stats` | GET | cookie | Content stats JSON (Phase 2). `?days=7\|30\|90\|365\|all` sets the window for the per-show plays/listened columns (Phase 5.2) |
 | `/api/studio/health` | GET | cookie | Operational stats JSON (Phase 3) |
-| `/api/studio/usage` | GET | cookie | Listening figures (Phase 5) |
+| `/api/studio/usage` | GET | cookie | Listening figures (Phase 5). Same `?days=` menu as stats (Phase 5.2) |
+| `/api/studio/showhistory` | GET | cookie | One show's plays/listened per month, all recorded months. `?slug=` is shape-checked, 400 otherwise (Phase 5.2) |
+| `/api/studio/months` | GET | cookie | This calendar month vs last, per show (Phase 5.2) |
 | `/api/studio/action` | POST | cookie **+ CSRF header** | Runs one maintenance action (Phase 4) |
 | `/api/ev` | POST | **none** | The public usage beacon. Carries no identity, answers `204` to everything, unregistered when `USAGE_TRACKING=off` |
 
@@ -941,6 +943,46 @@ right one. Fixed by anchoring to the edge instead of centring, and
 `test/studio/run.sh` §2b now measures every chart label's box against its SVG's
 box at three widths.
 
+### Phase 5.2 — windows, history, comparison, export — **BUILT 2026-08-03**
+
+The listening figures were displayed over a hard-coded 30-day window while the
+month files under `$DATA_DIR/stats/` are kept forever — so all the data existed
+and only the last month of it was reachable. This phase is presentation only:
+**nothing new is collected**, so the README's privacy paragraph is untouched.
+
+- **One window for the whole listening report.** `?days=7|30|90|365|all` on
+  both `/api/studio/usage` and `/api/studio/stats`, driven by a single picker
+  in the studio — the KPIs, the day chart, reach, top shows and the Every Feed
+  plays/listened columns all move together, so two panels can never silently
+  describe different periods. The menu is a fixed `Set`, not a free integer:
+  an off-menu value falls back to 30 rather than walking arbitrary dates, and
+  `all` is resolved against the month files actually on disk. Both payloads
+  echo the window back (`windowDays` / `usageWindowDays`) so the page labels
+  what it *got*, not what it asked for.
+- **Per-show history.** `/api/studio/showhistory?slug=` sums one slug across
+  every month file, zeros included — a month a show recorded nothing is a
+  measured zero, not a gap. In the studio, every row of the Every Feed table
+  opens it (keyboard-operable — a click-only `<tr>` is invisible to a
+  keyboard). The slug is shape-checked before it touches a file path.
+- **Month vs month.** `/api/studio/months` compares the current *calendar*
+  month to the previous one, deliberately unlike the rolling windows
+  everywhere else — "how did August compare to July" is a calendar question.
+  The current month is incomplete by definition, so the payload carries
+  `dayOfMonth` and the UI says "day N, still counting" rather than letting a
+  half month read low.
+- **CSV export.** Client-side, from the same `visibleRows()` the table
+  renders, so the download is exactly the table as filtered and sorted — not a
+  second report that can disagree with the first. Raw seconds, not the "4m"
+  display buckets (a spreadsheet can format but cannot un-round), and cells
+  starting with `= + - @` are prefixed to keep upstream show titles from
+  executing as spreadsheet formulas.
+
+Tested in `test/studio/studio-tests.js` on the existing rollover fixture (a
+seeded previous-month file plus a live current-month beacon): `all` must see
+both months, `7` must see what the calendar says it should, an off-menu window
+must fall back, and the history/comparison endpoints must return the seeded
+numbers and 401 without a cookie.
+
 ---
 
 ## 7. Non-goals
@@ -1067,9 +1109,9 @@ and more interesting fact. **Effort: medium.** Needs an hour bucket added to the
 day record (`byHour: {0..23}`), which is 24 more integers per day — trivial
 storage. Adding it is a migration; see §9.
 
-**E. Month-over-month.** The rollups are already per month, so "this month vs
-last" is a second file read and a delta. Turns a dashboard into a trend without
-storing anything new. **Effort: small.**
+**E. Month-over-month.** — **BUILT, Phase 5.2.** The rollups are already per
+month, so "this month vs last" is a second file read and a delta. Turns a
+dashboard into a trend without storing anything new.
 
 **F. Inventory snapshots — the missing third data type (§8.5).** Everything in
 Phase 2 is a *snapshot* of a rotating five-item window; nothing records what the
@@ -1089,10 +1131,9 @@ mostly the pruning.**
 The chart primitives exist; this is layout. **Effort: small. Value: moderate** —
 pretty, and occasionally reveals a show falling off a cliff.
 
-**I. CSV / JSON export.** Board reports are written in spreadsheets. One button
-that hands over what is already on screen. **Effort: trivial. Value: high the
-first time someone has to report to a board**, which for a listener-funded
-station is regularly.
+**I. CSV / JSON export.** — **BUILT, Phase 5.2** (CSV, from the Every Feed
+table as filtered and sorted). Board reports are written in spreadsheets. One
+button that hands over what is already on screen.
 
 ### 10.3 Admin features beyond stats
 

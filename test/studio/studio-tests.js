@@ -797,6 +797,63 @@ async function run() {
     ok('the day series and the per-show totals cover the same window',
       prevInWindow ? (prevRow && prevRow.listenSeconds === 120) : !prevRow,
       `${prevLast}: ${JSON.stringify(prevRow)}`);
+
+    // -- selectable windows ---------------------------------------------------
+    //
+    // The same two seeded months are the ground truth for every window. `all`
+    // must always see both; a 7-day window must see the previous month's day
+    // only when today is close enough to the boundary — computed, not assumed,
+    // for the same reason prevInWindow is.
+    const uAll = await (await get(PORT_ROLL, '/api/studio/usage?days=all', cookie3)).json();
+    const topAll = (uAll.topShows || []).find((s) => s.slug === 'alpha');
+    ok('days=all reaches back to the oldest month file',
+      topAll && topAll.plays === 3 && topAll.seconds === 150
+      && uAll.windowDays >= 30,
+      `windowDays ${uAll.windowDays}, got ${JSON.stringify(topAll)}`);
+
+    const prevIn7 = Math.round((todayMs - prevLastMs) / 86400000) <= 6;
+    const u7 = await (await get(PORT_ROLL, '/api/studio/usage?days=7', cookie3)).json();
+    const top7 = (u7.topShows || []).find((s) => s.slug === 'alpha');
+    ok('days=7 narrows the window and says so',
+      u7.windowDays === 7 && u7.days.length === 7
+      && top7 && top7.plays === (prevIn7 ? 3 : 1),
+      `windowDays ${u7.windowDays}, ${u7.days.length} days, ${JSON.stringify(top7)}`);
+
+    ok('an off-menu window falls back to 30 rather than being obeyed',
+      (await (await get(PORT_ROLL, '/api/studio/usage?days=99999', cookie3)).json())
+        .windowDays === 30);
+
+    const sAll = await (await get(PORT_ROLL, '/api/studio/stats?days=all', cookie3)).json();
+    const rowAll = (sAll.shows || []).find((s) => s.slug === 'alpha');
+    ok('the table columns follow the requested window too',
+      sAll.usageWindowDays >= 30 && rowAll
+      && rowAll.plays === 3 && rowAll.listened === 150,
+      `usageWindowDays ${sAll.usageWindowDays}, got ${JSON.stringify(rowAll)}`);
+
+    // -- per-show history -------------------------------------------------------
+    const histNone = await get(PORT_ROLL, '/api/studio/showhistory?slug=alpha');
+    ok('no cookie: show history is 401', histNone.status === 401, `status ${histNone.status}`);
+    ok('a junk slug is refused, not summed',
+      (await get(PORT_ROLL, '/api/studio/showhistory?slug=..%2F..%2Fetc', cookie3)).status === 400);
+
+    const hist = await (await get(PORT_ROLL, '/api/studio/showhistory?slug=alpha', cookie3)).json();
+    const hPrev = (hist.months || []).find((m) => m.month === prevLast.slice(0, 7));
+    const hNow = (hist.months || [])[hist.months.length - 1];
+    ok('show history returns every recorded month with its totals',
+      hPrev && hPrev.plays === 2 && hPrev.seconds === 120
+      && hNow && hNow.plays === 1 && hNow.seconds === 30,
+      JSON.stringify(hist.months));
+
+    // -- month vs month ---------------------------------------------------------
+    const cmpNone = await get(PORT_ROLL, '/api/studio/months');
+    ok('no cookie: month comparison is 401', cmpNone.status === 401, `status ${cmpNone.status}`);
+    const cmp = await (await get(PORT_ROLL, '/api/studio/months', cookie3)).json();
+    const cmpA = (cmp.shows || []).find((s) => s.slug === 'alpha');
+    ok('month comparison holds both calendar months for the same show',
+      cmp.prevMonth === prevLast.slice(0, 7)
+      && cmpA && cmpA.prevPlays === 2 && cmpA.prevSeconds === 120
+      && cmpA.plays === 1 && cmpA.seconds === 30,
+      JSON.stringify(cmp));
   } finally {
     roll.kill('SIGKILL');
   }

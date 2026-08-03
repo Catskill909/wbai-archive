@@ -736,9 +736,88 @@
 .chart-tip-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .chart-tip-label { color: var(--ink-dim); }
 
+/* ------------------------------------------------------ window picker */
+
+/* One segmented control for every listening number on the page. Buttons with
+   aria-pressed rather than radio inputs: it acts immediately, like the sort
+   headers, and has no form to submit. */
+.win-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+.win-picker .studio-field-label { margin-right: 0.35rem; }
+
+.win-btn {
+  font: inherit;
+  font-size: 0.85rem;
+  border: 1px solid var(--outline-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-dim);
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+  min-height: 2.25rem;
+}
+.win-btn:hover { background: var(--surface-3); color: var(--ink); }
+.win-btn:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.win-btn[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
 /* ----------------------------------------------------------- table */
 
 .studio-field--inline { max-width: 18rem; margin-bottom: 0.85rem; }
+
+/* Filter on the left, CSV download on the right of the same row. */
+.table-tools {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.table-tools .studio-field--inline { margin-bottom: 0.85rem; flex: 1 1 12rem; }
+.table-tools .studio-btn { margin-bottom: 0.85rem; }
+
+/* Rows open the month-by-month history, so they must look pressable. */
+.studio-table tbody tr.show-row { cursor: pointer; }
+.studio-table tbody tr.show-row:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+}
+
+/* --------------------------------------------------- show history panel */
+
+.show-history {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  background: var(--surface-1);
+}
+.show-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.show-history-head .studio-h3 { margin: 0; }
+.show-history .table-wrap { max-height: 16rem; margin-top: 0.6rem; }
+
+.studio-h4 {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  font-weight: 600;
+}
 
 /* The table is both the widest and the tallest thing on the page — 122 rows put
    the operational panels ~10,000px below the fold. It scrolls inside its own box

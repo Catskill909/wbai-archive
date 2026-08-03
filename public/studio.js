@@ -339,7 +339,10 @@
           x: n === 0 ? 0 : w, y: h - 6, class: 'chart-tick',
           'text-anchor': n === 0 ? 'start' : 'end',
         });
-        t.textContent = p[1].slice(5);
+        // Full dates drop the year to stay readable at 72 columns; anything
+        // shorter (a YYYY-MM month from the show-history chart) is already
+        // terse and the year is the information, so it stays whole.
+        t.textContent = p[1].length > 7 ? p[1].slice(5) : p[1];
         svg.appendChild(t);
       });
       // The peak label is centred on its column — except near either edge,
@@ -662,8 +665,10 @@
       renderTable();
     }
 
-    function renderTable() {
-      if (!stats) return;
+    /* The rows the table currently shows — filtered and sorted. One function,
+       used by both the renderer and the CSV export, so the file a user
+       downloads is exactly the table they are looking at. */
+    function visibleRows() {
       var q = (document.getElementById('showFilter').value || '').toLowerCase().trim();
       var rows = stats.shows.filter(function (s) {
         return !q || s.title.toLowerCase().indexOf(q) >= 0 || s.slug.indexOf(q) >= 0;
@@ -679,11 +684,29 @@
         if (r === 0 && sortKey !== 'title') return a.title.localeCompare(b.title);
         return sortAsc ? r : -r;
       });
+      return rows;
+    }
+
+    function renderTable() {
+      if (!stats) return;
+      var rows = visibleRows();
 
       var body = document.getElementById('showTableBody');
       body.textContent = '';
       rows.forEach(function (s) {
         var tr = document.createElement('tr');
+        // A row is a door as well as a reading: it opens the month-by-month
+        // history below the table. Focusable and keyboard-operable, because
+        // a click-only affordance on a <tr> is invisible to a keyboard.
+        tr.className = 'show-row';
+        tr.tabIndex = 0;
+        tr.setAttribute('role', 'button');
+        tr.setAttribute('aria-label', s.title + ' — show month-by-month history');
+        function open() { openHistory(s.slug); }
+        tr.addEventListener('click', open);
+        tr.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
+        });
         tr.appendChild(el('td', 'show-title', s.title));
         var slug = el('td', 'num', s.slug);
         tr.appendChild(slug);
@@ -723,6 +746,144 @@
       });
     });
     document.getElementById('showFilter').addEventListener('input', renderTable);
+
+    /* ---------------- CSV export ----------------
+       Built from visibleRows(), so the download is the table as filtered and
+       sorted right now — not a second report that can disagree with the one on
+       screen. Raw units on purpose (seconds, not "4m"): a spreadsheet can
+       format, but it cannot un-round. */
+    (function () {
+      var btn = document.getElementById('csvExport');
+      if (!btn) return;
+      function csvCell(v) {
+        var s = String(v == null ? '' : v);
+        // Excel executes cells that begin with = + - @ as formulas. A show
+        // title is upstream data; neutralise rather than trust.
+        if (/^[=+\-@]/.test(s)) s = "'" + s;
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }
+      btn.addEventListener('click', function () {
+        if (!stats) return;
+        var win = stats.usageWindowDays || 30;
+        var head = ['show', 'slug', 'episodes', 'audio_seconds',
+          'plays_' + win + 'd', 'listened_seconds_' + win + 'd', 'newest_episode'];
+        var lines = [head.join(',')];
+        visibleRows().forEach(function (s) {
+          lines.push([
+            csvCell(s.title), csvCell(s.slug), s.episodes, s.seconds,
+            s.plays || 0, s.listened || 0,
+            s.newest ? new Date(s.newest * 1000).toISOString().slice(0, 10) : '',
+          ].join(','));
+        });
+        var blob = new Blob([lines.join('\n') + '\n'], { type: 'text/csv' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'shows-' + win + 'd-' + new Date().toISOString().slice(0, 10) + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Revoke on a delay: revoking synchronously races the download in
+        // some browsers and yields an empty file.
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+      });
+    })();
+
+    /* ---------------- per-show history (drill-down) ---------------- */
+
+    function openHistory(slug) {
+      var box = document.getElementById('showHistory');
+      fetch('/api/studio/showhistory?slug=' + encodeURIComponent(slug),
+        { headers: { 'Accept': 'application/json' } })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (h) {
+          if (!h) return;
+          document.getElementById('showHistoryTitle').textContent =
+            h.title + ' — month by month';
+          var body = document.getElementById('showHistoryBody');
+          body.textContent = '';
+          h.months.forEach(function (m) {
+            var tr = document.createElement('tr');
+            tr.appendChild(el('td', '', m.month));
+            tr.appendChild(el('td', 'num', num(m.plays)));
+            tr.appendChild(el('td', 'num', listenTime(m.seconds)));
+            body.appendChild(tr);
+          });
+          box.hidden = false;
+          // Reuses the day histogram; a month is just a coarser bucket of the
+          // same question. Minutes, matching the chart above it.
+          columnChart(document.getElementById('showHistoryChart'),
+            h.months.map(function (m) {
+              return { day: m.month, episodes: Math.round(m.seconds / 60) };
+            }), 'minutes');
+          box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        })
+        .catch(function () { /* row stays; nothing to break */ });
+    }
+
+    var histClose = document.getElementById('showHistoryClose');
+    if (histClose) {
+      histClose.addEventListener('click', function () {
+        document.getElementById('showHistory').hidden = true;
+      });
+    }
+
+    /* ---------------- month vs month ---------------- */
+
+    function monthName(m) {
+      return new Date(m + '-15T00:00:00Z')
+        .toLocaleString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    }
+
+    function renderMonths(c) {
+      var table = document.getElementById('monthCompare');
+      var note = document.getElementById('monthCompareNote');
+      if (!table || !note) return;
+      var rows = c.shows.filter(function (s) {
+        return s.plays || s.seconds || s.prevPlays || s.prevSeconds;
+      });
+      if (!rows.length) {
+        table.hidden = true;
+        note.textContent = 'Nothing recorded in either month yet.';
+        return;
+      }
+      note.textContent = monthName(c.prevMonth) + ' (complete) against '
+        + monthName(c.month) + ' (day ' + c.dayOfMonth + ', still counting).';
+      document.getElementById('mcPrevPlays').textContent = 'Plays ' + c.prevMonth;
+      document.getElementById('mcCurPlays').textContent = 'Plays ' + c.month;
+      document.getElementById('mcPrevListened').textContent = 'Listened ' + c.prevMonth;
+      document.getElementById('mcCurListened').textContent = 'Listened ' + c.month;
+      var body = document.getElementById('monthCompareBody');
+      body.textContent = '';
+      rows.slice(0, 40).forEach(function (s) {
+        var tr = document.createElement('tr');
+        tr.appendChild(el('td', 'show-title', s.title));
+        tr.appendChild(el('td', 'num', num(s.prevPlays)));
+        tr.appendChild(el('td', 'num', num(s.plays)));
+        tr.appendChild(el('td', 'num', listenTime(s.prevSeconds)));
+        tr.appendChild(el('td', 'num', listenTime(s.seconds)));
+        body.appendChild(tr);
+      });
+      table.hidden = false;
+    }
+
+    /* ---------------- reporting window ----------------
+       One control for every listening figure on the page — the KPIs, the day
+       chart, reach, top shows and the table's plays/listened columns — so no
+       two panels can describe different periods while looking like one report. */
+    var windowDays = '30';
+    (function () {
+      var picker = document.getElementById('winPicker');
+      if (!picker) return;
+      picker.addEventListener('click', function (ev) {
+        var b = ev.target.closest('.win-btn');
+        if (!b || b.getAttribute('data-days') === windowDays) return;
+        windowDays = b.getAttribute('data-days');
+        [].forEach.call(picker.querySelectorAll('.win-btn'), function (x) {
+          x.setAttribute('aria-pressed', String(x === b));
+        });
+        loadUsage();   // health does not depend on the window; skip it
+      });
+    })();
 
     // The histogram is sized in real pixels, so it has to be rebuilt when the
     // box changes. Debounced — a resize drag fires this continuously.
@@ -821,16 +982,29 @@
         }), 'page views');
     }
 
-    function load() {
-      fetch('/api/studio/usage', { headers: { 'Accept': 'application/json' } })
+    /* Everything the window picker governs, fetched with the active window.
+       Separate from load() so changing the window re-asks these two questions
+       without also re-polling health, which has no window in it. */
+    function loadUsage() {
+      var q = '?days=' + windowDays;
+      fetch('/api/studio/usage' + q, { headers: { 'Accept': 'application/json' } })
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (u) { if (u) renderUsage(u); })
         .catch(function () { /* the health panel reports an outage */ });
 
-      fetch('/api/studio/stats', { headers: { 'Accept': 'application/json' } })
+      fetch('/api/studio/stats' + q, { headers: { 'Accept': 'application/json' } })
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (d) { if (d) renderStats(d); })
         .catch(function () { /* the health panel below reports the outage */ });
+
+      fetch('/api/studio/months', { headers: { 'Accept': 'application/json' } })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (c) { if (c) renderMonths(c); })
+        .catch(function () { /* nothing to break */ });
+    }
+
+    function load() {
+      loadUsage();
 
       fetch('/api/studio/health', { headers: { 'Accept': 'application/json' } })
         .then(function (res) {
