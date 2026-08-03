@@ -843,17 +843,6 @@ async function run() {
       hPrev && hPrev.plays === 2 && hPrev.seconds === 120
       && hNow && hNow.plays === 1 && hNow.seconds === 30,
       JSON.stringify(hist.months));
-
-    // -- month vs month ---------------------------------------------------------
-    const cmpNone = await get(PORT_ROLL, '/api/studio/months');
-    ok('no cookie: month comparison is 401', cmpNone.status === 401, `status ${cmpNone.status}`);
-    const cmp = await (await get(PORT_ROLL, '/api/studio/months', cookie3)).json();
-    const cmpA = (cmp.shows || []).find((s) => s.slug === 'alpha');
-    ok('month comparison holds both calendar months for the same show',
-      cmp.prevMonth === prevLast.slice(0, 7)
-      && cmpA && cmpA.prevPlays === 2 && cmpA.prevSeconds === 120
-      && cmpA.plays === 1 && cmpA.seconds === 30,
-      JSON.stringify(cmp));
   } finally {
     roll.kill('SIGKILL');
   }

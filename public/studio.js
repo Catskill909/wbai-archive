@@ -827,45 +827,6 @@
       });
     }
 
-    /* ---------------- month vs month ---------------- */
-
-    function monthName(m) {
-      return new Date(m + '-15T00:00:00Z')
-        .toLocaleString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
-    }
-
-    function renderMonths(c) {
-      var table = document.getElementById('monthCompare');
-      var note = document.getElementById('monthCompareNote');
-      if (!table || !note) return;
-      var rows = c.shows.filter(function (s) {
-        return s.plays || s.seconds || s.prevPlays || s.prevSeconds;
-      });
-      if (!rows.length) {
-        table.hidden = true;
-        note.textContent = 'Nothing recorded in either month yet.';
-        return;
-      }
-      note.textContent = monthName(c.prevMonth) + ' (complete) against '
-        + monthName(c.month) + ' (day ' + c.dayOfMonth + ', still counting).';
-      document.getElementById('mcPrevPlays').textContent = 'Plays ' + c.prevMonth;
-      document.getElementById('mcCurPlays').textContent = 'Plays ' + c.month;
-      document.getElementById('mcPrevListened').textContent = 'Listened ' + c.prevMonth;
-      document.getElementById('mcCurListened').textContent = 'Listened ' + c.month;
-      var body = document.getElementById('monthCompareBody');
-      body.textContent = '';
-      rows.slice(0, 40).forEach(function (s) {
-        var tr = document.createElement('tr');
-        tr.appendChild(el('td', 'show-title', s.title));
-        tr.appendChild(el('td', 'num', num(s.prevPlays)));
-        tr.appendChild(el('td', 'num', num(s.plays)));
-        tr.appendChild(el('td', 'num', listenTime(s.prevSeconds)));
-        tr.appendChild(el('td', 'num', listenTime(s.seconds)));
-        body.appendChild(tr);
-      });
-      table.hidden = false;
-    }
-
     /* ---------------- reporting window ----------------
        One control for every listening figure on the page — the KPIs, the day
        chart, reach, top shows and the table's plays/listened columns — so no
@@ -996,11 +957,6 @@
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (d) { if (d) renderStats(d); })
         .catch(function () { /* the health panel below reports the outage */ });
-
-      fetch('/api/studio/months', { headers: { 'Accept': 'application/json' } })
-        .then(function (res) { return res.ok ? res.json() : null; })
-        .then(function (c) { if (c) renderMonths(c); })
-        .catch(function () { /* nothing to break */ });
     }
 
     function load() {

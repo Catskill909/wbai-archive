@@ -125,32 +125,6 @@
         <div class="bars" id="usageShows"></div>
       </div>
     </div>
-    <h3 class="studio-h3">This month vs last
-      <span class="info-wrap">
-        <button class="info-btn" type="button" aria-label="About this section" aria-describedby="monthNote">i</button>
-        <p class="info-pop" id="monthNote" role="tooltip">
-          Calendar months, not the rolling window above — "how did August compare
-          to July" is a calendar question. The current month is incomplete by
-          definition, so its figures read low until it ends; the heading says how
-          many days in it is.
-        </p>
-      </span>
-    </h3>
-    <p class="studio-note" id="monthCompareNote"></p>
-    <div class="table-wrap">
-      <table class="studio-table" id="monthCompare" hidden>
-        <thead>
-          <tr>
-            <th>Show</th>
-            <th class="num" id="mcPrevPlays">Plays</th>
-            <th class="num" id="mcCurPlays">Plays</th>
-            <th class="num" id="mcPrevListened">Listened</th>
-            <th class="num" id="mcCurListened">Listened</th>
-          </tr>
-        </thead>
-        <tbody id="monthCompareBody"></tbody>
-      </table>
-    </div>
   </section>
 
   <section class="studio-section">
@@ -264,12 +238,19 @@
          in the history table, so the chart is never the only route to a value. -->
     <div class="show-history" id="showHistory" hidden>
       <div class="show-history-head">
-        <h3 class="studio-h3" id="showHistoryTitle"></h3>
+        <h3 class="studio-h3">
+          <span id="showHistoryTitle"></span>
+          <span class="info-wrap">
+            <button class="info-btn" type="button" aria-label="About this section" aria-describedby="showHistoryNote">i</button>
+            <p class="info-pop" id="showHistoryNote" role="tooltip">
+              Every month since counting began — zeros are measured months, not
+              gaps. Counting started when usage tracking was deployed; it does
+              not backfill.
+            </p>
+          </span>
+        </h3>
         <button class="studio-btn studio-btn--quiet" id="showHistoryClose" type="button">Close</button>
       </div>
-      <p class="studio-note">Every month since counting began — zeros are measured
-        months, not gaps. Counting started when usage tracking was deployed; it
-        does not backfill.</p>
       <h4 class="studio-h4">Minutes listened per month</h4>
       <div class="chart" id="showHistoryChart"></div>
       <div class="table-wrap">

@@ -215,7 +215,6 @@ a way that helps; a single `401` with a `Retry-After` is enough.
 | `/api/studio/health` | GET | cookie | Operational stats JSON (Phase 3) |
 | `/api/studio/usage` | GET | cookie | Listening figures (Phase 5). Same `?days=` menu as stats (Phase 5.2) |
 | `/api/studio/showhistory` | GET | cookie | One show's plays/listened per month, all recorded months. `?slug=` is shape-checked, 400 otherwise (Phase 5.2) |
-| `/api/studio/months` | GET | cookie | This calendar month vs last, per show (Phase 5.2) |
 | `/api/studio/action` | POST | cookie **+ CSRF header** | Runs one maintenance action (Phase 4) |
 | `/api/ev` | POST | **none** | The public usage beacon. Carries no identity, answers `204` to everything, unregistered when `USAGE_TRACKING=off` |
 
@@ -964,12 +963,6 @@ and only the last month of it was reachable. This phase is presentation only:
   measured zero, not a gap. In the studio, every row of the Every Feed table
   opens it (keyboard-operable — a click-only `<tr>` is invisible to a
   keyboard). The slug is shape-checked before it touches a file path.
-- **Month vs month.** `/api/studio/months` compares the current *calendar*
-  month to the previous one, deliberately unlike the rolling windows
-  everywhere else — "how did August compare to July" is a calendar question.
-  The current month is incomplete by definition, so the payload carries
-  `dayOfMonth` and the UI says "day N, still counting" rather than letting a
-  half month read low.
 - **CSV export.** Client-side, from the same `visibleRows()` the table
   renders, so the download is exactly the table as filtered and sorted — not a
   second report that can disagree with the first. Raw seconds, not the "4m"
@@ -980,8 +973,8 @@ and only the last month of it was reachable. This phase is presentation only:
 Tested in `test/studio/studio-tests.js` on the existing rollover fixture (a
 seeded previous-month file plus a live current-month beacon): `all` must see
 both months, `7` must see what the calendar says it should, an off-menu window
-must fall back, and the history/comparison endpoints must return the seeded
-numbers and 401 without a cookie.
+must fall back, and the history endpoint must return the seeded numbers and
+401 without a cookie.
 
 ---
 
@@ -1109,9 +1102,12 @@ and more interesting fact. **Effort: medium.** Needs an hour bucket added to the
 day record (`byHour: {0..23}`), which is 24 more integers per day — trivial
 storage. Adding it is a migration; see §9.
 
-**E. Month-over-month.** — **BUILT, Phase 5.2.** The rollups are already per
-month, so "this month vs last" is a second file read and a delta. Turns a
-dashboard into a trend without storing anything new.
+**E. Month-over-month.** — **Tried in Phase 5.2, removed.** The rollups are
+already per month, so "this month vs last" was a second file read and a delta,
+no new storage. Built as a table wedged into the Listening section; pulled
+back out because it didn't scroll well and read as a second, competing table
+right next to Every Feed. If revisited, it needs its own section (or to fold
+into the per-show history drill-down) rather than sitting inline above it.
 
 **F. Inventory snapshots — the missing third data type (§8.5).** Everything in
 Phase 2 is a *snapshot* of a rotating five-item window; nothing records what the

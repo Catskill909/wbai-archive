@@ -2357,43 +2357,6 @@ function showHistory(slug) {
   };
 }
 
-/**
- * This calendar month against the previous one, per show. Calendar months on
- * purpose, unlike everything else here (see recentDays for why the windows are
- * rolling): "how did August compare to July" is the question a station asks,
- * and a rolling pair of 30-day windows answers a question nobody asked.
- * The current month is incomplete by definition; the payload says how far in
- * we are so the UI can say it too rather than letting a half-month read low.
- */
-function monthComparison() {
-  const cur = statsMonth;
-  const d = new Date(Date.UTC(+cur.slice(0, 4), +cur.slice(5, 7) - 1, 1) - 86400000);
-  const prev = d.toISOString().slice(0, 7);
-  const curDays = statsMonthDays(cur);
-  const prevDays = statsMonthDays(prev);
-  const slugs = new Set();
-  for (const days of [curDays, prevDays]) {
-    for (const rec of Object.values(days || {})) {
-      if (!rec) continue;
-      for (const s of Object.keys(rec.byShow || {})) slugs.add(s);
-      for (const s of Object.keys(rec.secondsByShow || {})) slugs.add(s);
-    }
-  }
-  const shows = [...slugs].map((slug) => {
-    const a = monthTotalsFor(slug, prevDays);
-    const b = monthTotalsFor(slug, curDays);
-    const rec = feedStore[slug];
-    return {
-      slug,
-      title: (rec && rec.channel && rec.channel.title) || slug,
-      prevPlays: a.plays, prevSeconds: a.seconds,
-      plays: b.plays, seconds: b.seconds,
-    };
-  }).sort((x, y) => (y.seconds + y.prevSeconds) - (x.seconds + x.prevSeconds)
-    || x.title.localeCompare(y.title));
-  return { prevMonth: prev, month: cur, dayOfMonth: +today().slice(8, 10), shows };
-}
-
 // -------------------------------------------------------------- the studio
 /**
  * A password-gated area at /studio for the people who run the station. See
@@ -2922,9 +2885,6 @@ function studioApi(req, res, pathOnly) {
       return sendStudioJson(res, { error: 'bad slug' }, 400);
     }
     return sendStudioJson(res, showHistory(slug));
-  }
-  if (pathOnly === '/api/studio/months') {
-    return sendStudioJson(res, monthComparison());
   }
   if (pathOnly === '/api/studio/health') {
     return sendStudioJson(res, {
