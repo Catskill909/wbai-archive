@@ -154,14 +154,17 @@ check('CLAIM_RESOLVED when the listing stops advertising it', () => {
   assert.ok(kinds(c).includes('CLAIM_RESOLVED'), kinds(c));
 });
 
-// The mirror case: a live feed the server will never fetch, because the harvest
-// input is `hasRSS`. Silent content loss rather than a visible error.
+// The mirror case: a live feed the listing does not advertise. The server
+// eventually catches these (unclaimed slow probe, plus row synthesis when
+// there is no listing row at all — see server.js applyFeeds) but it is still
+// worth a human's attention, since it means upstream dropped a real show from
+// its own listing.
 check('FEED_UNFETCHED when a live feed has no XML button', () => {
   const c = diff(
     state({ dn: { slug: 'dn', status: 404, claimed: false } }, 5),
     { maxItems: 5, feeds: { dn: liveFeed({ slug: 'dn', claimed: false }) } });
   assert.ok(kinds(c).includes('FEED_UNFETCHED'), kinds(c));
-  assert.match(c.find((x) => x.kind === 'FEED_UNFETCHED').detail, /will not fetch/);
+  assert.match(c.find((x) => x.kind === 'FEED_UNFETCHED').detail, /slow unclaimed probe/);
 });
 
 console.log('\nsilence is real, not blindness:');

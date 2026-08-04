@@ -305,6 +305,17 @@ const FEED_CONCURRENCY = 5;   // a small station's Apache. Do not raise.
 
 // slug -> { lastModified, fetchedAt, channel:{...}, items:[...] }
 const feedStore = readJsonFile(FEEDS_PATH, {});
+
+// Every slug the scrape has ever named, kept forever once seen. Confirmed
+// 2026-08-04: `heavywaits` had a live 2-item feed while archive2's listing had
+// dropped it from the dropdown, rows AND schedule entirely — not just the
+// hasRSS button (that case is unclaimedMissAt, below). A slug in that state
+// never reaches catchUpFeeds at all, because today's scrape has nothing to
+// iterate that names it. This is the discovery memory scan.js already has
+// (its `remembered` set) for the same reason: upstream has, once, made a real
+// show vanish from every list it publishes while the feed kept working.
+const KNOWN_SLUGS_PATH = process.env.KNOWN_SLUGS_PATH || path.join(DATA_DIR, 'known-slugs.json');
+const knownSlugs = new Set(readJsonFile(KNOWN_SLUGS_PATH, []));
 /**
  * Feed harvest diagnostics.
  *
@@ -690,6 +701,31 @@ function hmsToSec(hms) {
   return p[0] * 3600 + p[1] * 60 + p[2];
 }
 
+// Inverse of hmsToSec, matching the listing's own "1:00:03" shape (no leading
+// zero on the hour) — used only for rows synthesised straight from a feed,
+// which have no listing string to carry forward.
+function secToHms(sec) {
+  const s = Math.max(0, Math.round(sec || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+}
+
+const dateTextFormat = new Intl.DateTimeFormat('en-US', {
+  timeZone: STATION_TZ, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  hour: 'numeric', minute: '2-digit', hour12: true,
+});
+
+// Matches archive2's own dateText shape ("Tuesday, August 4, 2026 7:00 am") so
+// a feed-only row reads identically to a scraped one — same reason secToHms
+// matches the listing's duration format.
+function secToDateText(epochSec) {
+  const parts = dateTextFormat.formatToParts(new Date((epochSec || 0) * 1000));
+  const get = (t) => (parts.find((p) => p.type === t) || {}).value || '';
+  return `${get('weekday')}, ${get('month')} ${get('day')}, ${get('year')} ${get('hour')}:${get('minute')} ${get('dayPeriod').toLowerCase()}`;
+}
+
 function applyFeeds(rows) {
   const byMp3 = feedIndex();
   // Shows we actually hold a working feed for. NOT `row.hasRSS` — that is only
@@ -746,7 +782,64 @@ function applyFeeds(rows) {
     }));
   }
 
-  return { rows: kept, droppedNoFeed, droppedFragment };
+  // Feed-only: a slug we hold a working feed for that is not in today's scrape
+  // at all — not "hasRSS false" (that show still has a row above), genuinely
+  // absent from every list upstream publishes. Confirmed 2026-08-04:
+  // `heavywaits` had a live feed with archive2's dropdown, rows AND schedule
+  // all having dropped it. See knownSlugs/unclaimedSlugs in getArchive for how
+  // a slug like this is still discovered and kept fresh.
+  //
+  // There is no scraped row to carry id/dt/category/artwork from, so these are
+  // built straight from the feed's own item data — one row per item, since a
+  // feed is a list of episodes, not a single scheduled slot. `source:
+  // 'feed-only'` marks them for the client, which must not present them as
+  // part of WBAI's own current listing (they are real audio, but not a claim
+  // WBAI's own site is currently making) — same reasoning as `source: 'feed'`
+  // vs `'listing'` above, one step further.
+  const scrapedSlugs = new Set(rows.map((r) => r.sho));
+  const feedOnlySlugs = [...haveFeed].filter((s) => !scrapedSlugs.has(s));
+  // A handful of these is the case above describes. Dozens at once means the
+  // scrape itself broke — every slug would look "gone" — not a wave of real
+  // delistings, and synthesizing rows for all of them would publish a guess
+  // dressed as content. Skip and warn loudly instead of guessing.
+  const FEED_ONLY_CAP = 15;
+  let feedOnly = 0;
+  if (feedOnlySlugs.length > FEED_ONLY_CAP) {
+    console.warn(`[feeds] ${feedOnlySlugs.length} feed-only slugs (no scraped row at all) — ` +
+      `over the ${FEED_ONLY_CAP} cap, more likely a broken scrape than real delistings; skipping synthesis`);
+  } else {
+    for (const slug of feedOnlySlugs) {
+      const rec = feedStore[slug];
+      if (!rec || !rec.items || !rec.items.length) continue;
+      for (const it of rec.items) {
+        if (it.durationSec && it.durationSec < MIN_EPISODE_SEC) { droppedFragment++; continue; }
+        kept.push({
+          id: `feed:${slug}:${it.dt}`,
+          ord: kept.length,
+          title: it.title || rec.channel.title,
+          cat: 'special',
+          sho: slug,
+          dt: it.dt,
+          dateText: secToDateText(it.dt),
+          length: secToHms(it.durationSec),
+          daysLeft: null,
+          host: rec.channel.author || '',
+          mp3: it.mp3,
+          hasRSS: true,
+          rss: `https://archive2.wbai.org/getrss.php?id=${encodeURIComponent(slug)}`,
+          photo: rec.channel.image || '',
+          source: 'feed-only',
+          feedSlug: slug,
+          durationSec: it.durationSec || 0,
+          bytes: it.bytes || 0,
+          episodeDesc: it.desc && it.desc !== rec.channel.desc ? it.desc : '',
+        });
+        feedOnly++;
+      }
+    }
+  }
+
+  return { rows: kept, droppedNoFeed, droppedFragment, feedOnly };
 }
 
 // 5 minutes. A re-scrape costs ~950 KB from upstream and ~2 ms of parse, so the
@@ -778,10 +871,32 @@ async function getArchive() {
     // feed TTL rather than the archive's, so a 5-minute re-scrape doesn't pull
     // 98 feeds with it.
     const feedSlugs = [...new Set(scraped.filter((r) => r.hasRSS).map((r) => r.sho))];
-    const unclaimedSlugs = [...new Set(scraped.filter((r) => !r.hasRSS).map((r) => r.sho))];
+
+    // Remember every slug this scrape names, so a show that later vanishes from
+    // every list upstream publishes (not just its hasRSS button — see
+    // knownSlugs above) is still a candidate for the slow unclaimed probe.
+    let knownGrew = false;
+    for (const r of scraped) {
+      if (!knownSlugs.has(r.sho)) { knownSlugs.add(r.sho); knownGrew = true; }
+    }
+    if (knownGrew) writeJsonSoon(KNOWN_SLUGS_PATH, () => [...knownSlugs].sort());
+
+    // Anything remembered that today's scrape does not claim as a live feed —
+    // covers both "still listed, button gone" and "not listed anywhere at all".
+    const unclaimedSlugs = [...knownSlugs].filter((s) => !feedSlugs.includes(s));
     if (Date.now() - feedsHarvestedAt > FEEDS_TTL) {
       if (!feedsInFlight) {
-        feedsInFlight = harvestFeeds(feedSlugs)
+        // refreshStaleFeeds only ever refreshes a slug that IS in today's scrape
+        // (it compares the feed's newest item against the listing's newest row,
+        // and there is no listing row to compare a feed-only slug against — see
+        // applyFeeds above). Without this, a slug already held but absent from
+        // every list upstream publishes — `heavywaits`, confirmed 2026-08-04 —
+        // would be fetched once and then frozen forever, missing every episode
+        // it airs after that first catch. Folded into the existing blind sweep
+        // rather than given its own schedule: same 6h cost either way, and it is
+        // usually zero slugs.
+        const heldButUnclaimed = Object.keys(feedStore).filter((s) => !feedSlugs.includes(s));
+        feedsInFlight = harvestFeeds([...feedSlugs, ...heldButUnclaimed])
           .catch((e) => console.warn('[feeds] harvest failed:', e.message))
           .finally(() => { feedsInFlight = null; });
       }
@@ -802,7 +917,7 @@ async function getArchive() {
     await catchUpFeeds(feedSlugs, unclaimedSlugs);
     await refreshStaleFeeds(scraped);
 
-    const { rows, droppedNoFeed, droppedFragment } = applyFeeds(scraped);
+    const { rows, droppedNoFeed, droppedFragment, feedOnly } = applyFeeds(scraped);
     // A total wipe means the feed store is empty or the join key changed shape —
     // never a real editorial state. Fail, so the request handler falls back to
     // the last good payload instead of publishing an empty archive.
@@ -819,6 +934,7 @@ async function getArchive() {
       scraped: scraped.length,
       droppedNoFeed,
       droppedFragment,
+      feedOnly,
       feeds: Object.keys(feedStore).length,
       shows: rows,
     };

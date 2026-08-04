@@ -1241,6 +1241,9 @@
   .retention.good{background:var(--good-bg); color:var(--good);}
   .retention.warn{background:var(--warn-bg); color:var(--warn);}
   .retention.danger{background:var(--danger-bg); color:var(--danger);}
+  /* Not a countdown — see retentionBadge() in app.js — so deliberately neutral
+     rather than any of the three urgency colors above. */
+  .retention.off{background:var(--surface-2); color:var(--ink-faint);}
 
   .play-btn{
     width:36px;height:36px;border-radius:50%;border:1px solid var(--outline-strong);

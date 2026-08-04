@@ -221,9 +221,14 @@ function diff(prevState, now) {
   // while upstream is still only *claiming*, before anything downstream that
   // trusts the claim can act on it.
   const mismatch = (r) => !!r.claimed && !live(r);
-  // The mirror case, currently never seen: a working feed on a show the listing
-  // does not advertise. The server harvests from `hasRSS`, so it would never
-  // fetch this one — silent content loss rather than a visible error.
+  // The mirror case: a working feed on a show the listing does not advertise.
+  // Confirmed 2026-08-04 (`heavywaits` — gone from the dropdown, rows AND
+  // schedule, feed still live). The server now discovers and slow-probes these
+  // (catchUpFeeds's unclaimed pass, b46c690 + the knownSlugs memory added
+  // alongside this fix) and synthesizes display rows straight from the feed
+  // when no listing row exists (applyFeeds's `feedOnlySlugs`), so this is no
+  // longer silent content loss — but it is still worth a human's attention:
+  // it means upstream dropped a real show from its own listing.
   const unfetched = (r) => !r.claimed && live(r);
 
   for (const [slug, r] of Object.entries(now.feeds)) {
@@ -255,7 +260,9 @@ function diff(prevState, now) {
     if (unfetched(r) && !unfetched(p)) {
       changes.push({
         kind: 'FEED_UNFETCHED', slug,
-        detail: `${r.items} items, but the listing shows no XML button — the server harvests from hasRSS and will not fetch this`,
+        detail: `${r.items} items, but the listing shows no XML button — the server will pick this up ` +
+          'on its slow unclaimed probe (or already has); still worth a look, since it means upstream ' +
+          'dropped a real show from its own listing',
       });
     }
 

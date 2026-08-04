@@ -98,6 +98,18 @@
     if(d===1) return '1 day left';
     return d+' days left';
   }
+  // `daysLeft` counts down to WBAI's own rotation cap, which only applies to
+  // shows WBAI's own listing still carries. A `source: 'feed-only'` row (see
+  // server.js applyFeeds) has no such cap — it exists because the show's feed
+  // is still live even though WBAI's site no longer lists it anywhere — so it
+  // gets a provenance note instead of a countdown that would either read as a
+  // fabricated "Last day" warning or a fabricated "plenty of time left".
+  function retentionBadge(r){
+    if(r.source==='feed-only'){
+      return '<span class="retention off" title="Still has a live feed, but WBAI’s current listing no longer includes this show.">Off current listing</span>';
+    }
+    return '<span class="retention '+retentionClass(r.daysLeft)+'">'+retentionLabel(r.daysLeft)+'</span>';
+  }
   function splitDateText(txt){
     var m = txt.match(/^(.*\d{4})\s+(\d{1,2}:\d{2}\s*[ap]m)$/i);
     return m ? {date:m[1], time:m[2]} : {date:txt, time:''};
@@ -456,7 +468,6 @@
   function renderList(list){
     return list.map(function(r){
       var c = CAT_BY_KEY[r.cat];
-      var rc = retentionClass(r.daysLeft);
       var dparts = splitDateText(r.dateText);
       var isLoading = (loadingMp3===r.mp3);
       var isPlaying = (nowPlaying.mp3===r.mp3 && !audio.paused && !audio.ended && !isLoading);
@@ -486,7 +497,7 @@
         '</div>'+
         '<div class="cell-date"><b>'+esc(dparts.date)+'</b><span>'+esc(dparts.time)+'</span></div>'+
         '<div class="cell-mono cell-duration">'+esc(r.length)+'</div>'+
-        '<div><span class="retention '+rc+'">'+retentionLabel(r.daysLeft)+'</span></div>'+
+        '<div>'+retentionBadge(r)+'</div>'+
         '<div class="row-actions">'+
           '<button class="play-btn'+(isPlaying?' playing':'')+(isLoading?' loading':'')+'" '+playAttrs(r, subLine, photo, isLoading, isPlaying)+'>'+glyph(isLoading, isPlaying)+'</button>'+
         '</div>'+
@@ -2710,7 +2721,7 @@
     var facts =
       fact('Aired', dparts.date ? esc(shortDateText(dparts.date))+(dparts.time ? ' <span class="mono">'+esc(dparts.time)+'</span>' : '') : '')+
       fact('Length', r.length ? '<span class="mono">'+esc(r.length)+'</span>' : '')+
-      '<span class="retention '+retentionClass(r.daysLeft)+'">'+retentionLabel(r.daysLeft)+'</span>';
+      retentionBadge(r);
 
     var links = '';
     if(showRss(r)) links += sheetLink(RSS_BASE+encodeURIComponent(r.sho), svgRss(), 'RSS feed');
