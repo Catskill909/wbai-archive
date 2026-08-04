@@ -32,15 +32,22 @@ an archived broadcast.
 - **List or gallery view** — browse as a simple list or a visual gallery of
   show art, whichever you prefer.
 - **On-air now, and what's next** — a full now-playing screen with artwork,
-  host, air times and volume control; keep browsing while it plays.
+  host, air times and volume control; keep browsing while it plays. When the
+  station's automatic track recognition identifies the music on air, the song
+  and artist appear alongside the show and clear again when it moves on.
 - **Lock screen controls** — play, pause, skip and see artwork right from your
   phone's lock screen, car display or desktop media controls.
 - **Keyboard shortcuts** — quick play/pause and skip controls for desktop
   listeners.
 - **Easy navigation** — a quick way back to the top of a long list, and
   shareable links to any show or search.
-- **Works on any device** — a clean, responsive design with light and dark
-  themes.
+- **Built for phones and tablets** — one responsive layout that reflows from a
+  one-handed phone view to a tablet or full desktop grid, tuned for touch
+  throughout: finger-sized controls, no stuck hover states, no accidental zoom
+  when you tap the search box, panels that scroll without dragging the page
+  behind them, and full use of the screen around notches and home bars.
+- **Works on any device** — the same app on phone, tablet, laptop and desktop,
+  with light and dark themes.
 - **Accessibility features:**
   - Full keyboard navigation, with a visible focus so you always know where you are
   - Works with screen readers
