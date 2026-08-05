@@ -153,10 +153,14 @@ code that ran.
   the unmodified app in headless Chrome against a fake station. Run **both**
   `./run.sh` and `./run.sh --strict` — the strict pass is the one that catches
   autoplay-policy regressions.
-- `npm test` runs the three suites that need no browser: `test/storage/` (the
-  mount-probe parser), `test/studio/` (the auth gate, against a real server
-  process) and `test/usage/` (a counter must reach the disk before the process
-  is killed). The browser suites are per-directory `./run.sh` scripts.
+- `npm test` runs the four suites that need no browser: `test/feed-scan/`
+  (the upstream scanner's diff and notable/routine split, entirely offline),
+  `test/storage/` (the mount-probe parser), `test/studio/` (the auth gate,
+  against a real server process) and `test/usage/` (a counter must reach the
+  disk before the process is killed). The browser suites are per-directory
+  `./run.sh` scripts. Add new offline suites to `npm test` in the same commit
+  that writes them — `test/feed-scan/selftest.js` sat outside it until
+  2026-08-05 and therefore had never once run in anger.
 - **Everything persisted lives under `DATA_DIR`** (default `./data`). Writes go
   through `writeJsonAtomic` and are flushed on `SIGTERM` — if you add a new file
   here, use `writeJsonSoon`/`writeJsonAtomic` rather than `fs.writeFileSync`, or

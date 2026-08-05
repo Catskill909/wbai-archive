@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/storage/mount-tests.js && node test/studio/studio-tests.js && node test/usage/durability-tests.js",
+    "test": "node test/feed-scan/selftest.js && node test/storage/mount-tests.js && node test/studio/studio-tests.js && node test/usage/durability-tests.js",
     "seed": "node -e \"const fs=require('fs'),d=JSON.parse(fs.readFileSync('data/showinfo.json','utf8')),o={};Object.keys(d).sort().forEach(k=>o[k]=d[k]);fs.mkdirSync('seed',{recursive:true});fs.writeFileSync('seed/showinfo.json',JSON.stringify(o));console.log('seed/showinfo.json <- '+Object.keys(o).length+' records')\""
   },
   "engines": {
