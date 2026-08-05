@@ -48,13 +48,23 @@ const CONCURRENCY = 5; // a small station's Apache. Do not raise this.
  * exists. Those are reported — they are the evidence the scanner can still see —
  * but they do not raise an alarm. CLAIM_RESOLVED is deliberately routine: it is
  * an alarm switching *off*, which needs no one's attention.
+ *
+ * FEED_APPEARED was notable until 2026-08-05, as "the migration signal". That
+ * rationale expired on 2026-07-29, when the app became feed-only: a feed turning
+ * on IS the migration now, not a warning about it. It fired on four of the eight
+ * runs to that date — breakthrnewsradio on the 4th, explorafri on the 5th, each
+ * a show reaching its first archived episode, with twenty more slugs still
+ * waiting for theirs. Nobody has to do anything about one: getArchive discovers
+ * the slug from the listing and the hourly harvest picks the feed up by itself.
+ * The scanner already agreed, inconsistently — the same event for a slug it had
+ * never seen before is NEW_FEED, which is routine. A daily failure mail is one
+ * nobody opens on the day the feeds die; see the note above the exit status.
  */
 const NOTABLE = new Set([
   'CAP_CHANGED',      // the cap moved; the migration arithmetic is stale
   'CLAIM_MISMATCH',   // the 2026-07-29 regression, caught while it is still a claim
   'FEED_UNFETCHED',   // a live feed the harvest will never fetch: silent content loss
   'FEED_LOST',        // including 200-with-zero-bytes, the July failure mode
-  'FEED_APPEARED',    // the migration signal
   'SLUG_GONE',        // a show we remember is no longer offered anywhere
 ]);
 

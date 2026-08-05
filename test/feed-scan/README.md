@@ -77,13 +77,13 @@ what decides whether the scheduled workflow fails and mails you.
 | --- | --- |
 | `CAP_CHANGED` | **max episodes-per-feed moved — the migration plan is now out of date** |
 | `CLAIM_MISMATCH` | the listing advertises a feed that isn't there — the 2026-07-29 regression |
-| `FEED_UNFETCHED` | a live feed with no XML button: the harvest will never fetch it |
+| `FEED_UNFETCHED` | a live feed with no XML button — upstream dropped a real show from its own listing |
 | `FEED_LOST` | was serving, now isn't — including `200`-with-zero-bytes |
-| `FEED_APPEARED` | a known 404 slug started serving. **This is the migration signal.** |
 | `SLUG_GONE` | a remembered slug is no longer offered anywhere |
 
 | Routine | Meaning |
 | --- | --- |
+| `FEED_APPEARED` | a known 404 slug started serving — the hourly harvest picks it up unaided |
 | `NEW_EPISODE` | newest `pubDate` advanced — the healthy heartbeat |
 | `ITEM_COUNT` | a feed's episode count moved |
 | `NEW_SLUG` | a new show, no feed yet — worth watching, not worth waking for |
@@ -96,6 +96,12 @@ archive working exactly as it should. Exiting `1` on any difference means a
 failure mail every single day, and a daily failure mail is one nobody opens on the
 day the feeds actually die. `--any-change` restores the old behaviour if you want
 it.
+
+`FEED_APPEARED` was demoted to routine on 2026-08-05 for the same reason, having
+failed four of the first eight runs. WBAI is bringing feeds online a show at a
+time — twenty slugs are still waiting for a first archived episode — and each one
+that arrives needs no action at all: the hourly harvest finds it. Alarming on a
+feed *arriving* only made sense while feeds were the thing being migrated to.
 
 ## Load
 

@@ -232,6 +232,25 @@ check('a new show with no feed yet is reported but NOT notable', () => {
   assert.deepStrictEqual(c.filter((x) => NOTABLE.has(x.kind)), []);
 });
 
+// Demoted 2026-08-05. A feed switching on is the archive working: WBAI brings
+// them up a show at a time, and the hourly harvest picks each one up unaided.
+// Note that the identical event for a slug we had never seen is NEW_FEED, which
+// was always routine — the two must not disagree about the same day's news.
+check('a feed switching on is reported but NOT notable', () => {
+  const c = diff(
+    state({ explorafri: { slug: 'explorafri', status: 404, claimed: true } }, 5),
+    { maxItems: 5, feeds: { explorafri: liveFeed({ slug: 'explorafri', items: 1, claimed: true }) } });
+  // CLAIM_RESOLVED rides along because the listing had been advertising the
+  // button ahead of the file — which is how explorafri actually looked.
+  assert.deepStrictEqual(kinds(c), ['CLAIM_RESOLVED', 'FEED_APPEARED']);
+  assert.deepStrictEqual(c.filter((x) => NOTABLE.has(x.kind)), [], 'a feed arriving must not mail anyone');
+
+  const unseen = diff(state({}, 5),
+    { maxItems: 5, feeds: { explorafri: liveFeed({ slug: 'explorafri', items: 1, claimed: true }) } });
+  assert.deepStrictEqual(kinds(unseen), ['NEW_FEED']);
+  assert.deepStrictEqual(unseen.filter((x) => NOTABLE.has(x.kind)), [], 'NEW_FEED and FEED_APPEARED must agree');
+});
+
 // The other half of the split, and the half that matters: the kinds that killed
 // the site in July must still get through.
 check('the July failure mode IS notable', () => {
