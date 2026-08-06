@@ -747,7 +747,7 @@ the third needs no answer.
 | 4 | `lightbox-open` / `donate-open` scroll locks | `app.js` + `styles.css` |
 | 4 | `overscroll-behavior:contain` ×4, safe-area padding, `100dvh` | `styles.css` |
 | 5 | Search field mobile keyboard hints | `index.html` |
-| — | Touch regression suite, 28 assertions | `test/touch/` |
+| — | Touch regression suite, 51 assertions | `test/touch/` |
 
 ### Two things worth knowing before editing this again
 
@@ -781,6 +781,46 @@ it costs nothing.
 under 12% of the screen. Growing the band by growing the bar would satisfy a
 naive size check while quietly costing a tenth of the phone.
 
+**The ghost click.** *(found 2026-08-06, fixed the same day — §6 of the suite)*
+
+Reported as "archive modals are broken when I test devices in the inspect
+browser view, and the highlight around the card stays". Both halves were one
+bug, and neither was in the modal.
+
+A tap on a card is handled on **touchend**, not click — that is the iOS
+momentum-scroll fix (`activateRowTarget`, and the comment above it). Handling it
+there does not cancel the synthetic click the browser still owes that tap: the
+listener is `{passive:true}`, so it *cannot* `preventDefault()` even if it tried.
+That click arrives about 70ms later **at the same coordinates**, by which time
+the sheet the touchend just opened is under the finger. Traced in emulation:
+
+```
+t=113ms  touchend  .card-overlay      -> openSheetById(), sheet opens
+t=182ms  click     .sheet-scrim.show  -> closeSheet()
+t=203ms  popstate                     -> dismissSheet(), focus back to the card
+```
+
+So the modal flashed open and shut — indistinguishable from "it didn't open" —
+and the card kept its focus ring and play overlay because closing returns focus
+to whatever opened the sheet. It predates the episode rail, but the rail raised
+the stakes: the same ghost landing a little higher would have silently chosen a
+different episode, and on the Play button it would have started playback.
+
+The existing `ROW_TAP_CLICK_GUARD_MS` guard did not help, because it only
+protects `rowsEl`'s own click listener — and the ghost had landed on the scrim,
+somewhere else entirely. The fix swallows **exactly one** click in the capture
+phase: the one with no touch sequence of its own (`ghostArmed`, disarmed by any
+`touchstart`). A real second tap always begins with a touchstart, so a fast
+deliberate tap inside the freshly-opened sheet still works — the suite asserts
+that too, or the fix would be a different bug.
+
+Two notes for whoever reads this next. **No existing test could see it**: every
+suite drove the app with `p.click()` or a `?show=` deep link, and neither
+produces a ghost click — you have to dispatch a real `Input.dispatchTouchEvent`
+pair. And §6's self-test asserts that the ghost click **still fires**, because
+the day Chrome stops emitting it in emulation, "the sheet stayed open" starts
+passing for the wrong reason and would never say so.
+
 **The hover guard splits selector lists; keep it that way.** `.card-play`'s
 `opacity:1` was shared by four selectors — `:hover`, `:focus-visible`,
 `.playing`, and `.loading`. Only the `:hover` one moved inside the guard. Moving
@@ -793,7 +833,7 @@ opposite of the bug being fixed.
 
 ```sh
 node server.js &          # app must be on :8080
-./test/touch/run.sh       # 28 assertions, coarse-pointer emulated
+./test/touch/run.sh       # 51 assertions, coarse-pointer emulated
 ```
 
 It runs both ways on purpose: pass 1 asserts the hover guards **do** match on a

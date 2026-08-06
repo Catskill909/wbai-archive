@@ -96,10 +96,14 @@ So:
    page did NOT move" passes perfectly once the probe goes blind. Section 4 of
    `touch-tests.js` strips the lock mid-run and *requires* the probe to notice.
    Any assertion of absence deserves that self-test.
-6. **The CSP silently voids injected `<style>` tags.** The app is served
-   `style-src 'self'` with no `unsafe-inline`, so a probe that appends a
-   `<style>` element to change something at runtime has *no effect* — and says
-   nothing about it. This burned two separate measurements on 2026-08-06: one
+6. **The CSP silently voids injected `<style>` tags — and inline `style=""`
+   attributes.** The app is served `style-src 'self'` with no `unsafe-inline`,
+   so a probe that appends a `<style>` element to change something at runtime
+   has *no effect* — and says nothing about it. The same rule discards a
+   `style="--x:…"` attribute written into `innerHTML`, which is how the weekly
+   schedule's category colour spent months rendering its fallback with nobody
+   noticing (found and fixed 2026-08-06 — see `docs/episode-rail.md`). Set
+   custom properties through CSSOM. This burned two separate measurements on 2026-08-06: one
    reading label widths behind a `display` toggle, one self-test trying to
    disable a fix to prove the probe still had teeth. Both read as clean passes.
    Go through CSSOM instead (`el.style.zIndex = '80'`), which CSP allows, and
@@ -189,6 +193,14 @@ code that ran.
   listening; and a close that bypasses history must clear the `{sched:1}` flag,
   or Back re-opens it. It must never touch an `<audio>` element — Listen Live
   calls `openLivePlayer()` and stops there.
+- **The show sheet's episode rail** is how a listener reaches a show's *other*
+  broadcasts — the listing is episode-level and the schedule only ever hands over
+  a slot's most recent row, so without it there is no path. Read
+  `docs/episode-rail.md` before extending it. Two rules it must not lose:
+  choosing a chip **never** starts playback (play stays one deliberate tap), and
+  selection uses `replaceState`, so Back still means "close the sheet". Its
+  suite is `test/episode-rail/run.sh` (headless Chrome, 53 checks, fixtures
+  derived from the live listing rather than hardcoded ids that rotate out).
 - **Usage counters** live in `public/track.js` (loaded separately from `app.js`
   so counting can never affect playback) and `POST /api/ev`. They carry **no
   identifier of any kind** — no cookie, no session, no stored or hashed IP — and

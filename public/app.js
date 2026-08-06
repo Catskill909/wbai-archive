@@ -622,11 +622,24 @@
     delete map[mp3];
     resumeStore();
   }
+  // Heard to the end. There is no position left to return to — resumeFor() reads
+  // 0 through the same RESUME_MIN gate every other entry passes — but *that you
+  // heard it* is worth keeping: it is what the episode rail marks with a tick,
+  // and forgetting the episode outright (which this used to do) makes a finished
+  // show indistinguishable from one never opened. "Start over" clears it, via
+  // resumeForget, because starting over is a claim to be listening again.
+  function resumeDone(mp3, d){
+    if(!mp3) return;
+    resumeAll()[mp3] = { t:0, d: isFinite(d) ? Math.floor(d) : 0, at: Date.now(), done:1 };
+    resumePrune();
+    resumeStore();
+  }
   // Called on pause, on track change, on unload, and every few seconds of play.
   function resumeRemember(){
     var mp3 = nowPlaying.mp3, t = audio.currentTime, d = audio.duration;
     if(!mp3 || !isFinite(t)) return;
-    if(t < RESUME_MIN || (isFinite(d) && d > 0 && t > d - RESUME_TAIL)){ resumeForget(mp3); return; }
+    if(isFinite(d) && d > 0 && t > d - RESUME_TAIL){ resumeDone(mp3, d); return; }
+    if(t < RESUME_MIN){ resumeForget(mp3); return; }
     resumeAll()[mp3] = { t: Math.floor(t), d: isFinite(d) ? Math.floor(d) : 0, at: Date.now() };
     resumePrune();
     resumeStore();
@@ -670,11 +683,22 @@
   window.addEventListener('pagehide', resumeRemember);
 
   // The sheet's Play button is the one control with room to spell the offer out.
+  //
+  // It is also the only place the episode rail's choice can be read once the
+  // rail has scrolled out of view behind a long description, so it carries the
+  // chosen date — but ONLY when that choice isn't the default. On the newest
+  // episode "Play episode" is already the whole truth, and a date there would
+  // put a label on 125 shows to serve the few where it means anything.
+  // sheetEpAlt is set by paintSheet; only the sheet renders a .play-label, so
+  // no card button can pick this up.
+  var sheetEpAlt = '';
   function playLabelFor(mp3, isLoading, isPlaying){
     if(isLoading) return 'Loading…';
     if(isPlaying) return 'Pause';
+    var alt = (mp3 && mp3 === sheetMp3) ? sheetEpAlt : '';
     var t = resumeFor(mp3);
-    return t ? 'Resume ' + formatTime(t) : 'Play episode';
+    if(t) return 'Resume ' + formatTime(t) + (alt ? ' · ' + alt : '');
+    return alt ? 'Play · ' + alt : 'Play episode';
   }
 
   // Every scrubber wired to the same <audio>: the docked player bar always, plus
@@ -789,6 +813,7 @@
     refreshToggleIcon();
     syncSheetScrub();
     syncSheetRestart();
+    syncEpMarks();          // pausing or finishing changes what the rail shows
     paintSheetCloseBtn();   // what closing the sheet now means changed with it
   }
 
@@ -834,8 +859,8 @@
   audio.addEventListener('ended', function(){
     loadingMp3 = null; setStatus('Finished');
     setPlaybackState('paused');
-    // heard to the end: there is no place left to return to
-    resumeForget(nowPlaying.mp3);
+    // heard to the end: no place left to return to, but the rail still says so
+    resumeDone(nowPlaying.mp3, audio.duration);
     hideResumeToast();
     updatePlayButtons();
   });
@@ -927,6 +952,7 @@
   var lastRowTapAt = 0;
   var ROW_TAP_SLOP = 10;      // px of finger movement still counted as a tap
   var ROW_TAP_CLICK_GUARD_MS = 500;
+  var ghostArmed = false;     // a synthetic click is still owed for a tap we handled
 
   rowsEl.addEventListener('touchstart', function(e){
     var t = e.touches[0];
@@ -940,6 +966,7 @@
     var t = e.changedTouches[0];
     if(Math.abs(t.clientX - start.x) > ROW_TAP_SLOP || Math.abs(t.clientY - start.y) > ROW_TAP_SLOP) return;
     lastRowTapAt = Date.now();
+    ghostArmed = true;
     activateRowTarget(start.target);
   }, { passive: true });
 
@@ -947,6 +974,41 @@
     if(Date.now() - lastRowTapAt < ROW_TAP_CLICK_GUARD_MS) return;
     activateRowTarget(e.target);
   });
+
+  // ---- The ghost click.
+  //
+  // Handling the tap on touchend does NOT cancel the synthetic click the browser
+  // still owes for it (the listener is passive, so it cannot preventDefault even
+  // if it wanted to). That click arrives ~70ms later AT THE SAME COORDINATES —
+  // by which time the sheet we just opened is under the finger. It therefore
+  // lands on whatever now occupies that point, and the app treats it as a
+  // deliberate second tap:
+  //
+  //   touchend on a card  -> sheet opens
+  //   ghost click 70ms later, same x/y -> hits .sheet-scrim -> closeSheet()
+  //
+  // which reads as "the modal is broken — it flashes and closes", and leaves the
+  // card focused (so its focus ring and play overlay stay lit) because closing
+  // returns focus to whatever opened the sheet. Confirmed by event trace in
+  // device emulation, 2026-08-06; it predates the episode rail, but the rail
+  // widened the blast radius — the same ghost landing a little higher would have
+  // picked a random episode, and on the Play button it would have started
+  // playback nobody asked for.
+  //
+  // So swallow exactly one click: the one with no touch sequence of its own. Any
+  // real second tap begins with a touchstart, which disarms this, so a fast
+  // deliberate tap inside the freshly-opened sheet still works. The rowsEl guard
+  // above stays as it was — it covers the same ghost landing back inside the
+  // list, where this handler has already stopped it, and is the documented
+  // behaviour from the original iOS momentum-scroll fix.
+  document.addEventListener('touchstart', function(){ ghostArmed = false; }, true);
+  document.addEventListener('click', function(e){
+    if(!ghostArmed) return;
+    ghostArmed = false;
+    if(Date.now() - lastRowTapAt >= ROW_TAP_CLICK_GUARD_MS) return;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
 
   // Any element carrying the play button's data-* attributes can drive playback:
   // list rows, gallery cards, and the info sheet's Play button all share this.
@@ -2341,6 +2403,12 @@
     render();
     setClock();
     schedInvalidate();   // the schedule is derived from these rows; keep it in step
+    // The episode rail is derived from them too — an open sheet still holding
+    // the pre-refresh list would offer episodes that have just rotated out.
+    if(sheet && sheet.classList.contains('show')){
+      var open = rowById(sheetRowId);
+      if(open) paintSheet(open, true);
+    }
     openDeepLink();
   }
 
@@ -2719,7 +2787,12 @@
             // The card look (border, cat-colour edge, background) now lives on
             // the wrap, not .sched-show, so the Listen Live pill can sit inside
             // the same card without nesting a button inside a button.
-            return '<div class="sched-show-wrap" data-title="'+esc(r.title)+'" style="--cat:'+c.color+'">'+
+            // The colour rides on a data-* attribute and is applied through
+            // CSSOM by schedApplyCatColour(). It was a style="--cat:…" attribute
+            // until 2026-08-06, which the app's own CSP (style-src 'self', no
+            // unsafe-inline) had been silently discarding the whole time — so
+            // the hover edge has never actually been the category's colour.
+            return '<div class="sched-show-wrap" data-title="'+esc(r.title)+'" data-cat="'+esc(c.color)+'">'+
               '<button class="sched-show" type="button" data-id="'+esc(r.id)+'"'+
                 ' aria-label="More about '+esc(r.title)+'">'+
                 '<span class="sched-thumb">'+(r.photo ? '<img loading="lazy" alt="" src="'+esc(r.photo)+'">' : '')+'</span>'+
@@ -2738,6 +2811,7 @@
         '</div>'+
       '</div>';
     }).join('');
+    schedApplyCatColour();
     schedApplyLiveHighlight();
     schedScrollToLive();
   }
@@ -2754,6 +2828,13 @@
     var ca = coreKey(ka), cb = coreKey(kb);
     if(ca && ca === cb) return true;
     return dice(ka.split(' '), kb.split(' ')) >= 0.72;
+  }
+  // CSP blocks inline style attributes, so the per-category custom property has
+  // to be set through CSSOM after the markup lands. Called from paintSchedule().
+  function schedApplyCatColour(){
+    schedBody.querySelectorAll('.sched-show-wrap').forEach(function(w){
+      if(w.dataset.cat) w.style.setProperty('--cat', w.dataset.cat);
+    });
   }
   // Toggles the LIVE badge and Listen button in place, no re-render — called
   // on every 15s now-playing poll so the highlight moves show to show while
@@ -3028,6 +3109,127 @@
     return '<a class="sheet-link" href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">'+icon+labelHtml+'</a>';
   }
 
+  // ---------------- Episode rail ----------------
+  // The archive listing is episode-level — one card per broadcast — so the sheet
+  // opens on whichever episode you tapped, and the rail is how you reach the
+  // other 3 (or 25) of the same show without going back to the grid. It is the
+  // only path at all from the schedule, which can only ever hand over a slot's
+  // most recent row.
+  //
+  // A show is a SLUG, not a title. showInfo and the artwork are keyed by `sho`,
+  // so every row in a slug group renders a byte-identical header and switching
+  // episodes visibly changes only the facts row and what Play will play.
+  // Grouping by title instead would fold "What's Going On!"'s Monday, Tuesday
+  // and Wednesday editions — three slugs, three descriptions — into one wrong
+  // list. Lowercased because "Talk Out of School" ships under two slugs that
+  // differ only in capitalisation.
+  //
+  // Group sizes in a representative listing (536 rows / 125 shows, 2026-08-06):
+  // 13 shows have one episode and get no rail at all, half have 4-5, and the
+  // dailies run to 26. Both ends have to look deliberate.
+  var EPS_RAIL_MAX = 6;         // more than this and the rail offers "All N"
+  var sheetEpsOpen = false;     // is the rail expanded into the wrapped grid?
+
+  function showKey(r){ return String(r.sho || '').toLowerCase() || normTitle(r.title); }
+  function episodesFor(r){
+    var k = showKey(r), out = [];
+    for(var i=0; i<rows.length; i++){
+      if(rows[i].mp3 && showKey(rows[i]) === k) out.push(rows[i]);
+    }
+    out.sort(function(a, b){ return (b.dt || 0) - (a.dt || 0); });   // newest first
+    return out;
+  }
+
+  // "Thursday, August 6, 2026 6:00 am" -> {day:'Thu', date:'Aug 6'}. Two lines,
+  // because a chip that says only "Aug 6" makes you count to work out that a
+  // weekly show's other editions are the same weekday.
+  function epLabel(r){
+    var d = splitDateText(r.dateText || '').date || '';
+    var m = /^(\w+),\s*(\w+)\s+(\d{1,2})/.exec(d);
+    return m
+      ? { day: LONG_NAMES[m[1]] || m[1], date: (LONG_NAMES[m[2]] || m[2]) + ' ' + m[3] }
+      : { day: '', date: shortDateText(d) };
+  }
+  // listing-source rows carry durationSec:0 but always have the string
+  function rowDurSec(r){
+    if(r.durationSec) return r.durationSec;
+    var m = /(?:(\d+):)?(\d+):(\d+)/.exec(r.length || '');
+    return m ? (parseInt(m[1] || 0, 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10)) : 0;
+  }
+  // 0 = untouched, 1 = finished, otherwise the fraction heard. Clamped away from
+  // both ends so a part-heard episode never draws as empty or as complete.
+  function heardFrac(r){
+    var rec = r.mp3 && resumeAll()[r.mp3];
+    if(!rec) return 0;
+    if(rec.done) return 1;
+    var t = isFinite(rec.t) ? rec.t : 0;
+    if(t < RESUME_MIN) return 0;
+    var d = rec.d || rowDurSec(r);
+    return d ? Math.min(0.95, Math.max(0.05, t / d)) : 0.5;
+  }
+
+  // Both marks are always in the markup and revealed by class, so syncEpMarks()
+  // can keep the rail current during playback without rebuilding any HTML.
+  function epsHtml(r){
+    var list = episodesFor(r);
+    if(list.length < 2) return '';      // nothing to choose between: render nothing
+    var chips = list.map(function(e){
+      var lb = epLabel(e), f = heardFrac(e), on = (String(e.id) === String(r.id));
+      var state = f >= 1 ? ', played' : (f > 0 ? ', ' + Math.round(f * 100) + '% played' : '');
+      return '<button type="button" class="ep'+(on ? ' on' : '')+
+          (f >= 1 ? ' done' : (f > 0 ? ' part' : ''))+'" role="radio" '+
+          'aria-checked="'+(on ? 'true' : 'false')+'" tabindex="'+(on ? '0' : '-1')+'" '+
+          'data-id="'+esc(e.id)+'" data-pct="'+Math.round(f * 100)+'" '+
+          'aria-label="'+esc(lb.day+' '+lb.date+state)+'">'+
+          '<span class="ep-day">'+esc(lb.day)+'</span>'+
+          '<span class="ep-date">'+esc(lb.date)+'</span>'+
+          '<span class="ep-mark" aria-hidden="true"><span class="ep-bar"></span>'+
+            '<svg class="ep-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>'+
+          '</span>'+
+        '</button>';
+    }).join('');
+    return '<div class="sheet-eps'+(sheetEpsOpen ? ' open' : '')+'">'+
+        '<div class="eps-head">'+
+          '<span class="eps-k">Episodes</span><span class="eps-n">'+list.length+'</span>'+
+          (list.length > EPS_RAIL_MAX
+            ? '<button type="button" class="eps-all" aria-expanded="'+(sheetEpsOpen ? 'true' : 'false')+'">'+
+                (sheetEpsOpen ? 'Show less' : 'All '+list.length)+'</button>'
+            : '')+
+        '</div>'+
+        '<div class="eps-rail" id="sheetEpsRail" role="radiogroup" aria-label="Choose an episode of '+esc(r.title)+'">'+
+          chips+
+        '</div>'+
+      '</div>';
+  }
+
+  // The percentage goes through CSSOM, never a style="" attribute: this app is
+  // served style-src 'self', which voids inline styles silently (CLAUDE.md §3a).
+  function syncEpMarks(){
+    var rail = document.getElementById('sheetEpsRail');
+    if(!rail) return;
+    rail.querySelectorAll('.ep').forEach(function(el){
+      var row = rowById(el.dataset.id);
+      var f = row ? heardFrac(row) : 0;
+      el.classList.toggle('done', f >= 1);
+      el.classList.toggle('part', f > 0 && f < 1);
+      var bar = el.querySelector('.ep-bar');
+      if(bar) bar.style.setProperty('--pct', Math.round(f * 100) + '%');
+    });
+  }
+  // Open the sheet on an old episode and its chip must be on screen, or the rail
+  // reads as "only the newest ones exist". Written as scrollLeft rather than
+  // scrollIntoView() because that one would scroll the sheet body too.
+  function scrollEpIntoView(){
+    var rail = document.getElementById('sheetEpsRail');
+    if(!rail) return;
+    var scrollable = rail.scrollWidth > rail.clientWidth + 4;
+    rail.classList.toggle('overflowing', scrollable && !sheetEpsOpen);
+    var on = rail.querySelector('.ep.on');
+    if(!on) return;
+    if(sheetEpsOpen) rail.scrollTop = Math.max(0, on.offsetTop - rail.clientHeight / 2 + on.offsetHeight / 2);
+    else if(scrollable) rail.scrollLeft = Math.max(0, on.offsetLeft - rail.clientWidth / 2 + on.offsetWidth / 2);
+  }
+
   function sheetHtml(r){
     var info = showInfo[r.sho] || {};
     var prog = programFor(r.title) || {};
@@ -3118,7 +3320,10 @@
           '</div>'+
         '</div>'+
         (desc ? '<div class="sheet-desc-wrap"><p class="sheet-desc" id="sheetDesc">'+esc(desc)+'</p></div>' : '')+
-        '<div class="sheet-facts">'+facts+'</div>',
+        '<div class="sheet-facts">'+facts+'</div>'+
+        // under the facts, in the scrolling body — the pinned footer's height
+        // must not depend on how many episodes a show happens to have
+        epsHtml(r),
       // pinned: the controls must never scroll out of reach behind a long
       // description. Secondary links sit in their own row *above* Play, so the
       // primary control keeps a predictable position however many links a show
@@ -3220,18 +3425,60 @@
     return null;
   }
 
-  function paintSheet(r){
+  // `keepScroll` is the episode rail swapping rows underneath an open sheet.
+  // Every row of one show renders the same header, so the body's height doesn't
+  // change and restoring the offset is exact — without it, picking a date from
+  // a rail you had to scroll to reach would throw you back to the top.
+  function paintSheet(r, keepScroll){
+    var top = keepScroll ? sheetBody.scrollTop : 0;
     sheetRowId = r.id;
     sheetMp3 = r.mp3 || null;
+    // Only a non-default choice earns a date on the Play button (see playLabelFor)
+    var eps = episodesFor(r);
+    sheetEpAlt = (eps.length > 1 && String(eps[0].id) !== String(r.id)) ? epLabel(r).date : '';
     var parts = sheetHtml(r);
     sheetBody.innerHTML = parts.body;
     sheetFoot.innerHTML = parts.foot;
-    sheetBody.scrollTop = 0;
+    sheetBody.scrollTop = top;
     setupDescClamp();
     bindRange(document.getElementById('sheetRange'));
     syncSheetScrub();
     syncSheetRestart();
+    syncEpMarks();
+    scrollEpIntoView();
     paintSheetCloseBtn();   // sheetMp3 just changed, so the promise may have too
+  }
+
+  // Picking a date is not playing it: it re-aims the sheet (and the Play button)
+  // at another episode and stops there, so play is still one deliberate tap on
+  // the control that has always meant play. The URL follows via replaceState —
+  // a share link then names the exact episode, while Back keeps meaning "close
+  // the sheet" rather than "undo six chip taps" (same rule as the filters).
+  function selectEpisode(id){
+    if(String(id) === String(sheetRowId)) return;
+    var r = rowById(id);
+    if(!r) return;
+    var refocus = document.activeElement && document.activeElement.classList &&
+                  document.activeElement.classList.contains('ep');
+    paintSheet(r, true);
+    if(canHistory){
+      try { history.replaceState({sheetId:r.id}, '', urlFor(r.id)); } catch(e){}
+    }
+    if(refocus){
+      var on = sheetBody.querySelector('.ep.on');
+      if(on) on.focus();
+    }
+  }
+
+  function toggleEps(){
+    var box = sheetBody.querySelector('.sheet-eps');
+    var btn = sheetBody.querySelector('.eps-all');
+    if(!box || !btn) return;
+    sheetEpsOpen = !sheetEpsOpen;
+    box.classList.toggle('open', sheetEpsOpen);
+    btn.textContent = sheetEpsOpen ? 'Show less' : 'All ' + box.querySelectorAll('.ep').length;
+    btn.setAttribute('aria-expanded', String(sheetEpsOpen));
+    scrollEpIntoView();
   }
 
   // `fromHistory` marks an open that a popstate is already accounting for, so it
@@ -3243,6 +3490,7 @@
     // another with the sheet already up replaces the entry, so Back always
     // returns to the listing rather than walking back through shows.
     var wasOpen = sheet.classList.contains('show');
+    sheetEpsOpen = false;    // every opening starts from the compact rail
     paintSheet(r);
     if(canHistory && !fromHistory){
       try {
@@ -3319,8 +3567,10 @@
     }
     if(e.key === 'Escape'){ closeSheet(); return; }
     if(e.key !== 'Tab') return;
-    // keep keyboard focus inside the dialog while it is open
-    var f = sheet.querySelectorAll('a[href], button:not([disabled])');
+    // keep keyboard focus inside the dialog while it is open. tabindex="-1" is
+    // excluded so the episode rail's unselected chips (a roving tabindex) can't
+    // become the trap's first or last stop.
+    var f = sheet.querySelectorAll('a[href], button:not([disabled]):not([tabindex="-1"])');
     if(!f.length) return;
     var first = f[0], last = f[f.length-1];
     if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
@@ -3336,7 +3586,30 @@
     var btn = e.target.closest('.sheet-play');
     if(btn){ togglePlayFrom(btn); return; }
     if(e.target.closest('.sheet-restart')){ restartSheetEpisode(); return; }
+    if(e.target.closest('.eps-all')){ toggleEps(); return; }
+    var ep = e.target.closest('.ep');
+    if(ep){ selectEpisode(ep.dataset.id); return; }
     if(e.target.closest('.sheet-share')) shareSheet();
+  });
+
+  // Arrow keys inside the rail, as a radiogroup owes: the chips carry a roving
+  // tabindex so Tab treats the whole rail as one stop, and moving the selection
+  // is what the arrows do. Bound on the dialog rather than the rail, which is
+  // rebuilt on every paint. Escape and Tab are onSheetKey's, untouched.
+  var EP_STEP = {ArrowRight:1, ArrowDown:1, ArrowLeft:-1, ArrowUp:-1};
+  sheet.addEventListener('keydown', function(e){
+    if(!e.target.closest) return;
+    var chip = e.target.closest('.ep');
+    if(!chip) return;
+    var rail = chip.parentNode;
+    var all = Array.prototype.slice.call(rail.querySelectorAll('.ep'));
+    var i = all.indexOf(chip), next = null;
+    if(e.key === 'Home') next = all[0];
+    else if(e.key === 'End') next = all[all.length - 1];
+    else if(EP_STEP[e.key]) next = all[i + EP_STEP[e.key]];
+    else return;
+    e.preventDefault();
+    if(next) selectEpisode(next.dataset.id);
   });
 
   // Deliberately a bare `?show=` link, without whatever category or search the

@@ -1991,6 +1991,84 @@
   }
   .sheet-facts .mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 
+  /* ---- episode rail ----
+     One scrolling row of dates at every width. With four chips on a desktop it
+     simply reads as a row of chips and never scrolls; with twenty-six it swipes.
+     Two behaviours behind a breakpoint would be a second thing to reason about
+     for no gain, and the collapsed rail costs ~56px however many episodes a
+     show has — which is the whole point: it must not crowd the card. */
+  .sheet-eps{ margin-top:1rem; }
+  .eps-head{ display:flex; align-items:baseline; gap:.4rem; margin-bottom:.45rem; }
+  .eps-k{
+    font-family:var(--font-display); text-transform:uppercase; letter-spacing:.07em;
+    font-size:.64rem; font-weight:700; color:var(--ink-faint);
+  }
+  .eps-n{ font-family:var(--font-mono); font-size:.68rem; color:var(--ink-faint); }
+  .eps-all{
+    margin-left:auto; border:0; background:transparent; padding:.15rem .1rem;
+    font-family:inherit; font-size:.72rem; font-weight:600; color:var(--accent-2);
+    cursor:pointer;
+  }
+  @media (hover:hover) and (pointer:fine){ .eps-all:hover{ text-decoration:underline; } }
+  .eps-rail{
+    /* positioned so it is the chips' offsetParent: scrollEpIntoView() reads
+       offsetLeft/offsetTop, and without this they are measured from .sheet
+       (the nearest positioned ancestor) and scroll the rail to the wrong row */
+    position:relative;
+    display:flex; gap:.4rem; overflow-x:auto; overflow-y:hidden;
+    scroll-snap-type:x proximity; scrollbar-width:none; -ms-overflow-style:none;
+    /* overflow-x:auto forces overflow-y to compute to auto/hidden, so the focus
+       ring needs room inside the box or it is clipped away */
+    padding:4px 0 5px; overscroll-behavior-x:contain;
+  }
+  .eps-rail::-webkit-scrollbar{ display:none; }
+  /* Only faded when there is genuinely more to the right — an unconditional mask
+     would clip the first chip of a rail that fits. */
+  .eps-rail.overflowing{
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);
+  }
+  /* "All N": the same chips wrapped into a block, so there is one unit to learn
+     and no second layout to maintain. Scrolls itself, and contains the gesture
+     so a flick doesn't drag the sheet body behind it. */
+  .sheet-eps.open .eps-rail{
+    flex-wrap:wrap; overflow-x:hidden; overflow-y:auto;
+    max-height:min(38dvh, 220px); overscroll-behavior:contain;
+    -webkit-mask-image:none; mask-image:none;
+  }
+  .ep{
+    flex:none; scroll-snap-align:start; min-width:3.9rem;
+    display:flex; flex-direction:column; align-items:center; gap:.05rem;
+    padding:.34rem .5rem .3rem; border:1px solid var(--outline); border-radius:11px;
+    background:var(--surface-2); font-family:inherit; color:var(--ink-dim);
+    cursor:pointer; transition:border-color .15s ease, background .15s ease, color .15s ease;
+  }
+  @media (hover:hover) and (pointer:fine){
+    .ep:hover{ border-color:var(--outline-strong); background:var(--surface-3); color:var(--ink); }
+  }
+  .ep:focus-visible{ outline:2px solid var(--accent-2); outline-offset:1px; }
+  .ep-day{ font-size:.6rem; text-transform:uppercase; letter-spacing:.06em; }
+  .ep-date{
+    font-size:.82rem; font-weight:600; color:var(--ink); white-space:nowrap;
+    font-variant-numeric:tabular-nums;
+  }
+  .ep.on{ border-color:var(--accent); background:color-mix(in srgb, var(--accent) 15%, var(--surface-2)); color:var(--ink); }
+  /* The mark row is always present so selecting a chip never changes its height,
+     and both marks are always in the markup — syncEpMarks() only toggles classes,
+     which is what lets the rail update mid-playback without a rebuild. */
+  .ep-mark{ display:flex; align-items:center; justify-content:center; width:100%; height:9px; margin-top:.2rem; }
+  .ep-bar{
+    display:none; position:relative; width:100%; height:3px; border-radius:2px;
+    background:color-mix(in srgb, var(--ink) 20%, transparent); overflow:hidden;
+  }
+  .ep-bar::after{
+    content:''; position:absolute; inset:0 auto 0 0; width:var(--pct,0%);
+    background:var(--accent-2); border-radius:2px;
+  }
+  .ep.part .ep-bar{ display:block; }
+  .ep-check{ display:none; width:11px; height:11px; color:var(--accent-2); }
+  .ep.done .ep-check{ display:block; }
+
   .sheet-actions{ display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
   /* secondary row: smaller pills, above the primary transport controls */
   .sheet-links{ display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; margin-bottom:.7rem; }
@@ -2912,7 +2990,10 @@
 
     /* pills and text buttons — give them a real vertical target */
     .on-air-btn, .appbar-actions .btn-donate, .refresh-pill, .lp-alert-btn,
-    .sheet-play, .sheet-link, .sheet-restart{ min-height: 44px; }
+    .sheet-play, .sheet-link, .sheet-restart, .ep{ min-height: 44px; }
+    /* the rail is swiped as well as tapped, so its chips get a little more
+       width to be dragged by without catching the one beside them */
+    .ep{ min-width: 4.3rem; justify-content: center; }
     /* Icon-only on phones (see the max-width:560px block), so min-height alone
        would leave a 30px-wide target. Width has to be asked for separately —
        it's the one pill with no label to give it width. */

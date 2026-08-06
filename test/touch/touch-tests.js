@@ -380,6 +380,102 @@ async function emulateTouch(p) {
         s.barH / s.viewportH < 0.12,
         `${Math.round(s.barH)}px of ${s.viewportH} = ${(s.barH / s.viewportH * 100).toFixed(1)}%`);
 
+  // ---- 6. the ghost click
+  //
+  // A tap on a card is handled on TOUCHEND (the iOS momentum-scroll fix, app.js
+  // "iOS Safari swallows the click…"). The browser still owes that tap a
+  // synthetic click, which arrives ~70ms later AT THE SAME COORDINATES — by
+  // which time the sheet the touchend just opened is under the finger. Before
+  // 2026-08-06 that click hit the .sheet-scrim and closed the sheet again:
+  // the modal flashed open and shut, and the card kept its focus ring because
+  // closing returns focus to whatever opened the sheet. It looked like "modals
+  // are broken on mobile", and no existing test could see it — everything here
+  // and in test/episode-rail used p.click() or a deep link, neither of which
+  // produces a ghost.
+  console.log('\n6. ghost click after a touchend-handled tap');
+  await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await p.send('Page.navigate', { url: APP });
+  await sleep(3000);
+  // back to gallery, where the card overlay is the tap target
+  await p.eval(`try{ localStorage.removeItem('wbai-view'); }catch(e){} return 1;`);
+  await p.send('Page.navigate', { url: APP });
+  await sleep(3000);
+
+  const realTap = async (x, y) => {
+    const tp = [{ x: Math.round(x), y: Math.round(y), radiusX: 10, radiusY: 10, force: 1, id: 1 }];
+    await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: tp });
+    await sleep(50);
+    await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  const centre = sel => p.eval(`
+    var e = document.querySelector(${JSON.stringify(sel)});
+    if(!e) return null;
+    var r = e.getBoundingClientRect();
+    return { x: r.left + r.width/2, y: r.top + r.height/2 };`);
+
+  // Record every click, so we can tell "no ghost was fired" (a vacuous pass)
+  // from "the ghost was fired and swallowed" (the actual fix).
+  await p.eval(`
+    window.__clicks = [];
+    window.addEventListener('click', function(e){
+      window.__clicks.push(String((e.target && e.target.className) || e.target.tagName).slice(0,30));
+    }, true);
+    return 1;`);
+
+  const card = await centre('#rows .card-art.play-btn');
+  check('a gallery card is present to tap', !!card);
+  if (card) {
+    await realTap(card.x, card.y);
+    await sleep(900);
+    const after = await p.eval(`
+      var a = document.activeElement;
+      return {
+        sheetOpen: document.getElementById('showSheet').classList.contains('show'),
+        clicks: window.__clicks,
+        ringStyle: a ? getComputedStyle(a).outlineStyle : null,
+        focusVisible: a && a.matches ? a.matches(':focus-visible') : null
+      };`);
+
+    check('tapping a card opens the sheet AND IT STAYS OPEN',
+          after.sheetOpen === true, JSON.stringify(after.clicks));
+    // The teeth: if Chrome ever stops emitting the ghost, the assertion above
+    // starts passing for the wrong reason and this one fails to say so.
+    check('self-test: the ghost click really did fire at the overlay',
+          after.clicks.some(c => /sheet-scrim|sheet/.test(c)),
+          after.clicks.join(',') || 'no clicks seen at all');
+    check('no stuck focus ring on the card behind it',
+          after.ringStyle === 'none' || after.focusVisible === false,
+          after.ringStyle);
+
+    // The swallow must be exactly one click wide: a DELIBERATE tap inside the
+    // freshly-opened sheet, made quickly, must still register. It begins with a
+    // touchstart of its own, which is what disarms the swallow.
+    const chip = await centre('.eps-rail .ep:nth-child(3)');
+    if (chip) {
+      const beforeId = await p.eval(`return document.querySelector('.ep.on').getAttribute('data-id');`);
+      await realTap(chip.x, chip.y);
+      await sleep(400);
+      const picked = await p.eval(`
+        return { id: document.querySelector('.ep.on').getAttribute('data-id'),
+                 open: document.getElementById('showSheet').classList.contains('show'),
+                 playing: !document.querySelector('audio').paused };`);
+      check('a fast deliberate tap inside the sheet still registers',
+            picked.id !== beforeId && picked.open === true, beforeId + ' -> ' + picked.id);
+      check('and choosing that way still does not start playback', picked.playing === false);
+    }
+
+    // Closing by tap must leave the listing usable, not ringed.
+    const close = await centre('#sheetClose');
+    await realTap(close.x, close.y);
+    await sleep(800);
+    const closed = await p.eval(`
+      var a = document.activeElement;
+      return { open: document.getElementById('showSheet').classList.contains('show'),
+               ringStyle: a ? getComputedStyle(a).outlineStyle : null };`);
+    check('the sheet closes on a tap', closed.open === false);
+    check('and the card it came from is not left ringed', closed.ringStyle === 'none', closed.ringStyle);
+  }
+
   console.log(`\n${fail ? 'FAILED' : 'OK'} — ${pass} passed, ${fail} failed\n`);
   p.close();
   process.exit(fail ? 1 : 0);
