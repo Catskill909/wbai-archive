@@ -190,6 +190,21 @@ function makeCache(ttlMs) {
 // ---------------------------------------------------------- schedule photos
 
 // altid -> numeric photo id, scraped from the schedule grid's image preloads.
+//
+// EVERY image in the app depends on this one page. Nothing else supplies
+// artwork: `photo` is built from it in parseArchive, so an empty map is not a
+// degraded listing, it is a listing with no pictures at all — while every other
+// number (rows parsed, feeds, freshness) still reads perfectly healthy. That is
+// exactly what happened on 2026-08-06: one flaky fetch of pub_sched.php, and
+// 480 of 536 rows lost their artwork with nothing logged and nothing to see.
+//
+// So the map is REMEMBERED. Photo ids are stable per slug — the same show keeps
+// the same picture for months — so yesterday's map is enormously better than no
+// map, and infinitely better than a silent blank. It is persisted like every
+// other store so a redeploy doesn't start blind (CLAUDE.md §5).
+const PHOTOMAP_PATH = process.env.PHOTOMAP_PATH || path.join(DATA_DIR, 'photomap.json');
+let photoMapStore = readJsonFile(PHOTOMAP_PATH, {});
+
 async function fetchPhotoMap() {
   const html = await fetchText(UPSTREAM.schedule);
   const map = {};
@@ -199,6 +214,44 @@ async function fetchPhotoMap() {
     if (!map[m[1]]) map[m[1]] = m[2];
   }
   return map;
+}
+
+// The whole decision, as a pure function so it can be tested without a network:
+// what map should we use, given what we remember and what this scrape returned?
+//
+//   fresh == null   the fetch threw (timeout, DNS, non-200)
+//   fresh == {}     a 200 that parsed to nothing — an error page, a redirect or
+//                   a markup change. The same outage wearing a different hat,
+//                   and it must NOT be treated as "this show has no picture".
+//
+// Otherwise merge, never replace: the grid only lists what is currently
+// scheduled, so a show airing this week displaces one that aired last week
+// while the archive still carries rows for both.
+function pickPhotoMap(remembered, fresh) {
+  if (!fresh || !Object.keys(fresh).length) return remembered || {};
+  return Object.assign({}, remembered || {}, fresh);
+}
+
+// What getArchive() actually calls. Never rejects, never returns {} when
+// something better is known, and says so out loud when it falls back — a
+// silent `.catch(() => ({}))` is what made the outage invisible.
+async function getPhotoMap() {
+  let fresh = null;
+  try {
+    fresh = await fetchPhotoMap();
+  } catch (e) {
+    console.warn('[photos] schedule fetch failed:', e.message,
+      '— reusing', Object.keys(photoMapStore).length, 'remembered photo ids');
+  }
+  if (fresh && !Object.keys(fresh).length) {
+    console.warn('[photos] schedule page yielded ZERO photo ids —',
+      'reusing', Object.keys(photoMapStore).length, 'remembered');
+  }
+  const next = pickPhotoMap(photoMapStore, fresh);
+  const grew = Object.keys(next).length !== Object.keys(photoMapStore).length;
+  photoMapStore = next;
+  if (grew) writeJsonSoon(PHOTOMAP_PATH, () => photoMapStore);
+  return photoMapStore;
 }
 
 // ------------------------------------------------------------ archive parse
@@ -861,7 +914,7 @@ async function getArchive() {
   archiveInFlight = (async () => {
     const [html, photoMap] = await Promise.all([
       fetchText(UPSTREAM.archive),
-      fetchPhotoMap().catch(() => ({})),
+      getPhotoMap(),          // falls back to the remembered map; never blanks
     ]);
     const scraped = parseArchive(html, photoMap);
     if (!scraped.length) throw new Error('parsed zero rows');
@@ -3225,4 +3278,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { probeMount };
+module.exports = { probeMount, pickPhotoMap, parseArchive };

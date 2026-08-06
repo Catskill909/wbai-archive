@@ -1527,6 +1527,23 @@
     padding:1.4rem 1.6rem 1.2rem;
     display:flex; flex-direction:column; gap:1.05rem;
   }
+  /* Scroll hint. With the controls pinned below, a long description leaves the
+     facts row and the retention badge just under the fold, where they read as
+     missing rather than as scrolled-away. The mask sits on the SCROLL BOX, so
+     it stays at the box's edges while the content moves under it, and each edge
+     is faded only while there is really something past it (syncSheetFade). */
+  .sheet-body.fade-bottom{
+    -webkit-mask-image:linear-gradient(#000 calc(100% - 34px), transparent);
+    mask-image:linear-gradient(#000 calc(100% - 34px), transparent);
+  }
+  .sheet-body.fade-top{
+    -webkit-mask-image:linear-gradient(transparent, #000 26px);
+    mask-image:linear-gradient(transparent, #000 26px);
+  }
+  .sheet-body.fade-top.fade-bottom{
+    -webkit-mask-image:linear-gradient(transparent, #000 26px, #000 calc(100% - 34px), transparent);
+    mask-image:linear-gradient(transparent, #000 26px, #000 calc(100% - 34px), transparent);
+  }
   /* Controls live outside the scroll area: however long the description runs,
      Play, the links and the scrubber stay put at the bottom of the card. */
   .sheet-foot{
@@ -1997,7 +2014,10 @@
      Two behaviours behind a breakpoint would be a second thing to reason about
      for no gain, and the collapsed rail costs ~56px however many episodes a
      show has — which is the whole point: it must not crowd the card. */
-  .sheet-eps{ margin-top:1rem; }
+  /* Pinned in .sheet-foot between the links and Play — not in the scrolling
+     body, where it opened below the fold on a phone and may as well not have
+     existed. The footer's own `gap` spaces it, so no margin of its own. */
+  .sheet-eps{ margin:0; }
   .eps-head{ display:flex; align-items:baseline; gap:.4rem; margin-bottom:.45rem; }
   .eps-k{
     font-family:var(--font-display); text-transform:uppercase; letter-spacing:.07em;
@@ -2031,9 +2051,11 @@
   /* "All N": the same chips wrapped into a block, so there is one unit to learn
      and no second layout to maintain. Scrolls itself, and contains the gesture
      so a flick doesn't drag the sheet body behind it. */
+  /* Expanding grows the FOOTER now, which shrinks the body above it — so this
+     cap is what stops "All 26" from swallowing the show it belongs to. */
   .sheet-eps.open .eps-rail{
     flex-wrap:wrap; overflow-x:hidden; overflow-y:auto;
-    max-height:min(38dvh, 220px); overscroll-behavior:contain;
+    max-height:min(30dvh, 190px); overscroll-behavior:contain;
     -webkit-mask-image:none; mask-image:none;
   }
   .ep{

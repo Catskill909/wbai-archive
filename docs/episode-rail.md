@@ -49,9 +49,21 @@ someone adding autoplay-on-select; the suite asserts it in capitals.
 "undo six chip taps". The URL still follows the selection, so a shared link names
 the exact episode.
 
-**The rail lives in the sheet body, not the pinned footer.** The footer's height
-must not depend on how many episodes a show happens to have — a well-documented
-show once pushed Play onto a second line, and that is the same failure.
+**The rail is pinned in the footer, between the links and Play.** It shipped in
+the scrolling body, under the facts, on the reasoning that the footer's height
+should not vary with a show's episode count. On a real iPhone that was simply
+wrong: the sheet opens with the rail **below the fold**, so the feature is
+invisible unless you already know to scroll for it — which defeats the entire
+point of adding it. Corrected the same day it shipped.
+
+The original worry doesn't survive contact either: the rail is *one row of
+chips* whether a show has 2 or 26, so it adds a fixed ~78px, not a variable
+amount. The one case that does vary is "All N" expanded, and that is capped
+(`min(30dvh, 190px)`) precisely because growing the footer now shrinks the body
+above it.
+
+Order within the footer is deliberate: links (least important, furthest from the
+thumb), then the choice, then the action the choice feeds.
 
 **Play carries the chosen date, but only when it isn't the default.** Once the
 rail has scrolled out of view behind a long description, the pinned Play button
@@ -96,6 +108,20 @@ inherited value, i.e. it is discarded silently. The same check found that the
 weekly schedule's `style="--cat:…"` had *never* applied — its category hover edge
 was rendering the fallback colour since the feature shipped. Fixed in the same
 commit (`schedApplyCatColour()`).
+
+## The scroll hint
+
+Pinning the rail made the body shorter, which made an old problem visible: on a
+phone the facts row and the retention badge sit just under the fold, and a
+silently clipped line reads as *missing* rather than as scrolled-away. So
+`syncSheetFade()` fades whichever edge still has content past it, and only that
+edge — `.fade-top` / `.fade-bottom` on `.sheet-body`.
+
+The mask goes on the **scroll box**, not on the content, so it stays at the
+box's edges while the content moves under it. It is recomputed on scroll, on
+resize, on every paint, when the description clamp is toggled, and when "All N"
+expands — all five change what is hidden. Through classes, never a `style`
+attribute, which this app's CSP discards (see below).
 
 ## Tests
 

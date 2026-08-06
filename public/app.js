@@ -3320,20 +3320,49 @@
           '</div>'+
         '</div>'+
         (desc ? '<div class="sheet-desc-wrap"><p class="sheet-desc" id="sheetDesc">'+esc(desc)+'</p></div>' : '')+
-        '<div class="sheet-facts">'+facts+'</div>'+
-        // under the facts, in the scrolling body — the pinned footer's height
-        // must not depend on how many episodes a show happens to have
-        epsHtml(r),
+        '<div class="sheet-facts">'+facts+'</div>',
       // pinned: the controls must never scroll out of reach behind a long
       // description. Secondary links sit in their own row *above* Play, so the
       // primary control keeps a predictable position however many links a show
       // happens to have — a well-documented show used to push Play onto line two.
+      //
+      // The episode rail is pinned here too, between the links and Play. It
+      // started life in the scrolling body, under the facts, on the reasoning
+      // that the footer's height should not vary with a show's episode count.
+      // On a real iPhone that was simply wrong: the sheet opens with the rail
+      // BELOW THE FOLD, so the feature is invisible unless you already know to
+      // scroll for it, which defeats its whole purpose (reported 2026-08-06).
+      // Its height doesn't actually vary anyway — it is one row of chips whether
+      // a show has 2 or 26. Order is deliberate: the least important row (links)
+      // furthest from the thumb, then the choice, then the action it feeds.
       foot:
         (links ? '<div class="sheet-links">'+links+'</div>' : '') +
+        epsHtml(r) +
         (play ? '<div class="sheet-actions">'+play+restart+'</div>' : '') +
         scrub
     };
   }
+
+  // ---- Scroll hint.
+  //
+  // The body scrolls, and on a phone it very often has to: with the rail and the
+  // controls pinned below, a long description leaves the retention badge and
+  // part of the facts row sitting just under the fold with nothing to say so —
+  // it reads as missing rather than as scrolled-away (reported on an iPhone,
+  // 2026-08-06). So fade whichever edge still has content beyond it.
+  //
+  // Classes rather than inline styles: `style-src 'self'` discards a style
+  // attribute (CLAUDE.md §3a.6), and a mask on the scroll box itself stays put
+  // at the box's edges while the content moves under it, which is what we want.
+  function syncSheetFade(){
+    if(!sheetBody) return;
+    var slack = sheetBody.scrollHeight - sheetBody.clientHeight;
+    var top = sheetBody.scrollTop;
+    sheetBody.classList.toggle('fade-top', slack > 4 && top > 4);
+    sheetBody.classList.toggle('fade-bottom', slack > 4 && top < slack - 4);
+  }
+  if(sheetBody) sheetBody.addEventListener('scroll', syncSheetFade, { passive: true });
+  window.addEventListener('resize', syncSheetFade);
 
   // Long descriptions (Democracy Now!'s runs to a dozen paragraphs) are clamped
   // to a few lines with a toggle, so the sheet opens compact either way.
@@ -3352,6 +3381,7 @@
       var open = wrap.classList.toggle('expanded');
       btn.textContent = open ? 'Show less' : 'Show more';
       btn.setAttribute('aria-expanded', String(open));
+      syncSheetFade();      // the body just got taller or shorter
     });
     wrap.appendChild(btn);
   }
@@ -3446,6 +3476,7 @@
     syncSheetRestart();
     syncEpMarks();
     scrollEpIntoView();
+    syncSheetFade();        // new content, so what is hidden above/below changed
     paintSheetCloseBtn();   // sheetMp3 just changed, so the promise may have too
   }
 
@@ -3465,20 +3496,21 @@
       try { history.replaceState({sheetId:r.id}, '', urlFor(r.id)); } catch(e){}
     }
     if(refocus){
-      var on = sheetBody.querySelector('.ep.on');
+      var on = sheet.querySelector('.ep.on');
       if(on) on.focus();
     }
   }
 
   function toggleEps(){
-    var box = sheetBody.querySelector('.sheet-eps');
-    var btn = sheetBody.querySelector('.eps-all');
+    var box = sheet.querySelector('.sheet-eps');
+    var btn = sheet.querySelector('.eps-all');
     if(!box || !btn) return;
     sheetEpsOpen = !sheetEpsOpen;
     box.classList.toggle('open', sheetEpsOpen);
     btn.textContent = sheetEpsOpen ? 'Show less' : 'All ' + box.querySelectorAll('.ep').length;
     btn.setAttribute('aria-expanded', String(sheetEpsOpen));
     scrollEpIntoView();
+    syncSheetFade();        // the footer grew, so the body shrank
   }
 
   // `fromHistory` marks an open that a popstate is already accounting for, so it

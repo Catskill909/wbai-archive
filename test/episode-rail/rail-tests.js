@@ -132,6 +132,66 @@ async function open(p, id) {
     }
   }
 
+  // ---- above the fold ----
+  // The rail shipped inside the scrolling body and was therefore invisible on a
+  // phone until you scrolled for it — which is the whole feature, missed. It is
+  // pinned in the footer now, and this is the assertion that keeps it there:
+  // measured against the VIEWPORT, with no scrolling of any kind first.
+  console.log('\n#### reachable without scrolling (phone)');
+  await p.send('Emulation.setDeviceMetricsOverride', { width: 402, height: 750, deviceScaleFactor: 3, mobile: true });
+  await open(p, fx.many[0].id);
+  const fold = await p.eval(`
+    var rail = document.getElementById('sheetEpsRail');
+    var foot = document.getElementById('sheetFoot');
+    var play = document.querySelector('.sheet-play');
+    var rr = rail.getBoundingClientRect(), pr = play.getBoundingClientRect();
+    return {
+      inFooter: foot.contains(rail),
+      railOnScreen: rr.top >= 0 && rr.bottom <= innerHeight + 1,
+      playOnScreen: pr.bottom <= innerHeight + 1,
+      railAbovePlay: rr.bottom <= pr.top + 1,
+      linksAboveRail: (function(){
+        var l = document.querySelector('.sheet-links');
+        return l ? l.getBoundingClientRect().bottom <= rr.top + 1 : null;
+      })(),
+      bodyScrolledBy: document.getElementById('sheetBody').scrollTop
+    };`);
+  check(fold.inFooter, 'the rail is pinned in the footer, not in the scrolling body');
+  check(fold.bodyScrolledBy === 0, 'nothing was scrolled before measuring', fold.bodyScrolledBy);
+  check(fold.railOnScreen, 'the rail is fully on screen on an iPhone-sized viewport');
+  check(fold.playOnScreen && fold.railAbovePlay, 'Play sits below the rail and is still on screen');
+  check(fold.linksAboveRail !== false, 'the links row sits above the rail');
+
+  // ---- the scroll hint ----
+  // A clipped line reads as missing rather than as scrolled-away, so each edge
+  // of the body is faded only while something is genuinely past it.
+  console.log('\n#### scroll hint');
+  await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 620, deviceScaleFactor: 3, mobile: true });
+  await open(p, fx.many[0].id);
+  const fade = await p.eval(`
+    var b = document.getElementById('sheetBody');
+    var slack = b.scrollHeight - b.clientHeight;
+    var atTop = { top: b.classList.contains('fade-top'), bottom: b.classList.contains('fade-bottom'),
+                  masked: getComputedStyle(b).maskImage !== 'none' };
+    b.scrollTop = b.scrollHeight; b.dispatchEvent(new Event('scroll'));
+    var atEnd = { top: b.classList.contains('fade-top'), bottom: b.classList.contains('fade-bottom') };
+    b.scrollTop = Math.round(slack/2); b.dispatchEvent(new Event('scroll'));
+    var mid = { top: b.classList.contains('fade-top'), bottom: b.classList.contains('fade-bottom') };
+    // self-test: with the classes gone the mask must really be absent, or every
+    // assertion above is measuring a stylesheet that was never applied
+    b.classList.remove('fade-top', 'fade-bottom');
+    return { slack: slack, atTop: atTop, atEnd: atEnd, mid: mid,
+             strippedMask: getComputedStyle(b).maskImage };`);
+  check(fade.slack > 4, 'the fixture body really does overflow (or this proves nothing)', fade.slack);
+  check(fade.atTop.bottom === true && fade.atTop.top === false,
+        'at the top: the bottom edge is faded, the top edge is not');
+  check(fade.atTop.masked, 'and the mask is actually applied, not just the class');
+  check(fade.atEnd.top === true && fade.atEnd.bottom === false,
+        'at the bottom: it flips — nothing below, something above');
+  check(fade.mid.top === true && fade.mid.bottom === true, 'in the middle: both edges fade');
+  check(fade.strippedMask === 'none',
+        'self-test: strip the classes and the mask really goes away', fade.strippedMask);
+
   // ---- interaction, on a phone, on the biggest show ----
   console.log('\n#### choosing an episode');
   await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
