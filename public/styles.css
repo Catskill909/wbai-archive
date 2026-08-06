@@ -397,12 +397,12 @@
   @media (max-width:480px){
     .on-air-btn{padding:.38rem .7rem;}
     .on-air-label{font-size:.68rem; letter-spacing:.07em;}
-    /* Listen Live keeps its label — it's the primary CTA — but a second
-       full-width pill here overflowed the row by ~55px at 320px (measured).
-       Schedule goes icon-only instead, same move as Share elsewhere in this
-       file when a row runs out of room for every label. */
-    .sched-open-btn{padding:.38rem .55rem;}
-    .sched-open-btn .on-air-label{display:none;}
+    /* An icon-only Schedule pill here tested unreadable — a bare glyph in the
+       header gives a first-time visitor nothing to go on, and this row is
+       about to gain more entries than one calendar icon can carry anyway.
+       Schedule stays reachable from the drawer only, on phones, until there's
+       real navigation design for the rest of what's coming. */
+    .sched-open-btn{display:none;}
   }
 
   /* ================= Live player modal ================= */
@@ -1915,6 +1915,17 @@
     body.has-player .sched-modal{ height:auto; }
     .sched-close{ width:42px; height:42px; }
     .sched-close svg{ width:17px; height:17px; }
+    /* The time column was 4.6rem plus a .9rem gap — comfortable widths for a
+       680px desktop modal, dead space once the phone sheet goes edge to edge.
+       Give that width back to the cards, which need it more. */
+    .sched-slot{ gap:.5rem; }
+    .sched-time{ width:3.5rem; }
+    /* The live row was cramming thumb + title + LIVE badge + a full Listen
+       Live pill into one line — the title had nothing left and collapsed to
+       a single letter. Give Listen Live its own full-width row below instead
+       of fighting the title for the same one. */
+    .sched-show-wrap.sched-show-live{ flex-direction:column; align-items:stretch; }
+    .sched-show-wrap.sched-show-live .sched-listen-btn{ justify-content:center; }
   }
   @media (prefers-reduced-motion:reduce){
     .sched-scrim, .sched-modal{ transition-duration:0s; }
