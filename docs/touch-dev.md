@@ -393,14 +393,25 @@ every gesture lands on the iframe and can never reach the parent document —
 verified: the gesture half reports "held" there even with no lock at all. That
 one assertion is carried by the marker-class check, not by behaviour. Its
 behavioural half only bites at desktop widths, where the modal is a 940px card
-with scrim around it. Of the five overlays the suite drives, the gesture sweep
-independently catches the regression on four.
+with scrim around it. Of the six overlays the suite drives, the gesture sweep
+independently catches the regression on five.
 
 **And the suite now proves it can still fail.** Every assertion here is of the
 form "the page did NOT move", which passes perfectly once the probe goes blind —
 exactly how the computed-style version survived. So section 4 strips the lock
 mid-run, with the sheet still open, and requires the probe to notice. If that
 self-test fails, every other PASS in the section is worthless.
+
+**Update 2026-08-06 — the sixth overlay.** The weekly schedule modal
+(schedule-dev.md) joined this section when it shipped. It is opened through the
+**drawer**, not the appbar chip: that chip is `display:none` below 480px, so a
+`p.click('#scheduleBtn')` at this viewport throws instead of opening anything.
+It carries its own copy of the self-test — the lock is stripped again with the
+*schedule* up — because the sheet's self-test only proves the probe has teeth in
+the sheet's state, and an "absence" assertion in a state nobody has probed is
+exactly the hole this section fell into the first time. Unlike donate, the
+behavioural half genuinely bites here: the sheet starts below
+`--phone-sheet-gap`, so the top sweep point lands on bare scrim.
 
 ---
 

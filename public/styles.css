@@ -1716,6 +1716,19 @@
     transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
   }
   body.has-player .sched-modal{ height:min(76dvh, 760px); }
+  /* THE DOCKED PLAYER BAR STAYS USABLE UNDER THIS ONE.
+     Every other overlay here is a task you finish and leave; the schedule is a
+     thing you browse while something is playing, so burying the transport under
+     it strands the listener — "minimize" in the live player or the info sheet
+     hands you back a bar you cannot see or reach.
+     The shortened height above was already reaching for this on desktop (it
+     leaves the bar's strip clear), but the scrim is inset:0 and swallowed the
+     clicks anyway — measured: the play/pause hit-test returned .sched-scrim.
+     So lift the bar over BOTH scrim and modal while the schedule is up: 166 is
+     above the modal (165) and still below the info sheet (170/180), which is
+     opened FROM the schedule and should keep covering it.
+     Only while the schedule is open — nothing else wants the bar above it. */
+  body.sched-open .player-bar{ z-index:166; }
   .sched-head{
     flex:none; position:relative;
     padding:1.15rem 3.6rem 0.85rem 1.3rem;
@@ -1766,9 +1779,19 @@
     color:var(--accent);
   }
   /* Three-letter day names normally; single letters only when even those
-     can't fit (narrow phones). */
+     can't fit. The cut used to be 420px, which was far too early — it landed
+     between the two current iPhone Pro sizes, so a 402px Pro got "M T W" while
+     a 440px Pro Max got "Mon Tue Wed" for no reason the user could see.
+     Measured: the widest label is "Today" at 32px, and a tab has 35px of inner
+     room at 360px wide, 41px at 402px. Three letters fit everywhere down to
+     360; only ~320px genuinely can't take them. */
   .sched-tab-min{ display:none; }
-  @media (max-width:420px){
+  @media (max-width:430px){
+    /* Buys ~6px per tab so the 360-402px range clears "Today" with real
+       margin rather than the 3px it would otherwise have. */
+    .sched-tab{ padding-inline:.1rem; letter-spacing:.01em; font-size:.76rem; }
+  }
+  @media (max-width:344px){
     .sched-tab-full{ display:none; }
     .sched-tab-min{ display:inline; }
   }
@@ -1812,10 +1835,12 @@
     flex:1 1 auto; min-width:0; text-align:left;
     border:none; background:none; color:inherit; cursor:pointer;
   }
-  /* On-air right now: the schedule's own LIVE badge + Listen Live pill,
-     toggled in place by schedApplyLiveHighlight() as the on-air feed moves
-     show to show. The class lands on the wrap so it can gate both children
-     at once — and the wrap itself, so the whole row reads as "this one". */
+  /* On-air right now, toggled in place by schedApplyLiveHighlight() as the
+     on-air feed moves show to show. The class lands on the wrap, so the whole
+     row reads as "this one" and it can gate the Listen Live pill.
+     There is deliberately no separate LIVE badge: the pill's own pulsing dot
+     already says on-air, and running both put two competing live markers on
+     one card. */
   .sched-show-wrap.sched-show-live{
     background:color-mix(in srgb, var(--accent) 10%, var(--surface-2));
     border-color:color-mix(in srgb, var(--accent) 45%, var(--outline-strong));
@@ -1823,32 +1848,9 @@
   @media (hover:hover) and (pointer:fine){
     .sched-show-wrap.sched-show-live:hover{ background:color-mix(in srgb, var(--accent) 16%, var(--surface-3)); }
   }
-  .sched-show-row{ display:flex; align-items:center; gap:.4rem; min-width:0; }
-  .sched-show-row .sched-show-title{ flex:1 1 auto; }
-  /* Same dark chip + glowing dot as the appbar's Listen Live button
-     (.on-air-btn/.on-air-dot), not a flat accent fill — a status light reads
-     "on air" better than a coloured pill that looks like every other action
-     button on the page. */
-  .sched-live-badge{
-    display:none; flex:none; align-items:center; gap:.35rem;
-    padding:.16rem .5rem; border-radius:999px;
-    border:1px solid var(--outline-strong);
-    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 6%, var(--surface-3)), var(--surface-3));
-    color:var(--ink);
-    font-family:var(--font-display); font-weight:800; font-size:.62rem;
-    text-transform:uppercase; letter-spacing:.06em; line-height:1.3;
-  }
-  .sched-show-wrap.sched-show-live .sched-live-badge{ display:inline-flex; }
-  .sched-live-dot{
-    width:6px; height:6px; border-radius:50%; flex:none; background:var(--accent);
-    box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
-    animation:pulse 1.8s infinite;
-  }
-  @media (prefers-reduced-motion:reduce){
-    .sched-live-dot{ animation:none; }
-  }
-  /* Hidden on every show; only the live wrap's copy is ever shown. Same chip
-     as .sched-live-badge / .on-air-btn, sized for a schedule row. */
+  /* Hidden on every show; only the live wrap's copy is ever shown. Same dark
+     chip + glowing dot as the appbar's Listen Live button (.on-air-btn /
+     .on-air-dot), sized for a schedule row. */
   .sched-listen-btn{
     display:none; flex:none; align-items:center; gap:.4rem;
     padding:.4rem .75rem;
@@ -1903,29 +1905,36 @@
      sharing --phone-sheet-gap so all of them sit at exactly the same height. */
   @media (max-width:560px){
     .sched-modal{
-      left:0; bottom:0; width:100%;
+      left:0; width:100%;
+      /* Stops where the docked bar starts instead of covering it — see the
+         z-index note above. 0px when no bar is up. */
+      bottom:var(--player-h, 0px);
       top:max(var(--phone-sheet-gap), env(safe-area-inset-top,0px));
       height:auto; max-height:none;
       border-radius:var(--phone-sheet-radius) var(--phone-sheet-radius) 0 0;
       transform:translate(0, 100%) scale(1);
     }
     .sched-modal.show{ transform:translate(0, 0) scale(1); }
-    /* It covers the docked bar, so don't also reserve room for it — same
-       specificity note as the donate modal. */
+    /* Unlike the info sheet / live player / donate, this one does NOT cover the
+       docked bar — see the z-index note above. The sheet ends where the bar
+       begins, so the transport stays visible and tappable while you browse the
+       week (the bottom:--player-h above does it). Height stays auto: top and
+       bottom already pin it. */
     body.has-player .sched-modal{ height:auto; }
     .sched-close{ width:42px; height:42px; }
     .sched-close svg{ width:17px; height:17px; }
     /* The time column was 4.6rem plus a .9rem gap — comfortable widths for a
        680px desktop modal, dead space once the phone sheet goes edge to edge.
-       Give that width back to the cards, which need it more. */
-    .sched-slot{ gap:.5rem; }
-    .sched-time{ width:3.5rem; }
-    /* The live row was cramming thumb + title + LIVE badge + a full Listen
-       Live pill into one line — the title had nothing left and collapsed to
-       a single letter. Give Listen Live its own full-width row below instead
-       of fighting the title for the same one. */
-    .sched-show-wrap.sched-show-live{ flex-direction:column; align-items:stretch; }
-    .sched-show-wrap.sched-show-live .sched-listen-btn{ justify-content:center; }
+       "12 PM" is the widest label it ever holds and wants ~2.9rem, so this is
+       sized to that rather than left round. Give the rest to the cards. */
+    .sched-slot{ gap:.35rem; }
+    .sched-time{ width:2.9rem; }
+    /* The live row can't fit thumb + title + pill on one line at phone widths
+       — the title had nothing left and collapsed to a single letter. Drop the
+       pill to its own line below, sized to its own content and aligned left,
+       not stretched across the card. */
+    .sched-show-wrap.sched-show-live{ flex-direction:column; align-items:flex-start; }
+    .sched-show-wrap.sched-show-live .sched-show{ align-self:stretch; }
   }
   @media (prefers-reduced-motion:reduce){
     .sched-scrim, .sched-modal{ transition-duration:0s; }

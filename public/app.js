@@ -2679,12 +2679,23 @@
     return (w && week0(w.day)) || 'Sunday';
   }
   function week0(day){ return SCHED_DAYS.indexOf(day) !== -1 ? day : ''; }
+  // Tab ORDER, which is not the week's order: the strip starts at today and
+  // runs forward, so the day you almost certainly came for is the first one
+  // under your thumb and "what's on later this week" reads left to right.
+  // A calendar-shaped Sun..Sat strip buries today mid-row on most days and
+  // spends the leading slots on days that have already aired.
+  // SCHED_DAYS stays Sunday-first — it keys the derived week (deriveSchedule)
+  // and must not be reordered.
+  function schedTabDays(){
+    var i = SCHED_DAYS.indexOf(schedToday());
+    return i < 1 ? SCHED_DAYS.slice() : SCHED_DAYS.slice(i).concat(SCHED_DAYS.slice(0, i));
+  }
 
   function paintSchedule(){
     if(!schedWeek) schedWeek = deriveSchedule(rows);
     if(!schedDay) schedDay = schedToday();
     var today = schedToday();
-    schedTabs.innerHTML = SCHED_DAYS.map(function(d){
+    schedTabs.innerHTML = schedTabDays().map(function(d){
       var sel = d === schedDay;
       var isToday = d === today;
       var cls = 'sched-tab'+(sel ? ' selected' : '')+(isToday ? ' sched-tab-today' : '');
@@ -2713,10 +2724,7 @@
                 ' aria-label="More about '+esc(r.title)+'">'+
                 '<span class="sched-thumb">'+(r.photo ? '<img loading="lazy" alt="" src="'+esc(r.photo)+'">' : '')+'</span>'+
                 '<span class="sched-text">'+
-                  '<span class="sched-show-row">'+
-                    '<span class="sched-show-title">'+esc(r.title)+'</span>'+
-                    '<span class="sched-live-badge"><span class="sched-live-dot" aria-hidden="true"></span>Live</span>'+
-                  '</span>'+
+                  '<span class="sched-show-title">'+esc(r.title)+'</span>'+
                   '<span class="sched-show-meta">'+esc(c.label + (r.host ? ' \u00b7 '+r.host : ''))+'</span>'+
                 '</span>'+
               '</button>'+
@@ -2838,8 +2846,11 @@
     // roving tabs: arrows move between days, the listing pattern for tablists
     if((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && e.target && e.target.classList.contains('sched-tab')){
       e.preventDefault();
-      var i = SCHED_DAYS.indexOf(schedDay) + (e.key === 'ArrowRight' ? 1 : -1);
-      schedSelectDay(SCHED_DAYS[(i + 7) % 7]);
+      // Walk the tabs as they are DISPLAYED (today first), not Sunday-first —
+      // an arrow key that skipped across the strip would be its own bug.
+      var order = schedTabDays();
+      var i = order.indexOf(schedDay) + (e.key === 'ArrowRight' ? 1 : -1);
+      schedSelectDay(order[(i + 7) % 7]);
       var btn = schedTabs.querySelector('.sched-tab.selected');
       if(btn) btn.focus();
     }
@@ -2856,8 +2867,20 @@
     // player outright — dismissSchedule() rather than closeSchedule(), so it
     // doesn't try to walk history back a step first; the live player carries
     // no history entry of its own to stack on top of.
+    //
+    // But openSchedule() pushed a {sched:1} entry, and closing without going
+    // through history leaves it behind still claiming the schedule is open.
+    // Open the schedule a second time and Back then lands on that stale entry
+    // and RE-OPENS it instead of closing — Back appears dead and the listener
+    // is stuck (measured 2026-08-06). replaceState clears the claim in place:
+    // synchronous, fires no popstate, and leaves focus handling alone.
     var listenBtn = e.target.closest('.sched-listen-btn');
-    if(listenBtn){ dismissSchedule(); openLivePlayer(); return; }
+    if(listenBtn){
+      if(canHistory && history.state && history.state.sched){
+        try { history.replaceState(null, '', location.href); } catch(e2){}
+      }
+      dismissSchedule(); openLivePlayer(); return;
+    }
     var btn = e.target.closest('.sched-show');
     if(btn) openSheetById(btn.dataset.id, btn);
   });

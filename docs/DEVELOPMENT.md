@@ -24,6 +24,9 @@ for why the server exists, [DEPLOYMENT.md](DEPLOYMENT.md) for shipping it, and
 - Installs as a PWA: home-screen icon, standalone launch, category shortcuts.
 - Puts search, category and the open show in the URL, so views are linkable and
   the Back button closes the sheet.
+- Shows the station's week as a tabbed day view, derived from the archive's own
+  broadcast times rather than fetched — see
+  [Weekly schedule](#weekly-schedule) below.
 - Keeps its caches across a redeploy, and can prove it — see
   [Durable storage](#durable-storage) below.
 - Offers a password-gated station view at `/studio`, off unless configured — see
@@ -479,6 +482,59 @@ Verify player UI by asserting on state instead: that `.sheet-scrub` exists and
 un-hides, that `data-mp3` is on the button, that `updatePlayButtons()` swapped
 the glyph. Launch with `--mute-audio`, and kill the browser by its
 `--user-data-dir` when you're done.
+
+### Weekly schedule
+
+**What it does:** shows the station's week as a tabbed day view — day strip on
+top, a vertical timeline below it, the on-air show highlighted with a Listen
+Live button. Opened from the drawer's Schedule item, and from an appbar chip on
+tablet/desktop. Full design history, including every place the plan changed on
+contact, is in [schedule-dev.md](schedule-dev.md); this is the code map.
+
+**Nothing fetches it.** `deriveSchedule(rows)` in `app.js` buckets the archive
+rows already in memory by (weekday, wall-clock slot) and keeps the most recent
+row per normalised title in each bucket. Every broadcast carries its start time
+and shows run consecutively, so the week is recoverable from data the app has
+already downloaded — no endpoint, no scrape of wbai.org's pixel grid, and
+nothing extra for a station deploying this template to run. It reads
+`dateText`, which upstream already formats in the station's own wall clock, so
+the client needs no timezone of its own.
+
+Two constants carry the measurements behind it: `SCHED_WINDOW_SEC` (6 weeks —
+4 and 6 derive identical templates, 8+ resurrects lineups that are off the air)
+and `SCHED_SNAP_MIN` (20 — 529/535 rows start exactly on the :00/:30 grid and
+the stragglers are 6–14 min late recorder starts).
+
+**The pieces, and the traps in each:**
+
+| | |
+|---|---|
+| `SCHED_DAYS` | the week, **Sunday-first**. Keys the derived template — rotating it mis-keys every slot. |
+| `schedTabDays()` | **display order only**: rotated so today is the first tab. Arrow-key nav walks *this*, not `SCHED_DAYS`. |
+| `schedApplyLiveHighlight()` | re-runs on each 15s now-playing poll and toggles the marker **in place** — a re-render would throw away the user's scroll position. |
+| `schedScrollToLive()` | paint-time only (open, tab switch). Never on the poll: moving a reading user's scroll every 15s is a bug, not a feature. |
+| `schedTitleMatches()` | the on-air feed and the archive spell shows differently, so this reuses the widening tiers `programFor()` uses. |
+
+**Three rules it is easy to undo by accident:**
+
+- **The docked player bar stays reachable underneath it**
+  (`body.sched-open .player-bar{z-index:166}`, and the phone sheet stops at
+  `bottom:var(--player-h)`). This is the one overlay you browse *while
+  listening*; burying the transport strands the listener. Both breakpoints
+  were broken here once, for two different reasons — schedule-dev.md §7.3.
+- **Closing it outside of history must clear its history flag.** The Listen
+  Live path closes the modal directly, so it `replaceState`s the `{sched:1}`
+  claim away; without that, a later Back re-opens the schedule instead of
+  closing it. §7.2.
+- **It never touches an `<audio>` element.** Listen Live calls
+  `openLivePlayer()` and nothing else. Keep it that way — see
+  [live-audio-pattern.md](live-audio-pattern.md).
+
+**Tests:** [test/touch/](../test/touch/) covers the overlay scroll lock, with a
+self-test that strips the lock mid-run and requires the probe to notice. The
+offline `deriveSchedule` suite is **still outstanding** — `deriveSchedule` is
+not exported from app.js's IIFE, so there is nothing to `require` yet;
+schedule-dev.md §6 Phase 3 spells out the two ways forward.
 
 ### Back to top
 

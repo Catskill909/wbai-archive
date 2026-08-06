@@ -35,6 +35,12 @@ an archived broadcast.
   host, air times and volume control; keep browsing while it plays. When the
   station's automatic track recognition identifies the music on air, the song
   and artist appear alongside the show and clear again when it moves on.
+- **Weekly schedule** — the station's week as a clean, tabbed day view instead
+  of a desktop-only grid, opening on today and scrolled to whatever is on right
+  now, with a Listen Live button on the current show. It is worked out from the
+  archive's own broadcast times rather than fetched, so it needs no extra
+  service and stays right as the lineup shifts. Tap any show for its details,
+  and the player stays reachable underneath while you browse.
 - **Lock screen controls** — play, pause, skip and see artwork right from your
   phone's lock screen, car display or desktop media controls.
 - **Keyboard shortcuts** — quick play/pause and skip controls for desktop
@@ -260,6 +266,7 @@ can't be verified in a desktop devtools viewport.
     ├── DEVELOPMENT.md            # code map, conventions, each built feature
     ├── ROADMAP.md                # what doesn't exist yet
     ├── admin-page.md             # the studio: design, phases, storage rules
+    ├── schedule-dev.md           # the derived weekly schedule: why, and what shipped
     ├── TAURI.md                  # desktop build steps
     ├── casting-dev.md            # Cast/AirPlay: built, removed, and why
     ├── google-tv.md              # what a native TV app would cost (research)

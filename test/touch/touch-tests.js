@@ -242,6 +242,36 @@ async function emulateTouch(p) {
   await sleep(500);
   check('menu drawer releases the lock on close', await p.pageScrolls());
 
+  // The schedule — the sixth overlay, and the one this section was missing.
+  // Opened from the drawer because that is the ONLY way in at this width: the
+  // appbar's Schedule button is display:none below 480px, so a `p.click` on it
+  // would throw rather than open anything.
+  // Unlike donate, the behavioural half really bites here — the sheet starts
+  // below --phone-sheet-gap, so the probe's top sweep point lands on bare scrim
+  // and would reach the document if the lock were off.
+  await p.click('#menuBtn');
+  await sleep(700);
+  await p.eval(`document.getElementById('menuSchedule').click(); return 1;`);
+  await sleep(900);
+  check('schedule locks the page',
+        await p.eval(`return document.body.classList.contains('sched-open');`) && await locked());
+
+  // Same self-test as the sheet above, for the same reason: "the page did not
+  // move" is worthless from a probe that can no longer move it. Strip the lock
+  // with the schedule still up and require the probe to notice.
+  await p.eval(`document.documentElement.classList.remove('scroll-lock'); return 1;`);
+  await sleep(200);
+  const noticedSched = await p.pageScrolls();
+  await p.eval(`document.documentElement.classList.add('scroll-lock'); return 1;`);
+  await sleep(200);
+  check('SELF-TEST: probe detects an UNLOCKED page behind the schedule',
+        noticedSched, noticedSched ? 'the schedule check has teeth'
+                                   : 'blind here — ignore the schedule PASS above');
+
+  await p.eval(`document.getElementById('schedClose').click(); return 1;`);
+  await sleep(700);
+  check('schedule releases the lock on close', await p.pageScrolls());
+
   await p.click('#onAirBtn');
   await sleep(1400);
   check('live player locks the page',

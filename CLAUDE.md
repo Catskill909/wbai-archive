@@ -96,6 +96,14 @@ So:
    page did NOT move" passes perfectly once the probe goes blind. Section 4 of
    `touch-tests.js` strips the lock mid-run and *requires* the probe to notice.
    Any assertion of absence deserves that self-test.
+6. **The CSP silently voids injected `<style>` tags.** The app is served
+   `style-src 'self'` with no `unsafe-inline`, so a probe that appends a
+   `<style>` element to change something at runtime has *no effect* — and says
+   nothing about it. This burned two separate measurements on 2026-08-06: one
+   reading label widths behind a `display` toggle, one self-test trying to
+   disable a fix to prove the probe still had teeth. Both read as clean passes.
+   Go through CSSOM instead (`el.style.zIndex = '80'`), which CSP allows, and
+   distrust any injected-stylesheet result that looks too tidy.
 
 A test that has never failed has never been shown to work.
 
@@ -171,6 +179,16 @@ code that ran.
   would walk around the gate. Its CSS/JS are in `public/` and are inert without
   a session. Read `docs/admin-page.md` before extending it; the phases and the
   reasoning are all there.
+- **The weekly schedule is derived, never fetched** — `deriveSchedule()` in
+  `app.js` reshapes the archive rows already in memory. Read
+  `docs/schedule-dev.md` before extending it; §7 is the list of things that were
+  wrong once and should not be reintroduced. Three that bite:
+  `SCHED_DAYS` is Sunday-first because it *keys* the template — the today-first
+  tab order is display only (`schedTabDays()`); the docked player bar must stay
+  reachable **under** this overlay, because it is the one you browse while
+  listening; and a close that bypasses history must clear the `{sched:1}` flag,
+  or Back re-opens it. It must never touch an `<audio>` element — Listen Live
+  calls `openLivePlayer()` and stops there.
 - **Usage counters** live in `public/track.js` (loaded separately from `app.js`
   so counting can never affect playback) and `POST /api/ev`. They carry **no
   identifier of any kind** — no cookie, no session, no stored or hashed IP — and
