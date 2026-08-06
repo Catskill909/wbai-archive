@@ -192,7 +192,10 @@ code that ran.
   reachable **under** this overlay, because it is the one you browse while
   listening; and a close that bypasses history must clear the `{sched:1}` flag,
   or Back re-opens it. It must never touch an `<audio>` element — Listen Live
-  calls `openLivePlayer()` and stops there.
+  calls `openLivePlayer()` and stops there. The **on-air row asks** rather than
+  guessing: the whole card opens a chooser (live / past episodes / cancel),
+  because a card with two destinations and one label is how a listener ends up
+  somewhere they didn't ask for (§7.4b). Suite: `test/schedule/run.sh`.
 - **The show sheet's episode rail** is how a listener reaches a show's *other*
   broadcasts — the listing is episode-level and the schedule only ever hands over
   a slot's most recent row, so without it there is no path. Read

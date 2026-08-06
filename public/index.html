@@ -555,6 +555,31 @@
     <div class="sched-body" id="schedBody" tabindex="0"></div>
   </div>
 
+  <!-- On-air chooser. The one row in the schedule that is broadcasting right now
+     has two reasonable destinations — the live stream, or that show's archive —
+     and guessing between them is how a listener ends up somewhere they did not
+     ask for. So the row asks. Layered ABOVE the schedule like the lightbox is
+     above the sheet, and deliberately carries no history entry of its own: it is
+     a question, not a place. Title and choices are painted by app.js on open. -->
+  <div class="live-choice-scrim" id="liveChoiceScrim"></div>
+  <div class="live-choice" id="liveChoice" role="dialog" aria-modal="true"
+    aria-labelledby="liveChoiceTitle" aria-hidden="true">
+    <p class="live-choice-eyebrow"><span class="live-choice-dot" aria-hidden="true"></span>On air now</p>
+    <h2 class="live-choice-title" id="liveChoiceTitle"></h2>
+    <p class="live-choice-ask">Listen to the live broadcast, or browse this show's past episodes?</p>
+    <div class="live-choice-actions">
+      <button class="live-choice-btn live-choice-live" id="liveChoiceLive" type="button">
+        <span class="live-choice-btn-dot" aria-hidden="true"></span>
+        <span class="live-choice-btn-label" id="liveChoiceLiveLabel">Listen Live</span>
+      </button>
+      <button class="live-choice-btn live-choice-archive" id="liveChoiceArchive" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h18M5 7v12a1 1 0 001 1h12a1 1 0 001-1V7M9 11h6"/></svg>
+        Past episodes
+      </button>
+    </div>
+    <button class="live-choice-cancel" id="liveChoiceCancel" type="button">Cancel</button>
+  </div>
+
   <!-- Live stream player. A full-feature "now playing" screen for the live stream,
      opened from the On Air button; reuses the .sheet scrim + focus-trap pattern.
      Fields are painted by app.js from the same /api/nowplaying data the header

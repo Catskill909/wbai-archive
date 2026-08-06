@@ -370,7 +370,7 @@
   // so a trigger in the (now un-inert) header is focusable again.
   function refreshOverlayState(){
     var anyOpen = document.querySelector(
-      '.menu-panel.show, .sheet.show, .lightbox.show, .live-player.show, .donate-modal.show, .sched-modal.show'
+      '.menu-panel.show, .sheet.show, .lightbox.show, .live-player.show, .donate-modal.show, .sched-modal.show, .live-choice.show'
     );
     ['.appbar', 'main#top'].forEach(function(sel){
       var el = document.querySelector(sel);
@@ -794,6 +794,9 @@
       ? '<svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
       : '<svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
     playerIcon = document.getElementById('playerIcon');
+    // The schedule's live pill reports the same state, so it repaints wherever
+    // the transport does. Cheap: it returns immediately unless the dialog is up.
+    if(typeof schedApplyLiveHighlight === 'function') schedApplyLiveHighlight();
   }
 
   function updatePlayButtons(){
@@ -2784,9 +2787,9 @@
         '<div class="sched-shows">'+
           e.shows.map(function(r){
             var c = CAT_BY_KEY[r.cat] || CAT_BY_KEY.special;
-            // The card look (border, cat-colour edge, background) now lives on
-            // the wrap, not .sched-show, so the Listen Live pill can sit inside
-            // the same card without nesting a button inside a button.
+            // The card look (border, cat-colour edge, background) lives on the
+            // wrap rather than on .sched-show, so the row can carry the on-air
+            // treatment without nesting anything inside the button.
             // The colour rides on a data-* attribute and is applied through
             // CSSOM by schedApplyCatColour(). It was a style="--cat:…" attribute
             // until 2026-08-06, which the app's own CSP (style-src 'self', no
@@ -2800,10 +2803,13 @@
                   '<span class="sched-show-title">'+esc(r.title)+'</span>'+
                   '<span class="sched-show-meta">'+esc(c.label + (r.host ? ' \u00b7 '+r.host : ''))+'</span>'+
                 '</span>'+
-              '</button>'+
-              '<button class="sched-listen-btn" type="button" aria-label="Listen live to '+esc(r.title)+'">'+
-                '<span class="sched-listen-dot" aria-hidden="true"></span>'+
-                '<span class="sched-listen-label">Listen Live</span>'+
+                // Shown by CSS only on the wrap that is on air. A badge, not a
+                // button: the whole card is the target on that row (see the
+                // click handler), so a second control inside it would be both
+                // crowded and a lie about where the boundary is.
+                '<span class="sched-live-badge" aria-hidden="true">'+
+                  '<span class="sched-live-dot"></span><span class="sched-live-word">Live</span>'+
+                '</span>'+
               '</button>'+
             '</div>';
           }).join('')+
@@ -2843,12 +2849,110 @@
   function schedApplyLiveHighlight(){
     if(!schedIsOpen()) return;
     var liveName = (schedDay === schedToday() && liveCurrent && liveCurrent.name) || '';
+    // Is the stream actually playing right now? `liveWanted` is the intent flag
+    // the live section owns (a stopped stream has no element to read), and
+    // barMode says who currently holds the docked bar — an archive track can be
+    // loaded and paused while the live modal is merely open.
+    var onNow = (barMode === 'live') && !!liveWanted;
     var wraps = schedBody.querySelectorAll('.sched-show-wrap');
     for(var i = 0; i < wraps.length; i++){
       var wrap = wraps[i];
-      wrap.classList.toggle('sched-show-live', !!liveName && schedTitleMatches(wrap.dataset.title, liveName));
+      var live = !!liveName && schedTitleMatches(wrap.dataset.title, liveName);
+      wrap.classList.toggle('sched-show-live', live);
+      // The badge says "this is broadcasting"; once you are actually listening
+      // it says so instead, which is what lets a listener tell at a glance
+      // whether they are on the live stream or in the archive. The row's own
+      // accessible name has to follow, because a badge is aria-hidden and the
+      // card no longer promises where it goes — it promises to ask.
+      var badge = wrap.querySelector('.sched-live-word');
+      if(badge) badge.textContent = (live && onNow) ? 'On air' : 'Live';
+      wrap.classList.toggle('sched-live-playing', live && onNow);
+      var card = wrap.querySelector('.sched-show');
+      if(card) card.setAttribute('aria-label', live
+        ? (wrap.dataset.title || '') + ' — on air now, choose live or past episodes'
+        : 'More about ' + (wrap.dataset.title || ''));
     }
   }
+  // ---------------- On-air chooser ----------------
+  // Layered above the schedule the way the lightbox layers above the sheet, and
+  // for the same reason: it is a question about the thing underneath, not a
+  // place of its own. So it pushes NO history entry — Back should still close
+  // the schedule, not spend a press dismissing a prompt — which in turn means
+  // it has to close itself on popstate, or it would be left floating over a
+  // dialog that has gone.
+  var liveChoice = document.getElementById('liveChoice');
+  var liveChoiceScrim = document.getElementById('liveChoiceScrim');
+  var liveChoiceTitle = document.getElementById('liveChoiceTitle');
+  var liveChoiceLive = document.getElementById('liveChoiceLive');
+  var liveChoiceArchive = document.getElementById('liveChoiceArchive');
+  var liveChoiceCancel = document.getElementById('liveChoiceCancel');
+  var liveChoiceReturn = null;
+  var liveChoiceId = null;
+  function liveChoiceOpen(){ return liveChoice.classList.contains('show'); }
+
+  function openLiveChoice(id, title, trigger){
+    liveChoiceId = id;
+    liveChoiceReturn = trigger || document.activeElement;
+    liveChoiceTitle.textContent = title || '';
+    // Already listening? Then "Listen Live" is not an offer any more, it is
+    // where you already are — say so, and let the button take you to the
+    // player's own controls rather than pretending to start something.
+    var onNow = (barMode === 'live') && !!liveWanted;
+    liveChoiceLive.classList.toggle('is-playing', onNow);
+    document.getElementById('liveChoiceLiveLabel').textContent =
+      onNow ? 'Back to the live player' : 'Listen Live';
+    liveChoiceScrim.classList.add('show');
+    liveChoice.classList.add('show');
+    liveChoice.setAttribute('aria-hidden', 'false');
+    refreshOverlayState();
+    liveChoiceLive.focus();
+    document.addEventListener('keydown', onLiveChoiceKey);
+  }
+  function closeLiveChoice(){
+    if(!liveChoiceOpen()) return;
+    liveChoiceScrim.classList.remove('show');
+    liveChoice.classList.remove('show');
+    liveChoice.setAttribute('aria-hidden', 'true');
+    document.removeEventListener('keydown', onLiveChoiceKey);
+    refreshOverlayState();
+    if(liveChoiceReturn && liveChoiceReturn.focus) liveChoiceReturn.focus();
+    liveChoiceReturn = null;
+    liveChoiceId = null;
+  }
+  // It sits on top, so it gets first refusal on both keys — otherwise Escape
+  // would close the schedule out from under it and Tab would wander into a
+  // dialog the listener cannot see past this one.
+  function onLiveChoiceKey(e){
+    if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); closeLiveChoice(); return; }
+    if(e.key !== 'Tab') return;
+    var f = liveChoice.querySelectorAll('button:not([disabled])');
+    if(!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  }
+  liveChoiceScrim.addEventListener('click', closeLiveChoice);
+  liveChoiceCancel.addEventListener('click', closeLiveChoice);
+  liveChoiceArchive.addEventListener('click', function(){
+    var id = liveChoiceId;
+    closeLiveChoice();
+    if(id) openSheetById(id);      // stacks over the schedule, exactly as before
+  });
+  liveChoiceLive.addEventListener('click', function(){
+    closeLiveChoice();
+    // Same handover the Listen Live pill used to do. openSchedule() pushed a
+    // {sched:1} entry, and leaving without going through history strands it
+    // still claiming the schedule is open — open the schedule again and Back
+    // lands on that stale entry and RE-OPENS it, so Back looks dead (measured
+    // 2026-08-06). replaceState clears the claim in place: synchronous, fires
+    // no popstate, leaves focus handling alone.
+    if(canHistory && history.state && history.state.sched){
+      try { history.replaceState(null, '', location.href); } catch(e2){}
+    }
+    dismissSchedule();
+    openLivePlayer();
+  });
+
   var SCHED_LIVE_PEEK = 56;   // px of the previous slot left visible above — the "you can scroll up" hint
   // Positions the now-playing slot a little below sched-body's top edge
   // instead of flush against it, so the peek of whatever's above hints that
@@ -2903,6 +3007,7 @@
   }
   function dismissSchedule(){
     if(!schedIsOpen()) return;
+    closeLiveChoice();   // never strand the chooser over a schedule that has gone
     schedScrim.classList.remove('show');
     schedModal.classList.remove('show');
     schedModal.setAttribute('aria-hidden', 'true');
@@ -2915,6 +3020,7 @@
   }
   function onSchedKey(e){
     if(sheet.classList.contains('show')) return;   // the sheet is above; its handler owns the keys
+    if(liveChoiceOpen()) return;                   // and so does the chooser, which is above both
     if(e.key === 'Escape'){ e.preventDefault(); closeSchedule(); return; }
     if(e.key === 'Tab'){
       var f = schedModal.querySelectorAll('button:not([tabindex="-1"]), [tabindex="0"]');
@@ -2955,15 +3061,22 @@
     // and RE-OPENS it instead of closing — Back appears dead and the listener
     // is stuck (measured 2026-08-06). replaceState clears the claim in place:
     // synchronous, fires no popstate, and leaves focus handling alone.
-    var listenBtn = e.target.closest('.sched-listen-btn');
-    if(listenBtn){
-      if(canHistory && history.state && history.state.sched){
-        try { history.replaceState(null, '', location.href); } catch(e2){}
-      }
-      dismissSchedule(); openLivePlayer(); return;
-    }
     var btn = e.target.closest('.sched-show');
-    if(btn) openSheetById(btn.dataset.id, btn);
+    if(!btn) return;
+    // The on-air row is the only one with two possible destinations, and it used
+    // to guess: a "Listen Live" pill sat on a card whose body silently opened
+    // the archive instead — same surface, two outcomes, one of them unnamed.
+    //
+    // It asks now. The WHOLE card opens a chooser, so there is no boundary to
+    // learn and no wrong half to hit; the row wears a Live badge to say why it
+    // behaves differently. Every other row still goes straight to the sheet,
+    // because a single destination has nothing to ask about.
+    var wrap = btn.closest('.sched-show-wrap');
+    if(wrap && wrap.classList.contains('sched-show-live')){
+      openLiveChoice(btn.dataset.id, wrap.dataset.title || '', btn);
+      return;
+    }
+    openSheetById(btn.dataset.id, btn);
   });
   // artwork that 404s falls back to the station icon behind it — the same
   // failed-image rule the listing rows and the sheet use
@@ -3582,6 +3695,10 @@
   // FROM the schedule pushes a plain {sheetId} entry on top of the {sched}
   // one, so Back unwinds in stacking order: sheet first, schedule second.
   window.addEventListener('popstate', function(){
+    // The chooser carries no entry of its own, so any navigation has moved past
+    // the thing it was asking about — never leave it floating over a dialog
+    // that has already gone.
+    closeLiveChoice();
     var id = (history.state && history.state.sheetId) || param('show');
     if(id && rowById(id)) openSheetById(id, null, true);
     else dismissSheet();

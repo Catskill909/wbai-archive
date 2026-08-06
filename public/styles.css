@@ -1873,36 +1873,37 @@
   @media (hover:hover) and (pointer:fine){
     .sched-show-wrap.sched-show-live:hover{ background:color-mix(in srgb, var(--accent) 16%, var(--surface-3)); }
   }
-  /* Hidden on every show; only the live wrap's copy is ever shown. Same dark
-     chip + glowing dot as the appbar's Listen Live button (.on-air-btn /
-     .on-air-dot), sized for a schedule row. */
-  .sched-listen-btn{
-    display:none; flex:none; align-items:center; gap:.4rem;
-    padding:.4rem .75rem;
-    border:1px solid var(--outline-strong); border-radius:999px;
-    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 6%, var(--surface-3)), var(--surface-3));
-    color:var(--ink); cursor:pointer;
-    transition:background .15s ease, border-color .15s ease, transform .12s ease;
+  /* A badge, not a control: the whole card is the tap target on the on-air row,
+     and a second clickable thing inside it would misdescribe that boundary.
+     Shown only on the live wrap; every other row has one destination and needs
+     no marking. */
+  .sched-live-badge{
+    display:none; flex:none; align-items:center; gap:.35rem; margin-left:auto;
+    padding:.28rem .55rem;
+    border:1px solid color-mix(in srgb, var(--accent) 45%, var(--outline-strong));
+    border-radius:999px; background:color-mix(in srgb, var(--accent) 14%, transparent);
+    color:var(--ink);
   }
-  .sched-show-wrap.sched-show-live .sched-listen-btn{ display:inline-flex; }
-  @media (hover:hover) and (pointer:fine){
-    .sched-listen-btn:hover{
-      background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 11%, var(--surface-3)), color-mix(in srgb, var(--ink) 4%, var(--surface-3)));
-      border-color:color-mix(in srgb, var(--accent) 40%, var(--outline-strong));
-    }
-  }
-  .sched-listen-btn:active{ transform:scale(.96); }
-  .sched-listen-dot{
-    width:7px; height:7px; border-radius:50%; flex:none; background:var(--accent);
+  .sched-show-wrap.sched-show-live .sched-live-badge{ display:inline-flex; }
+  .sched-live-dot{
+    width:6px; height:6px; border-radius:50%; flex:none; background:var(--accent);
     box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
     animation:pulse 1.8s infinite;
   }
-  .sched-listen-label{
-    font-family:var(--font-display); font-weight:800; font-size:.68rem;
-    text-transform:uppercase; letter-spacing:.07em; line-height:1;
+  .sched-live-word{
+    font-family:var(--font-display); font-weight:800; font-size:.62rem;
+    text-transform:uppercase; letter-spacing:.08em; line-height:1; white-space:nowrap;
+  }
+  /* Already listening: the badge stops advertising and starts reporting, so the
+     row answers "am I on the live stream or in the archive?" without being read. */
+  .sched-show-wrap.sched-live-playing .sched-live-badge{
+    background:var(--accent); border-color:var(--accent); color:var(--accent-ink);
+  }
+  .sched-show-wrap.sched-live-playing .sched-live-dot{
+    background:var(--accent-ink); box-shadow:none; animation:none;
   }
   @media (prefers-reduced-motion:reduce){
-    .sched-listen-dot{ animation:none; }
+    .sched-live-dot, .live-choice-dot, .live-choice-btn-dot{ animation:none; }
   }
   .sched-thumb{
     flex:none; width:42px; height:42px; border-radius:9px; overflow:hidden;
@@ -1958,8 +1959,10 @@
        — the title had nothing left and collapsed to a single letter. Drop the
        pill to its own line below, sized to its own content and aligned left,
        not stretched across the card. */
-    .sched-show-wrap.sched-show-live{ flex-direction:column; align-items:flex-start; }
-    .sched-show-wrap.sched-show-live .sched-show{ align-self:stretch; }
+    /* The badge is small enough to share the row with the title, so the live
+       card no longer has to break onto a second line the way the old pill
+       forced it to. */
+    .sched-live-word{ font-size:.58rem; }
   }
   @media (prefers-reduced-motion:reduce){
     .sched-scrim, .sched-modal{ transition-duration:0s; }
@@ -2017,6 +2020,84 @@
   /* Pinned in .sheet-foot between the links and Play — not in the scrolling
      body, where it opened below the fold on a phone and may as well not have
      existed. The footer's own `gap` spaces it, so no margin of its own. */
+  /* ---- on-air chooser ----
+     Above the schedule (z 200 vs its 180) the way the lightbox sits above the
+     sheet. Small and centred: it asks one question and offers exactly three
+     answers, so it should never look like another page. */
+  .live-choice-scrim{
+    position:fixed; inset:0; z-index:195;
+    background:rgba(0,0,0,.55); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px);
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition:opacity .18s ease, visibility 0s linear .18s;
+  }
+  .live-choice-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .18s ease; }
+  .live-choice{
+    position:fixed; z-index:200; left:50%; top:50%;
+    width:min(400px, calc(100vw - 2.2rem));
+    display:flex; flex-direction:column; gap:.55rem;
+    padding:1.5rem 1.4rem 1.2rem;
+    background:var(--surface-1); color:var(--ink);
+    border:1px solid var(--outline-strong); border-radius:18px;
+    box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
+    transform:translate(-50%, -48%) scale(.96); opacity:0; visibility:hidden;
+    transition:transform .18s cubic-bezier(.2,0,.2,1), opacity .18s ease, visibility 0s linear .18s;
+  }
+  .live-choice.show{
+    transform:translate(-50%, -50%) scale(1); opacity:1; visibility:visible;
+    transition:transform .18s cubic-bezier(.2,0,.2,1), opacity .18s ease;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .live-choice-scrim, .live-choice{ transition-duration:0s; }
+    .live-choice{ transform:translate(-50%,-50%) scale(1); }
+  }
+  .live-choice-eyebrow{
+    display:flex; align-items:center; gap:.4rem; margin:0;
+    font-family:var(--font-display); font-weight:800; font-size:.66rem;
+    text-transform:uppercase; letter-spacing:.09em; color:var(--accent);
+  }
+  .live-choice-dot{
+    width:7px; height:7px; border-radius:50%; flex:none; background:var(--accent);
+    box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+    animation:pulse 1.8s infinite;
+  }
+  .live-choice-title{ margin:0; font-size:1.25rem; line-height:1.25; }
+  .live-choice-ask{ margin:0 0 .45rem; font-size:.88rem; color:var(--ink-dim); }
+  .live-choice-actions{ display:flex; flex-direction:column; gap:.5rem; }
+  .live-choice-btn{
+    display:flex; align-items:center; justify-content:center; gap:.5rem;
+    padding:.8rem 1rem; border-radius:999px; border:1px solid transparent;
+    font-family:inherit; font-size:.92rem; font-weight:700; cursor:pointer;
+    transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
+  }
+  .live-choice-btn:active{ transform:scale(.98); }
+  .live-choice-btn svg{ width:16px; height:16px; }
+  /* Live is the reason this dialog appeared, so it leads. */
+  .live-choice-live{ background:var(--accent); color:var(--accent-ink); box-shadow:var(--shadow); }
+  @media (hover:hover) and (pointer:fine){
+    .live-choice-live:hover{ background:color-mix(in srgb, var(--accent) 88%, black); }
+  }
+  .live-choice-btn-dot{
+    width:8px; height:8px; border-radius:50%; flex:none; background:var(--accent-ink);
+    box-shadow:0 0 0 0 color-mix(in srgb, var(--accent-ink) 55%, transparent);
+    animation:pulse 1.8s infinite;
+  }
+  /* Already listening: this button stops being an offer and becomes a way back,
+     so it drops the filled treatment that says "start me". */
+  .live-choice-live.is-playing{
+    background:transparent; color:var(--ink); border-color:var(--accent); box-shadow:none;
+  }
+  .live-choice-live.is-playing .live-choice-btn-dot{ background:var(--accent); animation:none; }
+  .live-choice-archive{ background:var(--surface-2); color:var(--ink); border-color:var(--outline-strong); }
+  @media (hover:hover) and (pointer:fine){
+    .live-choice-archive:hover{ background:var(--surface-3); border-color:var(--accent-2); color:var(--ink); }
+  }
+  .live-choice-cancel{
+    align-self:center; margin-top:.15rem; padding:.5rem 1rem;
+    border:0; background:transparent; color:var(--ink-dim);
+    font-family:inherit; font-size:.84rem; font-weight:600; cursor:pointer;
+  }
+  @media (hover:hover) and (pointer:fine){ .live-choice-cancel:hover{ color:var(--ink); } }
+
   .sheet-eps{ margin:0; }
   .eps-head{ display:flex; align-items:baseline; gap:.4rem; margin-bottom:.45rem; }
   .eps-k{
@@ -3012,7 +3093,9 @@
 
     /* pills and text buttons — give them a real vertical target */
     .on-air-btn, .appbar-actions .btn-donate, .refresh-pill, .lp-alert-btn,
-    .sheet-play, .sheet-link, .sheet-restart, .ep{ min-height: 44px; }
+    .sheet-play, .sheet-link, .sheet-restart, .ep,
+    /* the on-air chooser's answers are the whole point of the dialog */
+    .live-choice-btn, .live-choice-cancel{ min-height: 44px; }
     /* the rail is swiped as well as tapped, so its chips get a little more
        width to be dragged by without catching the one beside them */
     .ep{ min-width: 4.3rem; justify-content: center; }

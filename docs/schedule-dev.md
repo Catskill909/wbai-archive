@@ -343,6 +343,39 @@ the title down to a single letter ("E" for *Equal Rights and Justice*). The
 badge lost: the pill's own pulsing dot already says on-air, and it is the one
 you can act on.
 
+### 7.4b The on-air row asks now, instead of guessing *(2026-08-06, later)*
+
+§7.4 settled on the Listen Live pill as the row's single live marker. Real use
+found the harder half of that decision, which the pill had not solved: the
+on-air card had **two destinations and only one of them was named.** The pill
+said Listen Live; tapping anywhere else on the same card silently opened the
+archive sheet instead. Same surface, two outcomes, an invisible boundary
+between them — and the archive one entirely unlabelled.
+
+The first fix was to name both: a second "Past episodes" pill beside the first,
+with the card body doing exactly what that pill did, so every invisible target
+duplicated a visible one. It worked, and it was wrong — two pills in a row that
+§7.5 had *already* had to stack for lack of width.
+
+**What shipped instead: the row asks.** The on-air card wears a small Live
+badge and the WHOLE card opens a chooser — "Listen Live", "Past episodes",
+"Cancel". Every other row still goes straight to the sheet, because a single
+destination has nothing to ask about.
+
+Three things to keep if you touch this:
+
+- **The badge is a badge, not a button.** The whole card is the target. A second
+  control inside it would re-draw exactly the invisible boundary this removed.
+- **The chooser carries no history entry.** It is a question, not a place, so
+  Back still belongs to the schedule. That means it must close itself on
+  `popstate` and in `dismissSchedule()`, or it is left floating over a dialog
+  that has gone.
+- **The Live answer still clears the stale `{sched:1}` flag** on its way out
+  (§7.2). That bug is one `replaceState` away from returning.
+
+`test/schedule/` holds all of it — 32 checks, including that a tap anywhere on
+the card opens the chooser and that nothing in this dialog ever starts audio.
+
 ### 7.5 Phone widths, measured rather than guessed
 
 - **Day-name breakpoint was wrong.** Three-letter names cut over to single
@@ -354,9 +387,10 @@ you can act on.
 - **Time column** was 4.6rem + 0.9rem gap — right for a 680px desktop modal,
   dead space on an edge-to-edge phone sheet. Now sized to "12 PM", the widest
   label it can hold.
-- **The live card stacks on phones**: thumb + title + pill never fit one line,
-  so the pill drops to its own line, left-aligned to its own width rather than
-  stretched.
+- **The live card no longer has to stack on phones.** Thumb + title + pill never
+  fit one line, so the pill used to drop to its own. The pill is a small badge
+  now (§7.4b) and shares the line, which is most of why the chooser was the
+  better answer than a second pill.
 
 ### 7.6 A testing trap specific to this app
 
