@@ -376,8 +376,16 @@
     font-family:var(--font-display); font-weight:800; font-size:.72rem;
     text-transform:uppercase; letter-spacing:.09em; line-height:1;
   }
-  /* Schedule's stand-in for the dot — a calendar glyph, not a status light. */
-  .sched-open-ico{ width:15px; height:15px; flex:none; }
+  /* Schedule's stand-in for the dot — a calendar glyph, not a status light.
+     The negative block margin is load-bearing, not spacing tinkering: at 15px
+     the glyph is taller than the label's 11.5px line box, so as the tallest
+     flex child it was setting the button's height and Schedule stood 29.8px
+     against Listen Live and Donate at 26.3px. Pulling 2px off each side lets
+     the LABEL govern the height here, exactly as it does in every other chip
+     in this row, without shrinking the glyph to do it. The dot (8px) and the
+     eq bars (12px) never hit this — they already fit inside the line box.
+     Well within the 6.4px padding, so nothing clips. */
+  .sched-open-ico{ width:15px; height:15px; flex:none; margin-block:-2px; }
   /* three-bar equaliser: shows only while the stream is playing */
   .on-air-eq{display:none; align-items:flex-end; gap:2px; height:12px; margin-left:.1rem;}
   .on-air-eq i{width:2.5px; background:var(--accent); border-radius:1px; height:40%; animation:eqbar .9s ease-in-out infinite;}
