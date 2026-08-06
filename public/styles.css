@@ -376,6 +376,8 @@
     font-family:var(--font-display); font-weight:800; font-size:.72rem;
     text-transform:uppercase; letter-spacing:.09em; line-height:1;
   }
+  /* Schedule's stand-in for the dot — a calendar glyph, not a status light. */
+  .sched-open-ico{ width:15px; height:15px; flex:none; }
   /* three-bar equaliser: shows only while the stream is playing */
   .on-air-eq{display:none; align-items:flex-end; gap:2px; height:12px; margin-left:.1rem;}
   .on-air-eq i{width:2.5px; background:var(--accent); border-radius:1px; height:40%; animation:eqbar .9s ease-in-out infinite;}
@@ -395,6 +397,12 @@
   @media (max-width:480px){
     .on-air-btn{padding:.38rem .7rem;}
     .on-air-label{font-size:.68rem; letter-spacing:.07em;}
+    /* Listen Live keeps its label — it's the primary CTA — but a second
+       full-width pill here overflowed the row by ~55px at 320px (measured).
+       Schedule goes icon-only instead, same move as Share elsewhere in this
+       file when a row runs out of room for every label. */
+    .sched-open-btn{padding:.38rem .55rem;}
+    .sched-open-btn .on-air-label{display:none;}
   }
 
   /* ================= Live player modal ================= */
@@ -1344,11 +1352,11 @@
      (A drag over the lightbox or the donate modal scrolled the listing behind
      it; the donate one is worst, since it wraps an iframe and the drag could
      move the page, the iframe, or neither.) */
-  body.menu-open, body.lightbox-open, body.donate-open{ overflow:hidden; }
+  body.menu-open, body.lightbox-open, body.donate-open, body.sched-open{ overflow:hidden; }
   /* Belt-and-braces for iOS, where a root scroll lock has historically leaked:
      a backdrop has nothing to pan, so tell the compositor that up front. Not
      `none` — that would also kill the pinch-zoom index.html deliberately keeps. */
-  .menu-scrim, .sheet-scrim, .donate-scrim, .live-scrim, .lp-alert-scrim{
+  .menu-scrim, .sheet-scrim, .donate-scrim, .live-scrim, .lp-alert-scrim, .sched-scrim{
     touch-action:pinch-zoom;
   }
 
@@ -1672,6 +1680,244 @@
   }
   @media (prefers-reduced-motion:reduce){
     .donate-scrim, .donate-modal{ transition-duration:0s; }
+  }
+
+  /* ---------------- Weekly schedule modal ---------------- */
+  /* Derived client-side from the archive rows (docs/schedule-dev.md). Scrim and
+     motion are the sheet's, to the value, like the donate modal — one signal
+     for "you are in a layer". z-index is the deliberate part: 163/165 sits
+     ABOVE the drawer (160) it opens from but BELOW the info sheet (170/180),
+     so tapping a show stacks the ordinary sheet on top and closing it lands
+     back on the schedule. */
+  .sched-scrim{
+    position:fixed; inset:0; z-index:163;
+    background:color-mix(in srgb, #000 62%, transparent);
+    -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition:opacity .22s ease, visibility 0s linear .22s;
+  }
+  .sched-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .22s ease; }
+  .sched-modal{
+    position:fixed; z-index:165;
+    top:50%; left:50%;
+    width:min(680px, 94vw);
+    height:min(88dvh, 820px);
+    transform:translate(-50%, -46%) scale(.97);
+    display:flex; flex-direction:column;
+    background:var(--surface-1); color:var(--ink);
+    border-radius:18px; overflow:hidden;
+    box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease, visibility 0s linear .22s;
+  }
+  .sched-modal.show{
+    opacity:1; visibility:visible; pointer-events:auto;
+    transform:translate(-50%, -50%) scale(1);
+    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
+  }
+  body.has-player .sched-modal{ height:min(76dvh, 760px); }
+  .sched-head{
+    flex:none; position:relative;
+    padding:1.15rem 3.6rem 0.85rem 1.3rem;
+    border-bottom:1px solid var(--outline);
+  }
+  .sched-title{
+    margin:0; font-family:var(--font-display);
+    font-size:1.25rem; font-weight:800; letter-spacing:.01em;
+  }
+  .sched-note{ margin:.3rem 0 0; font-size:.78rem; color:var(--ink-dim); }
+  .sched-close{
+    position:absolute; top:.9rem; right:.9rem; z-index:2;
+    width:40px; height:40px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    border:1px solid var(--outline-strong);
+    background:var(--surface-2); color:var(--ink);
+    transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
+  }
+  @media (hover:hover) and (pointer:fine){
+    .sched-close:hover{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  }
+  .sched-close:active{ transform:scale(.94); }
+  .sched-close svg{ width:16px; height:16px; }
+  /* Day tabs: one row, always all seven, equal widths — the whole point of the
+     view is that a week fits a phone as seven taps, not seven columns. */
+  .sched-tabs{
+    flex:none; display:flex; gap:.3rem;
+    padding:.7rem 1rem;
+    border-bottom:1px solid var(--outline);
+  }
+  .sched-tab{
+    flex:1 1 0; min-width:0;
+    padding:.45rem .2rem;
+    border:1px solid transparent; border-radius:999px;
+    background:none; color:var(--ink-dim); cursor:pointer;
+    font-family:var(--font-display); font-weight:700; font-size:.8rem;
+    letter-spacing:.03em; text-align:center;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  @media (hover:hover) and (pointer:fine){
+    .sched-tab:hover{ background:var(--surface-hover); color:var(--ink); }
+  }
+  .sched-tab.selected{
+    background:var(--accent); border-color:var(--accent); color:var(--accent-ink);
+  }
+  .sched-tab-today:not(.selected){
+    border-color:color-mix(in srgb, var(--accent) 55%, var(--outline-strong));
+    color:var(--accent);
+  }
+  /* Three-letter day names normally; single letters only when even those
+     can't fit (narrow phones). */
+  .sched-tab-min{ display:none; }
+  @media (max-width:420px){
+    .sched-tab-full{ display:none; }
+    .sched-tab-min{ display:inline; }
+  }
+  .sched-body{
+    flex:1 1 auto; overflow-y:auto;
+    padding:.6rem 1rem 1.2rem;
+    overscroll-behavior:contain;   /* the page behind is locked; don't hand it the leftover scroll */
+  }
+  .sched-empty{ padding:2rem 0; text-align:center; color:var(--ink-dim); }
+  .sched-slot{
+    display:flex; gap:.9rem;
+    padding:.55rem 0;
+  }
+  .sched-slot + .sched-slot{ border-top:1px solid var(--outline); }
+  .sched-time{
+    flex:none; width:4.6rem; padding-top:.45rem;
+    display:flex; flex-direction:column; gap:.15rem;
+    font-family:var(--font-display); font-weight:700; font-size:.85rem;
+    font-variant-numeric:tabular-nums;
+  }
+  .sched-dur{ font-weight:400; font-size:.72rem; color:var(--ink-faint); }
+  .sched-shows{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:.35rem; }
+  /* The wrap carries the card look — border, cat-colour edge, background —
+     so the Listen Live pill can sit inside that same card, to the right of
+     the .sched-show button, without nesting a button inside a button. */
+  .sched-show-wrap{
+    display:flex; align-items:center; gap:.5rem;
+    padding:.45rem .6rem .45rem .75rem;
+    border:1px solid var(--outline); border-left:3px solid var(--cat, var(--outline-strong));
+    border-radius:12px;
+    background:var(--surface-2);
+    transition:background .15s ease, border-color .15s ease;
+  }
+  @media (hover:hover) and (pointer:fine){
+    .sched-show-wrap:hover{ background:var(--surface-3); border-color:var(--outline-strong); border-left-color:var(--cat, var(--outline-strong)); }
+  }
+  /* The show itself is now a bare tap target — no border/background of its
+     own, both live one level up on the wrap. */
+  .sched-show{
+    display:flex; align-items:center; gap:.7rem;
+    flex:1 1 auto; min-width:0; text-align:left;
+    border:none; background:none; color:inherit; cursor:pointer;
+  }
+  /* On-air right now: the schedule's own LIVE badge + Listen Live pill,
+     toggled in place by schedApplyLiveHighlight() as the on-air feed moves
+     show to show. The class lands on the wrap so it can gate both children
+     at once — and the wrap itself, so the whole row reads as "this one". */
+  .sched-show-wrap.sched-show-live{
+    background:color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+    border-color:color-mix(in srgb, var(--accent) 45%, var(--outline-strong));
+  }
+  @media (hover:hover) and (pointer:fine){
+    .sched-show-wrap.sched-show-live:hover{ background:color-mix(in srgb, var(--accent) 16%, var(--surface-3)); }
+  }
+  .sched-show-row{ display:flex; align-items:center; gap:.4rem; min-width:0; }
+  .sched-show-row .sched-show-title{ flex:1 1 auto; }
+  /* Same dark chip + glowing dot as the appbar's Listen Live button
+     (.on-air-btn/.on-air-dot), not a flat accent fill — a status light reads
+     "on air" better than a coloured pill that looks like every other action
+     button on the page. */
+  .sched-live-badge{
+    display:none; flex:none; align-items:center; gap:.35rem;
+    padding:.16rem .5rem; border-radius:999px;
+    border:1px solid var(--outline-strong);
+    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 6%, var(--surface-3)), var(--surface-3));
+    color:var(--ink);
+    font-family:var(--font-display); font-weight:800; font-size:.62rem;
+    text-transform:uppercase; letter-spacing:.06em; line-height:1.3;
+  }
+  .sched-show-wrap.sched-show-live .sched-live-badge{ display:inline-flex; }
+  .sched-live-dot{
+    width:6px; height:6px; border-radius:50%; flex:none; background:var(--accent);
+    box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+    animation:pulse 1.8s infinite;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .sched-live-dot{ animation:none; }
+  }
+  /* Hidden on every show; only the live wrap's copy is ever shown. Same chip
+     as .sched-live-badge / .on-air-btn, sized for a schedule row. */
+  .sched-listen-btn{
+    display:none; flex:none; align-items:center; gap:.4rem;
+    padding:.4rem .75rem;
+    border:1px solid var(--outline-strong); border-radius:999px;
+    background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 6%, var(--surface-3)), var(--surface-3));
+    color:var(--ink); cursor:pointer;
+    transition:background .15s ease, border-color .15s ease, transform .12s ease;
+  }
+  .sched-show-wrap.sched-show-live .sched-listen-btn{ display:inline-flex; }
+  @media (hover:hover) and (pointer:fine){
+    .sched-listen-btn:hover{
+      background:linear-gradient(180deg, color-mix(in srgb, var(--ink) 11%, var(--surface-3)), color-mix(in srgb, var(--ink) 4%, var(--surface-3)));
+      border-color:color-mix(in srgb, var(--accent) 40%, var(--outline-strong));
+    }
+  }
+  .sched-listen-btn:active{ transform:scale(.96); }
+  .sched-listen-dot{
+    width:7px; height:7px; border-radius:50%; flex:none; background:var(--accent);
+    box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+    animation:pulse 1.8s infinite;
+  }
+  .sched-listen-label{
+    font-family:var(--font-display); font-weight:800; font-size:.68rem;
+    text-transform:uppercase; letter-spacing:.07em; line-height:1;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .sched-listen-dot{ animation:none; }
+  }
+  .sched-thumb{
+    flex:none; width:42px; height:42px; border-radius:9px; overflow:hidden;
+    /* station icon shows when a show has no photo (or its photo fails to
+       load) — same fallback layering as .show-thumb / .card-art */
+    background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-2);
+    box-shadow:inset 0 0 0 1px var(--outline);
+  }
+  .sched-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .sched-thumb img.failed{ display:none; }
+  .sched-text{ min-width:0; display:flex; flex-direction:column; gap:.12rem; }
+  .sched-show-title{
+    font-weight:600; font-size:.92rem;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .sched-show-meta{
+    font-size:.75rem; color:var(--ink-dim);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .sched-alt-note{
+    align-self:flex-start; padding-left:.2rem;
+    font-size:.7rem; font-style:italic; color:var(--ink-faint);
+  }
+  /* Phones: the same tall bottom sheet as the info sheet / live player / donate,
+     sharing --phone-sheet-gap so all of them sit at exactly the same height. */
+  @media (max-width:560px){
+    .sched-modal{
+      left:0; bottom:0; width:100%;
+      top:max(var(--phone-sheet-gap), env(safe-area-inset-top,0px));
+      height:auto; max-height:none;
+      border-radius:var(--phone-sheet-radius) var(--phone-sheet-radius) 0 0;
+      transform:translate(0, 100%) scale(1);
+    }
+    .sched-modal.show{ transform:translate(0, 0) scale(1); }
+    /* It covers the docked bar, so don't also reserve room for it — same
+       specificity note as the donate modal. */
+    body.has-player .sched-modal{ height:auto; }
+    .sched-close{ width:42px; height:42px; }
+    .sched-close svg{ width:17px; height:17px; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .sched-scrim, .sched-modal{ transition-duration:0s; }
   }
   .sheet-titles{ display:flex; flex-direction:column; gap:.5rem; min-width:0; padding-top:.15rem; }
   .sheet-eyebrow{
@@ -2596,7 +2842,7 @@
 
     .play-btn:not(.card-art)::before,
     .sheet-close::before, .menu-close::before, .lightbox-close::before,
-    .donate-close::before, .link-notice-close::before,
+    .donate-close::before, .sched-close::before, .link-notice-close::before,
     .lp-alert-dismiss::before, .resume-dismiss::before,
     .social-btn::before{
       content: ""; position: absolute;

@@ -72,6 +72,19 @@
           <span class="on-air-label">Listen Live</span>
           <span class="on-air-eq" aria-hidden="true"><i></i><i></i><i></i></span>
         </button>
+        <!-- Same chip as Listen Live (.on-air-btn), a calendar glyph standing in
+           for the dot — this one isn't a status light, so it gets an icon
+           instead. Opens the same derived-schedule modal as the drawer's
+           Schedule link (docs/schedule-dev.md); app.js wires the click. -->
+        <button class="on-air-btn sched-open-btn" id="scheduleBtn" type="button" aria-haspopup="dialog"
+          aria-controls="schedModal" aria-expanded="false" aria-label="Open the program schedule">
+          <svg class="sched-open-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3.5" y="5" width="17" height="15" rx="3" />
+            <path d="M3.5 9.6h17M8 3.4v3.2M16 3.4v3.2" />
+          </svg>
+          <span class="on-air-label">Schedule</span>
+        </button>
         <button class="btn btn-filled btn-donate" id="donateBtn" type="button" aria-haspopup="dialog"
           aria-controls="donateModal">
           <span class="donate-label">Donate</span>
@@ -329,7 +342,13 @@
         <div class="menu-group">
           <h2>Listen</h2>
           <ul>
-            <li><a href="https://wbai.org/schedule/" target="_blank" rel="noopener noreferrer">
+            <!-- Opens the in-app schedule modal (app.js, drawer IIFE) — a weekly
+               grid DERIVED from the archive's own timestamps, not wbai.org's
+               pixel-grid page. The href stays real as the fallback if that
+               listener never runs, and it keeps open-in-new-tab / copy-link
+               working from the context menu. See docs/schedule-dev.md. -->
+            <li><a href="https://wbai.org/schedule/" id="menuSchedule" target="_blank" rel="noopener noreferrer"
+                aria-haspopup="dialog" aria-controls="schedModal">
                 <svg class="menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect x="3.5" y="5" width="17" height="15" rx="3" />
@@ -511,6 +530,29 @@
     </button>
     <iframe class="donate-frame" id="donateFrame" title="Donate to WBAI" loading="lazy"
       referrerpolicy="no-referrer-when-downgrade"></iframe>
+  </div>
+
+  <!-- Weekly schedule. Derived client-side from the archive rows already in
+     memory (every broadcast carries its start timestamp), never fetched from
+     wbai.org's grid page — see docs/schedule-dev.md. Day tabs replace the
+     old-school 7-column table; tapping a show opens the ordinary info sheet,
+     which stacks ABOVE this dialog (sheet z 170/180 vs 164/165 here) so
+     closing the sheet lands back on the schedule. Same scrim/focus/inert
+     lifecycle as the other overlays. Content is painted by app.js on open. -->
+  <div class="sched-scrim" id="schedScrim"></div>
+  <div class="sched-modal" id="schedModal" role="dialog" aria-modal="true" aria-label="Program schedule"
+    aria-hidden="true">
+    <header class="sched-head">
+      <h2 class="sched-title">Schedule</h2>
+      <p class="sched-note">All times Eastern · derived from recent broadcasts</p>
+      <button class="sched-close" id="schedClose" type="button" aria-label="Close schedule">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </button>
+    </header>
+    <div class="sched-tabs" id="schedTabs" role="tablist" aria-label="Day of week"></div>
+    <div class="sched-body" id="schedBody" tabindex="0"></div>
   </div>
 
   <!-- Live stream player. A full-feature "now playing" screen for the live stream,

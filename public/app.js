@@ -85,7 +85,13 @@
   function syncUrl(){
     if(!canHistory) return;
     var open = sheetRowId || null;
-    try { history.replaceState(open ? {sheetId:open} : null, '', urlFor(open)); } catch(e){}
+    var st = open ? {sheetId:open} : null;
+    // Never clobber the schedule's flag: the sheet closes ON TOP of the
+    // schedule (its dialog stacks above, see openSchedule), and this replace
+    // runs from dismissSheet mid-popstate — wiping {sched:1} here made Back
+    // from a schedule-opened sheet close both layers at once.
+    if(history.state && history.state.sched){ st = st || {}; st.sched = 1; }
+    try { history.replaceState(st, '', urlFor(open)); } catch(e){}
   }
 
   function retentionClass(d){
@@ -364,7 +370,7 @@
   // so a trigger in the (now un-inert) header is focusable again.
   function refreshOverlayState(){
     var anyOpen = document.querySelector(
-      '.menu-panel.show, .sheet.show, .lightbox.show, .live-player.show, .donate-modal.show'
+      '.menu-panel.show, .sheet.show, .lightbox.show, .live-player.show, .donate-modal.show, .sched-modal.show'
     );
     ['.appbar', 'main#top'].forEach(function(sel){
       var el = document.querySelector(sel);
@@ -1037,6 +1043,7 @@
   // connection — see "one connection, never reused" below) and the same
   // media-session plumbing the header strip used before.
   var onAirBtn = document.getElementById('onAirBtn');
+  var scheduleBtn = document.getElementById('scheduleBtn');
   var livePlayer = document.getElementById('livePlayer');
   var livePlayerScrim = document.getElementById('livePlayerScrim');
   var lpClose = document.getElementById('lpClose');
@@ -1986,6 +1993,9 @@
   }
 
   onAirBtn.addEventListener('click', openLivePlayer);
+  // openSchedule takes an optional fromHistory param — binding it directly
+  // would pass the click Event in that slot and wrongly skip the history push.
+  scheduleBtn.addEventListener('click', function(){ openSchedule(); });
   lpClose.addEventListener('click', closeLivePlayer);
   livePlayerScrim.addEventListener('click', closeLivePlayer);
   lpToggle.addEventListener('click', toggleLive);
@@ -2184,6 +2194,8 @@
     // and re-titles itself if the schedule rolls over while it is up
     paintLivePlayer();
     if(barMode === 'live') paintLiveBar();
+    // and move the schedule's LIVE highlight along with it, if it's open
+    schedApplyLiveHighlight();
 
     // keep the OS lock screen in step with the schedule
     liveMeta.title = cur.name;
@@ -2328,6 +2340,7 @@
     archiveSig = rows.length + ':' + latestDt;
     render();
     setClock();
+    schedInvalidate();   // the schedule is derived from these rows; keep it in step
     openDeepLink();
   }
 
@@ -2558,6 +2571,301 @@
   if(donateBtn) donateBtn.addEventListener('click', openDonate);
   donateClose.addEventListener('click', closeDonate);
   donateScrim.addEventListener('click', closeDonate);
+
+  // ---------------- Weekly schedule (derived, never fetched) ----------------
+  // The archive rows already in memory ARE the schedule: every broadcast
+  // carries its start timestamp and shows are consecutive, so bucketing recent
+  // rows by (weekday, wall-clock slot) reconstructs the station's week. No new
+  // endpoint, no scrape of wbai.org's pixel grid. Numbers and reasoning:
+  // docs/schedule-dev.md (Phase 0 spike, 2026-08-05).
+  var SCHED_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var SCHED_WINDOW_SEC = 6 * 7 * 86400;  // 4w and 6w derive identical templates; 8w+ resurrects stale lineups
+  var SCHED_SNAP_MIN = 20;               // 529/535 rows start exactly on the :00/:30 grid; stragglers are 6-14 min late recorder starts
+
+  // `dateText` rather than Intl-with-a-timezone: upstream already formats it in
+  // the station's own wall clock ("Wednesday, August 5, 2026 9:00 pm"), so the
+  // client needs no copy of STATION_TZ — a template-repo concern, not a nicety.
+  function schedWall(r){
+    var m = /^(\w+),.*?(\d{1,2}):(\d{2})\s*(am|pm)$/i.exec(r.dateText || '');
+    if(!m) return null;
+    var h = parseInt(m[2], 10) % 12;
+    if(/pm/i.test(m[4])) h += 12;
+    return { day: m[1], min: h * 60 + parseInt(m[3], 10) };
+  }
+  function schedLenMin(r){
+    if(r.durationSec) return Math.round(r.durationSec / 60);
+    // listing-source rows carry durationSec:0 but always have the string
+    var m = /(?:(\d+):)?(\d+):(\d+)/.exec(r.length || '');
+    return m ? Math.round((parseInt(m[1] || 0, 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10)) / 60) : 0;
+  }
+  function schedSnap(min){
+    var s = Math.round(min / 30) * 30;
+    return Math.abs(s - min) <= SCHED_SNAP_MIN ? (s % 1440) : min;
+  }
+
+  // rows -> { Sunday: [ {min, durMin, shows:[row,..]} ... ] ... }
+  // shows.length > 1 means the slot alternates week to week (Mon 18:00 is
+  // BreakThrough News some weeks, Chris Hedges Report others). Grouped by
+  // normalised title, not slug — "Talk Out of School" airs under two slugs
+  // differing only in capitalisation and is one show, not an alternate.
+  function deriveSchedule(list){
+    var newest = list.reduce(function(max, r){ return Math.max(max, r.dt || 0); }, 0);
+    var cutoff = newest - SCHED_WINDOW_SEC;
+    var slots = {};   // "day|min" -> { titleKey -> most recent row }
+    list.forEach(function(r){
+      if(r.source === 'feed-only' || !r.dt || r.dt < cutoff) return;
+      var w = schedWall(r);
+      if(!w) return;
+      var key = w.day + '|' + schedSnap(w.min);
+      var bucket = slots[key] || (slots[key] = {});
+      var t = normTitle(r.title);
+      if(!bucket[t] || r.dt > bucket[t].dt) bucket[t] = r;
+    });
+    var week = {};
+    SCHED_DAYS.forEach(function(d){ week[d] = []; });
+    Object.keys(slots).forEach(function(key){
+      var parts = key.split('|');
+      if(!week[parts[0]]) return;
+      var shows = Object.keys(slots[key]).map(function(t){ return slots[key][t]; })
+        .sort(function(a, b){ return b.dt - a.dt; });   // most recently aired first
+      week[parts[0]].push({
+        min: parseInt(parts[1], 10),
+        durMin: schedLenMin(shows[0]),
+        shows: shows
+      });
+    });
+    SCHED_DAYS.forEach(function(d){ week[d].sort(function(a, b){ return a.min - b.min; }); });
+    return week;
+  }
+
+  var schedModal = document.getElementById('schedModal');
+  var schedScrim = document.getElementById('schedScrim');
+  var schedCloseBtn = document.getElementById('schedClose');
+  var schedTabs = document.getElementById('schedTabs');
+  var schedBody = document.getElementById('schedBody');
+  var schedWeek = null;          // derived template, rebuilt when rows change
+  var schedDay = '';             // the selected tab
+  var schedReturnFocus = null;
+
+  // Guarded: renderNowPlaying() fires once at script init, via
+  // applyNowPlayingSnapshot(), before schedModal is assigned below — schedModal
+  // is still undefined at that first call.
+  function schedIsOpen(){ return !!schedModal && schedModal.classList.contains('show'); }
+  // rows changed (refresh poll, fallback snapshot): drop the template and
+  // repaint in place if the modal is up
+  function schedInvalidate(){
+    schedWeek = null;
+    if(schedIsOpen()) paintSchedule();
+  }
+
+  function schedTimeLabel(min){
+    var h = Math.floor(min / 60) % 24, m = min % 60;
+    var ap = h >= 12 ? 'PM' : 'AM';
+    var hh = h % 12; if(hh === 0) hh = 12;
+    return hh + (m ? ':' + (m < 10 ? '0' : '') + m : '') + ' ' + ap;
+  }
+  function schedDurLabel(durMin){
+    if(!durMin) return '';
+    var h = Math.floor(durMin / 60), m = durMin % 60;
+    return h ? h + (m >= 25 ? '\u00bd' : '') + ' hr' : m + ' min';
+  }
+  // Which weekday it is at the station, without the client holding a timezone:
+  // the newest row was recorded within the last few hours, so its (station
+  // wall-clock) weekday is station-today for any practical open of this modal.
+  function schedToday(){
+    var newest = null;
+    rows.forEach(function(r){ if(r.dt && (!newest || r.dt > newest.dt)) newest = r; });
+    var w = newest && schedWall(newest);
+    return (w && week0(w.day)) || 'Sunday';
+  }
+  function week0(day){ return SCHED_DAYS.indexOf(day) !== -1 ? day : ''; }
+
+  function paintSchedule(){
+    if(!schedWeek) schedWeek = deriveSchedule(rows);
+    if(!schedDay) schedDay = schedToday();
+    var today = schedToday();
+    schedTabs.innerHTML = SCHED_DAYS.map(function(d){
+      var sel = d === schedDay;
+      var isToday = d === today;
+      var cls = 'sched-tab'+(sel ? ' selected' : '')+(isToday ? ' sched-tab-today' : '');
+      return '<button class="'+cls+'" type="button" role="tab" data-day="'+d+'"'+
+        ' aria-selected="'+sel+'"'+(sel ? '' : ' tabindex="-1"')+'>'+
+        '<span class="sched-tab-full">'+(isToday ? 'Today' : d.slice(0, 3))+'</span>'+
+        '<span class="sched-tab-min">'+d.slice(0, 1)+'</span></button>';
+    }).join('');
+    var entries = schedWeek[schedDay] || [];
+    if(!entries.length){
+      schedBody.innerHTML = '<p class="sched-empty">Nothing derived for '+esc(schedDay)+' yet — the archive is still loading.</p>';
+      return;
+    }
+    schedBody.innerHTML = entries.map(function(e){
+      return '<div class="sched-slot" role="group" aria-label="'+esc(schedTimeLabel(e.min))+'">'+
+        '<div class="sched-time">'+esc(schedTimeLabel(e.min))+
+          '<span class="sched-dur">'+esc(schedDurLabel(e.durMin))+'</span></div>'+
+        '<div class="sched-shows">'+
+          e.shows.map(function(r){
+            var c = CAT_BY_KEY[r.cat] || CAT_BY_KEY.special;
+            // The card look (border, cat-colour edge, background) now lives on
+            // the wrap, not .sched-show, so the Listen Live pill can sit inside
+            // the same card without nesting a button inside a button.
+            return '<div class="sched-show-wrap" data-title="'+esc(r.title)+'" style="--cat:'+c.color+'">'+
+              '<button class="sched-show" type="button" data-id="'+esc(r.id)+'"'+
+                ' aria-label="More about '+esc(r.title)+'">'+
+                '<span class="sched-thumb">'+(r.photo ? '<img loading="lazy" alt="" src="'+esc(r.photo)+'">' : '')+'</span>'+
+                '<span class="sched-text">'+
+                  '<span class="sched-show-row">'+
+                    '<span class="sched-show-title">'+esc(r.title)+'</span>'+
+                    '<span class="sched-live-badge"><span class="sched-live-dot" aria-hidden="true"></span>Live</span>'+
+                  '</span>'+
+                  '<span class="sched-show-meta">'+esc(c.label + (r.host ? ' \u00b7 '+r.host : ''))+'</span>'+
+                '</span>'+
+              '</button>'+
+              '<button class="sched-listen-btn" type="button" aria-label="Listen live to '+esc(r.title)+'">'+
+                '<span class="sched-listen-dot" aria-hidden="true"></span>'+
+                '<span class="sched-listen-label">Listen Live</span>'+
+              '</button>'+
+            '</div>';
+          }).join('')+
+          (e.shows.length > 1 ? '<span class="sched-alt-note">alternates weekly</span>' : '')+
+        '</div>'+
+      '</div>';
+    }).join('');
+    schedApplyLiveHighlight();
+    schedScrollToLive();
+  }
+
+  // Loose match between the on-air feed's name and an archive title — the two
+  // systems spell the same show differently often enough (see normTitle's
+  // neighbour, programFor) that an exact key match would miss real hits.
+  function schedTitleMatches(a, b){
+    var ka = normTitle(a), kb = normTitle(b);
+    if(!ka || !kb) return false;
+    if(ka === kb) return true;
+    var la = leadStrip(ka), lb = leadStrip(kb);
+    if(la.length >= 8 && (la === lb || la.indexOf(lb+' ') === 0 || lb.indexOf(la+' ') === 0)) return true;
+    var ca = coreKey(ka), cb = coreKey(kb);
+    if(ca && ca === cb) return true;
+    return dice(ka.split(' '), kb.split(' ')) >= 0.72;
+  }
+  // Toggles the LIVE badge and Listen button in place, no re-render — called
+  // on every 15s now-playing poll so the highlight moves show to show while
+  // the modal stays open, without resetting the user's scroll position (that
+  // is schedScrollToLive()'s job, and it only runs on paint, not on poll).
+  function schedApplyLiveHighlight(){
+    if(!schedIsOpen()) return;
+    var liveName = (schedDay === schedToday() && liveCurrent && liveCurrent.name) || '';
+    var wraps = schedBody.querySelectorAll('.sched-show-wrap');
+    for(var i = 0; i < wraps.length; i++){
+      var wrap = wraps[i];
+      wrap.classList.toggle('sched-show-live', !!liveName && schedTitleMatches(wrap.dataset.title, liveName));
+    }
+  }
+  var SCHED_LIVE_PEEK = 56;   // px of the previous slot left visible above — the "you can scroll up" hint
+  // Positions the now-playing slot a little below sched-body's top edge
+  // instead of flush against it, so the peek of whatever's above hints that
+  // there's more to scroll to. Only called from paintSchedule() (open, tab
+  // switch) — never from the 15s poll, which would otherwise yank a reading
+  // user's scroll position back every refresh.
+  function schedScrollToLive(){
+    schedBody.scrollTop = 0;
+    var live = schedBody.querySelector('.sched-show-live');
+    if(!live) return;
+    var delta = live.getBoundingClientRect().top - schedBody.getBoundingClientRect().top;
+    schedBody.scrollTop = Math.max(0, delta - SCHED_LIVE_PEEK);
+  }
+
+  function schedSelectDay(day){
+    if(!week0(day) || day === schedDay) return;
+    schedDay = day;
+    paintSchedule();
+  }
+
+  // Same open/close lifecycle as the other overlays, with one twist: this
+  // dialog sits BELOW the info sheet (z 164/165 vs the sheet's 170/180), so a
+  // tapped show opens its ordinary sheet on top and closing the sheet lands
+  // back here. That is why both key handlers below stand down while the sheet
+  // is up — the sheet owns the keyboard when it owns the screen.
+  function openSchedule(fromHistory){
+    if(schedIsOpen()) return;
+    schedReturnFocus = document.activeElement;
+    schedDay = '';                 // re-resolve "today" on every open
+    // Mark the modal open BEFORE painting: paintSchedule() ends by applying
+    // the live highlight and scrolling to it, both of which check schedIsOpen()
+    // and are no-ops while it's still false.
+    schedScrim.classList.add('show');
+    schedModal.classList.add('show');
+    schedModal.setAttribute('aria-hidden', 'false');
+    scheduleBtn.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('sched-open');
+    paintSchedule();
+    if(canHistory && !fromHistory){
+      try { history.pushState({sched: 1}, '', location.href); } catch(e){}
+    }
+    refreshOverlayState();
+    schedCloseBtn.focus();
+    document.addEventListener('keydown', onSchedKey);
+  }
+  // Closing from the UI consumes the history entry pushed on open (the sheet's
+  // pattern); popstate then calls dismissSchedule() to do the actual work.
+  function closeSchedule(){
+    if(!schedIsOpen()) return;
+    if(canHistory && history.state && history.state.sched){ history.back(); return; }
+    dismissSchedule();
+  }
+  function dismissSchedule(){
+    if(!schedIsOpen()) return;
+    schedScrim.classList.remove('show');
+    schedModal.classList.remove('show');
+    schedModal.setAttribute('aria-hidden', 'true');
+    scheduleBtn.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('sched-open');
+    document.removeEventListener('keydown', onSchedKey);
+    refreshOverlayState();
+    if(schedReturnFocus && schedReturnFocus.focus) schedReturnFocus.focus();
+    schedReturnFocus = null;
+  }
+  function onSchedKey(e){
+    if(sheet.classList.contains('show')) return;   // the sheet is above; its handler owns the keys
+    if(e.key === 'Escape'){ e.preventDefault(); closeSchedule(); return; }
+    if(e.key === 'Tab'){
+      var f = schedModal.querySelectorAll('button:not([tabindex="-1"]), [tabindex="0"]');
+      if(!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+      return;
+    }
+    // roving tabs: arrows move between days, the listing pattern for tablists
+    if((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && e.target && e.target.classList.contains('sched-tab')){
+      e.preventDefault();
+      var i = SCHED_DAYS.indexOf(schedDay) + (e.key === 'ArrowRight' ? 1 : -1);
+      schedSelectDay(SCHED_DAYS[(i + 7) % 7]);
+      var btn = schedTabs.querySelector('.sched-tab.selected');
+      if(btn) btn.focus();
+    }
+  }
+  schedCloseBtn.addEventListener('click', closeSchedule);
+  schedScrim.addEventListener('click', closeSchedule);
+  schedTabs.addEventListener('click', function(e){
+    var tab = e.target.closest('.sched-tab');
+    if(tab) schedSelectDay(tab.dataset.day);
+  });
+  // a tapped show opens the ordinary info sheet, which stacks above this dialog
+  schedBody.addEventListener('click', function(e){
+    // Listen (only present on the live slot) swaps the schedule for the live
+    // player outright — dismissSchedule() rather than closeSchedule(), so it
+    // doesn't try to walk history back a step first; the live player carries
+    // no history entry of its own to stack on top of.
+    var listenBtn = e.target.closest('.sched-listen-btn');
+    if(listenBtn){ dismissSchedule(); openLivePlayer(); return; }
+    var btn = e.target.closest('.sched-show');
+    if(btn) openSheetById(btn.dataset.id, btn);
+  });
+  // artwork that 404s falls back to the station icon behind it — the same
+  // failed-image rule the listing rows and the sheet use
+  schedBody.addEventListener('error', function(e){
+    if(e.target && e.target.tagName === 'IMG') e.target.classList.add('failed');
+  }, true);
 
   function fetchShowInfo(){
     fetch('/api/showinfo', {cache:'no-store'})
@@ -2966,11 +3274,16 @@
     syncUrl();
   }
 
-  // Back/forward: the entry either names a sheet or it doesn't.
+  // Back/forward: the entry either names a sheet or it doesn't — and,
+  // independently, either flags the schedule or it doesn't. Opening a show
+  // FROM the schedule pushes a plain {sheetId} entry on top of the {sched}
+  // one, so Back unwinds in stacking order: sheet first, schedule second.
   window.addEventListener('popstate', function(){
     var id = (history.state && history.state.sheetId) || param('show');
     if(id && rowById(id)) openSheetById(id, null, true);
     else dismissSheet();
+    if(history.state && history.state.sched) openSchedule(true);
+    else dismissSchedule();
   });
 
   function onSheetKey(e){
@@ -3092,6 +3405,16 @@
       e.preventDefault();
       closeMenu();
       openPrivacy();
+    });
+    // The drawer's Schedule item opens the derived in-app schedule rather than
+    // wbai.org's grid page (docs/schedule-dev.md). Same close-before-open order
+    // as Donate, for the same focus reasons.
+    var schedLink = document.getElementById('menuSchedule');
+    if(schedLink) schedLink.addEventListener('click', function(e){
+      if(e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;  // let modified clicks use the href
+      e.preventDefault();
+      closeMenu();
+      openSchedule();
     });
   })();
 
