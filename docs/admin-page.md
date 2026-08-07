@@ -162,7 +162,7 @@ data. It is not a system for revoking one person's access.
 | --- | --- | --- |
 | `STUDIO_PASSWORD` | to enable | The shared password. **Unset ⇒ the feature does not exist** — routes fall through to the normal SPA fallback (constraint #2), so the deployment is indistinguishable from one that never had a studio. This is also the safe default for anyone who forks the repo. |
 | `STUDIO_SECRET` | no | HMAC key for session cookies. Defaults to a key *derived from the password*, which buys a useful property for free: **rotating the password invalidates every live session.** Set it explicitly only if you want sessions to survive a password change. |
-| `STUDIO_SESSION_HOURS` | no | Cookie lifetime, default 12. Long enough for a working day, short enough that a forgotten laptop expires. |
+| `STUDIO_SESSION_HOURS` | no | Cookie lifetime, default 8760 (365 days), suitable for the small group of trusted station operators. |
 
 Fail loudly at boot on a bad configuration (password shorter than 12 chars, say)
 rather than silently accepting a weak one. Storage configuration is the fourth
@@ -175,11 +175,13 @@ variable, `DATA_DIR` — see §5.2, where it replaces three existing ones.
 early return, no leak of the password's length) → set:
 
 ```
-Set-Cookie: studio=<exp>.<hmac>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=…
+Set-Cookie: studio=<exp>.<hmac>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=…; Expires=…
 ```
 
 where `hmac = HMAC-SHA256(key, exp)`. Verification is a recomputation — **no
-server-side session store**. That matters here specifically: this repo's
+server-side session store**. `Max-Age` and `Expires` make it a persistent
+browser cookie; the duplicate expiry attributes cover current and older or
+embedded clients. That matters here specifically: this repo's
 production storage is unreliable (CLAUDE.md §4), and a session table on a volume
 that may not be mounted would log everyone out at unpredictable times. Stateless
 sessions also survive a restart, which the harvest caches do not.

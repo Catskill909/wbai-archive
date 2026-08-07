@@ -2548,7 +2548,12 @@ function showHistory(slug) {
  */
 const STUDIO_PASSWORD = process.env.STUDIO_PASSWORD || '';
 const STUDIO_ENABLED = STUDIO_PASSWORD.length > 0;
-const STUDIO_SESSION_HOURS = Number(process.env.STUDIO_SESSION_HOURS) || 12;
+const STUDIO_DEFAULT_SESSION_HOURS = 24 * 365;
+const configuredStudioSessionHours = Number(process.env.STUDIO_SESSION_HOURS);
+const STUDIO_SESSION_HOURS = Number.isFinite(configuredStudioSessionHours)
+  && configuredStudioSessionHours > 0
+  ? configuredStudioSessionHours
+  : STUDIO_DEFAULT_SESSION_HOURS;
 const STUDIO_DIR = path.join(__dirname, 'admin');
 const STUDIO_COOKIE = 'studio';
 
@@ -2720,7 +2725,7 @@ function sendStudioHtml(req, res, file) {
 async function studioPost(req, res, pathOnly) {
   if (pathOnly === '/api/studio/logout') {
     return sendStudioJson(res, { ok: true }, 200, {
-      'Set-Cookie': `${STUDIO_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`,
+      'Set-Cookie': `${STUDIO_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
     });
   }
   // login
@@ -2749,9 +2754,14 @@ async function studioPost(req, res, pathOnly) {
   // browsers, so it follows the actual scheme rather than being hardcoded.
   const https = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https'
     || process.env.NODE_ENV === 'production';
-  const maxAge = STUDIO_SESSION_HOURS * 3600;
+  const session = studioIssue();
+  const maxAge = Math.floor(STUDIO_SESSION_HOURS * 3600);
+  const expires = new Date(Number(session.slice(0, session.indexOf('.')))).toUTCString();
   return sendStudioJson(res, { ok: true }, 200, {
-    'Set-Cookie': `${STUDIO_COOKIE}=${studioIssue()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}`
+    // Expires duplicates Max-Age deliberately. Max-Age is authoritative in
+    // current browsers; Expires keeps the login persistent in older and
+    // embedded clients that otherwise treat the cookie as browser-session-only.
+    'Set-Cookie': `${STUDIO_COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}; Expires=${expires}`
       + (https ? '; Secure' : ''),
   });
 }

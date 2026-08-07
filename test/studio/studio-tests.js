@@ -180,7 +180,7 @@ async function run() {
   // which zone counts as "local", and that must not depend on the timezone of
   // whatever machine is running the suite.
   const on = startServer(PORT_ON,
-    { STUDIO_PASSWORD: PASSWORD, STATION_TZ: 'America/New_York' }, FIXTURE);
+    { STUDIO_PASSWORD: PASSWORD, STUDIO_SESSION_HOURS: '', STATION_TZ: 'America/New_York' }, FIXTURE);
   try {
     await waitReady(PORT_ON);
 
@@ -230,6 +230,10 @@ async function run() {
       `status ${good.status}, set-cookie=${setCookie}`);
     ok('cookie is HttpOnly and SameSite=Strict',
       /HttpOnly/i.test(setCookie) && /SameSite=Strict/i.test(setCookie), setCookie);
+    ok('cookie persists for the default 365 days',
+      /Max-Age=31536000(?:;|$)/i.test(setCookie)
+      && Date.parse((setCookie.match(/Expires=([^;]+)/i) || [])[1] || '') > Date.now() + 364 * DAY * 1000,
+      setCookie);
 
     const session = setCookie.split(';')[0];
     const authed = { Cookie: session };
@@ -632,7 +636,9 @@ async function run() {
 
     const bye = await post(PORT_ON, '/api/studio/logout', undefined, authed);
     const cleared = bye.headers.get('set-cookie') || '';
-    ok('logout clears the cookie', /Max-Age=0/.test(cleared), cleared);
+    ok('logout clears the persistent cookie immediately',
+      /Max-Age=0/.test(cleared) && /Expires=Thu, 01 Jan 1970 00:00:00 GMT/i.test(cleared),
+      cleared);
 
     // A KNOWN AND ACCEPTED LIMITATION, pinned here so it is a decision rather
     // than a surprise. Sessions are stateless — a signed cookie, no server-side
