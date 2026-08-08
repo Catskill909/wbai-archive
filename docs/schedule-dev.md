@@ -431,7 +431,7 @@ an alternation — and All Mixed Up is the tell: it kept Sun 00:00 on the streng
 of a single airing on 07-19, having since aired twice at 02:00.
 
 **`schedDropStale()` drops a challenger** (never `shows[0]`, the incumbent) on
-either of two tests:
+any of three tests:
 
 - **moved** — the show has aired *more recently in a different slot*. A real
   alternate's newest airing is the one in this slot; a show that moved has a
@@ -442,21 +442,26 @@ either of two tests:
   a further week behind every week, so this **self-heals**: there is no list of
   dead shows to maintain, and none to forget to update.
 
-Result on the live data: **21 multi-show slots → 9**, with all four Sunday
-cutover slots and both overnight Tuesday ones corrected.
+- **once** — it has aired in this slot exactly once. One observation is not a
+  pattern; a fortnightly alternate airs ~3 times inside the six-week window.
 
-**What this deliberately does NOT do**, and please don't add it: drop a show
-because it "only aired here once". Upstream feeds retain five items (§7.8), so
-a genuine alternate that aired once since the June outage is byte-for-byte
-indistinguishable from a show that was dropped. Deleting a real alternate is the
-worse of the two failures — the schedule would quietly stop listing a show that
-is actually on the air — and `stale` collects those a week later anyway. Tue
-05:00 (Aware Show / Equal Time For Free Thought) is exactly this case and is
-*expected* to read as alternating until 08-11.
+This third test was deliberately **left out** at first, reasoning that a real
+alternate whose feed retained a single post-outage episode is indistinguishable
+from a dropped show, and that deleting a live show is the worse failure. §7.10
+is what changed that: the station's own calendar shows no alternating slot
+anywhere, and no slot in our data holds two shows that have *each* aired more
+than once. "Seen once" was carrying every false alternate and no true one.
 
-The nine survivors all trail by exactly 7 days, which is the genuinely ambiguous
-shape. If one of them is still there after its next airing, it is a real
-alternate; if it vanishes, `stale` did its job.
+It stays self-correcting: a slot that genuinely begins alternating shows its
+second airing two weeks later and returns on its own. **Keep that property.** The
+moment this needs a hand-maintained list of dead shows, it is wrong.
+
+Result on the live data, measured in the browser across five builds:
+**21 shared slots → 10 → 3 → 1 → 0** as `stale`/`moved`, then odd-day exclusion
+(§7.10), then `once`, then shared identity (§7.11) each landed. Zero is the
+correct answer: it matches WBAI's published schedule exactly. Day slot counts
+were unchanged throughout (16/22/22/21/20/19/15), so nothing was emptied — only
+the duplicate stacking removed.
 
 ### 7.8 How little evidence the derivation actually has
 
@@ -569,3 +574,73 @@ that quietly stopped, and both are worth surfacing in `/studio`).
 project spent 2026-07-29 moving away from (see `docs/xml-feed-migration.md`).
 Anything built here needs the tooltip self-check above, and must degrade to the
 derived schedule rather than to an empty week.
+
+### 7.10 Two broadcast days that did not run the schedule
+
+*(2026-08-08 — the reason §7.7's first pass left ten false alternates behind)*
+
+§7.7 shipped and still showed "alternates weekly" on ten slots. Checking
+**WBAI's own calendar** (`wbai.org/schedule`, a FullCalendar week view whose
+next/prev buttons walk forward) settled whether any of them were real:
+
+> One show in every one of those ten slots, **every week, six weeks forward**,
+> across ~134 events a week. **No alternating slot anywhere.**
+
+So all ten were false. The cause was not ten independent mistakes — measure
+each broadcast *date* by the share of its slots held by someone other than that
+slot's current occupant:
+
+| date | slots | displaced | rate |
+|---|---|---|---|
+| **2026-07-19** | 7 | 5 | **71%** |
+| **2026-07-28** | 10 | 10 | **100%** |
+| every other date in the window | | | 0–23% |
+
+On 2026-07-28 *every single slot* aired something else. That is **one event** —
+a replay block, special programming, a mislabelled batch of recordings — not
+ten shows that independently began alternating fortnightly in perfect phase.
+`schedDropStale` could never have caught it: each ghost aired exactly once,
+exactly 7 days behind its incumbent, which is precisely the signature of a
+genuine fortnightly alternate.
+
+`schedOddDates()` finds these days and removes them from the derivation before
+bucketing. Thresholds: ≥60% displaced, ≥5 slots (below that a "rate" is noise).
+
+Two properties worth keeping:
+
+- **A real lineup change also looks displaced** — and that is harmless, because
+  a change displaces every *older* day, and those are exactly the days that
+  should stop contributing. It degrades to the behaviour §7.7 already wanted.
+- **A genuinely alternating slot moves one or two slots on its B week**, nowhere
+  near 60% of the day. The test cannot fire on real alternation without the
+  whole day alternating at once.
+
+### 7.11 A renamed show is not two shows
+
+The last stubborn slot, Monday 07:00, survived every rule above because both of
+its "shows" had genuinely aired there more than once:
+
+```
+whatsgoingonmoralm  "Early Morning Mondays - Moral Monday"  06/22, 07/20, 07/27
+whatsgoingonmoralm  "What's Going On!"                      08/03
+```
+
+**Same slug.** The show was renamed, and grouping by normalised title reported
+the old name and the new one alternating with each other.
+
+The original code grouped by title *on purpose*, to handle the mirror case noted
+right there in the comment: "Talk Out of School" airs under two slugs differing
+only in capitalisation, and is one show. So neither key is sufficient alone —
+title splits a rename, slug splits a re-slugging.
+
+`schedIdentity()` takes the **transitive closure of "same slug" OR "same
+normalised title"** (union-find over both), which collapses either split without
+privileging the listing's naming over the feed's. Its key is then used by
+everything that has to agree on show identity: bucketing, `showLast`,
+`seenCount`, and §7.10's displacement test — a rename must not read as a
+displaced slot either.
+
+⚠️ If you add a third source (see [pacifica-json-dev.md](pacifica-json-dev.md)),
+it arrives with its *own* naming, and this is the function that has to hear
+about it. It is also the reason the schedule can survive a station renaming a
+show mid-week, which is otherwise indistinguishable from a lineup change.

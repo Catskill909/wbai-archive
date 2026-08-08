@@ -2657,6 +2657,10 @@
   // that clears a fortnightly alternate (which trails by exactly 7) — see
   // docs/schedule-dev.md §7.7 for the lineup change this was measured against.
   var SCHED_STALE_SEC = 14 * 86400;
+  // One odd broadcast day must not mint a permanent "alternate" in every slot it
+  // touched. A day this displaced is an event, not a lineup — see schedOddDates.
+  var SCHED_ODD_RATE = 0.6;      // share of the day's slots held by a non-occupant
+  var SCHED_ODD_MIN_SLOTS = 5;   // below this a "rate" is noise, not a pattern
 
   // `dateText` rather than Intl-with-a-timezone: upstream already formats it in
   // the station's own wall clock ("Wednesday, August 5, 2026 9:00 pm"), so the
@@ -2699,19 +2703,112 @@
   //            falls further behind every week until it ages out of the window
   //            entirely, so this self-heals with no list to maintain.
   //
-  // Deliberately NOT a rule: "only ever aired here once". A genuine alternate
-  // whose feed retains one post-outage episode looks identical to a dropped
-  // show, and deleting a real alternate is the worse failure — the schedule
-  // would silently stop mentioning a show that is actually on. Those resolve
-  // themselves on the next airing via `stale`.
-  function schedDropStale(shows, key, showLast){
+  //   once   — it has aired here exactly once. One observation is not a
+  //            pattern, and a real fortnightly alternate airs about three times
+  //            inside a six-week window, so the bar costs it nothing.
+  //
+  // That last rule was deliberately left OUT at first, reasoning that a genuine
+  // alternate whose feed retained a single post-outage episode would look
+  // identical to a dropped show. **Checking the station settled it**
+  // (2026-08-08): WBAI's own calendar at wbai.org/schedule lists one show per
+  // slot, every week, six weeks forward, across ~134 events a week — not one
+  // alternating slot anywhere. And in our own data, no slot holds two shows that
+  // have *each* aired more than once. "Seen once" was carrying every false
+  // alternate and no true one.
+  //
+  // It stays self-correcting: a slot that genuinely begins alternating shows its
+  // second airing two weeks later and returns on its own. Nothing here needs a
+  // hand-maintained list — that is the property to protect if you change it.
+
+  // One show, one key — whichever way upstream splits it.
+  //
+  // Grouping by title alone splits a show that gets RENAMED: slug
+  // `whatsgoingonmoralm` aired as "Early Morning Mondays - Moral Monday" up to
+  // 2026-07-27 and as "What's Going On!" from 08-03, and Monday 07:00 duly
+  // reported the two of them alternating (found 2026-08-08).
+  // Grouping by slug alone splits the mirror case, already documented here:
+  // "Talk Out of School" airs under two slugs differing only in capitalisation.
+  //
+  // So identity is the transitive closure of "same slug" OR "same normalised
+  // title" — union-find over both, which collapses either split without
+  // privileging one system's naming over the other's.
+  function schedIdentity(rows){
+    var parent = {};
+    function find(x){
+      if(parent[x] === undefined) parent[x] = x;
+      while(parent[x] !== x){ parent[x] = parent[parent[x]]; x = parent[x]; }
+      return x;
+    }
+    function union(a, b){
+      var ra = find(a), rb = find(b);
+      if(ra !== rb) parent[ra] = rb;
+    }
+    rows.forEach(function(r){
+      var t = 'T:' + normTitle(r.title);
+      if(r.sho) union('S:' + r.sho, t); else find(t);
+    });
+    return function(r){ return find(r.sho ? 'S:' + r.sho : 'T:' + normTitle(r.title)); };
+  }
+
+  // The date, in the station's own wall clock, off the same string schedWall
+  // reads — so this needs no timezone either.
+  function schedDateKey(r){
+    var m = /^(\w+,\s*\w+\s+\d{1,2},\s*\d{4})/.exec(r.dateText || '');
+    return m ? m[1] : '';
+  }
+
+  // Broadcast days that did not run the schedule at all.
+  //
+  // 2026-07-28 aired a DIFFERENT show in all ten of its slots; 2026-07-19 in
+  // five of seven. Every other day in the window sat at 0-23%. That is one
+  // event per day — a replay block, special programming, a mislabelled batch of
+  // recordings — and not, as the derivation first concluded, ten shows that
+  // independently began alternating fortnightly in perfect phase.
+  //
+  // WBAI's own calendar settles it: one show in each of those slots, every week,
+  // six weeks forward, no alternation anywhere (checked 2026-08-08 against
+  // wbai.org/schedule). schedDropStale could not catch this — each ghost aired
+  // exactly once, only 7 days behind the incumbent, which is precisely the
+  // signature of a real fortnightly alternate.
+  //
+  // So the fix is aimed at the cause: find the odd days and take them out of the
+  // derivation entirely. Measured against the slot's most recent occupant, which
+  // makes a genuine *lineup change* look displaced too — harmless, because a
+  // change displaces every older day and those are exactly the days that should
+  // stop contributing. A real alternating slot moves a couple of slots on its B
+  // week, nowhere near SCHED_ODD_RATE of the day.
+  function schedOddDates(rows){
+    var occ = {};
+    rows.forEach(function(r){
+      var k = r._slotKey;
+      if(!occ[k] || r.dt > occ[k].dt) occ[k] = r;
+    });
+    var tally = {};
+    rows.forEach(function(r){
+      var d = r._dateKey;
+      if(!d) return;
+      var t = tally[d] || (tally[d] = { n: 0, off: 0 });
+      t.n++;
+      if(occ[r._slotKey]._showKey !== r._showKey) t.off++;
+    });
+    var odd = {};
+    Object.keys(tally).forEach(function(d){
+      var t = tally[d];
+      if(t.n >= SCHED_ODD_MIN_SLOTS && (t.off / t.n) >= SCHED_ODD_RATE) odd[d] = true;
+    });
+    return odd;
+  }
+
+  function schedDropStale(shows, key, showLast, seenCount){
     if(shows.length < 2) return shows;
     var top = shows[0];
     return shows.filter(function(r, i){
       if(i === 0) return true;
-      var seen = showLast[normTitle(r.title)];
+      var t = r._showKey;
+      var seen = showLast[t];
       if(seen && seen.key !== key && seen.dt > r.dt) return false;   // moved
-      return (top.dt - r.dt) < SCHED_STALE_SEC;                      // replaced
+      if((top.dt - r.dt) >= SCHED_STALE_SEC) return false;           // replaced
+      return (seenCount[key + '||' + t] || 0) > 1;                   // once
     });
   }
 
@@ -2723,17 +2820,34 @@
   function deriveSchedule(list){
     var newest = list.reduce(function(max, r){ return Math.max(max, r.dt || 0); }, 0);
     var cutoff = newest - SCHED_WINDOW_SEC;
-    var slots = {};     // "day|min" -> { titleKey -> most recent row }
-    var showLast = {};  // titleKey -> newest airing ANYWHERE, and the slot it was in
+    // Pass 1: everything in the window, tagged with its slot and its date.
+    var inWindow = [];
     list.forEach(function(r){
       if(r.source === 'feed-only' || !r.dt || r.dt < cutoff) return;
       var w = schedWall(r);
       if(!w) return;
-      var key = w.day + '|' + schedSnap(w.min);
+      r._slotKey = w.day + '|' + schedSnap(w.min);
+      r._dateKey = schedDateKey(r);
+      inWindow.push(r);
+    });
+    // Pass 2: drop the days that did not run the schedule, then bucket.
+    // Identity first: both the odd-day test and the bucketing must agree on what
+    // counts as "the same show", or a rename reads as a displacement.
+    var idOf = schedIdentity(inWindow);
+    inWindow.forEach(function(r){ r._showKey = idOf(r); });
+    var odd = schedOddDates(inWindow);
+    var slots = {};      // "day|min" -> { showKey -> most recent row }
+    var showLast = {};   // showKey -> newest airing ANYWHERE, and the slot it was in
+    var seenCount = {};  // "day|min||showKey" -> how many times it aired there
+    inWindow.forEach(function(r){
+      if(odd[r._dateKey]) return;
+      var key = r._slotKey;
       var bucket = slots[key] || (slots[key] = {});
-      var t = normTitle(r.title);
+      var t = r._showKey;
       if(!bucket[t] || r.dt > bucket[t].dt) bucket[t] = r;
       if(!showLast[t] || r.dt > showLast[t].dt) showLast[t] = { dt: r.dt, key: key };
+      var ck = key + '||' + t;
+      seenCount[ck] = (seenCount[ck] || 0) + 1;
     });
     var week = {};
     SCHED_DAYS.forEach(function(d){ week[d] = []; });
@@ -2742,7 +2856,7 @@
       if(!week[parts[0]]) return;
       var shows = Object.keys(slots[key]).map(function(t){ return slots[key][t]; })
         .sort(function(a, b){ return b.dt - a.dt; });   // most recently aired first
-      shows = schedDropStale(shows, key, showLast);
+      shows = schedDropStale(shows, key, showLast, seenCount);
       week[parts[0]].push({
         min: parseInt(parts[1], 10),
         durMin: schedLenMin(shows[0]),
