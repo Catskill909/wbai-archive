@@ -295,6 +295,144 @@ async function open(p, id) {
   check(blind.part === 'none' && blind.done === 'none',
         'self-test: strip the classes and the marks really do vanish', blind);
 
+  // ---- the transport must survive choosing another date ----
+  //
+  // The sheet covers the docked player bar (z-index 180 vs 80), so it owes a
+  // transport for everything it hides. It used not to: selecting a second
+  // episode mid-listen hid the scrubber and turned Pause into "Play · Jul 31",
+  // so the episode still playing had no control anywhere on screen and no mark
+  // on its chip either — the listener could neither pause it nor find it.
+  //
+  // Every check here is on what reaches the viewport (rendered size, computed
+  // colour, whether the audio element actually moved), not on whether a class
+  // or an attribute was set. CLAUDE.md §3a.
+  console.log('\n#### the transport survives choosing another date');
+  await p.eval(`localStorage.removeItem('wbai-resume'); return 1;`);
+  await open(p, fx.many[0].id);
+
+  // A real synthesized gesture, not el.click(): playback is what the whole
+  // section rests on, and an autoplay policy would refuse a programmatic one.
+  await p.clickInPlace('.sheet-play');
+  await sleep(1500);
+  const lit = await p.eval(`
+    var a = document.querySelector('audio');
+    return { playing: !a.paused && !a.ended, src: a.currentSrc || a.src };
+  `);
+  check(lit.playing, 'the episode really started (everything below depends on it)', lit.playing);
+
+  const READ_NOW = `
+    var a = document.querySelector('audio');
+    var eps = document.querySelectorAll('.ep');
+    var strip = document.getElementById('sheetNow');
+    var scrub = document.getElementById('sheetScrub');
+    var lit = document.querySelectorAll('.ep.playing');
+    // rendered, not merely declared: hidden, display:none and a collapsed box
+    // all mean "the listener cannot see it", and only one of them is a class
+    function shown(el){
+      return !!el && !el.hidden && getComputedStyle(el).display !== 'none' &&
+             el.getBoundingClientRect().height > 2;
+    }
+    // Resolve --accent through CSSOM (the CSP voids a style attribute) so
+    // "how many orange buttons" is counted in painted colour, not in classes.
+    var probe = document.createElement('span');
+    probe.style.color = 'var(--accent)';
+    document.body.appendChild(probe);
+    var accent = getComputedStyle(probe).color;
+    probe.remove();
+    var filled = Array.prototype.filter.call(
+      document.querySelectorAll('.sheet-foot button'),
+      function(b){ return getComputedStyle(b).backgroundColor === accent; }).length;
+    var idx = function(el){ return Array.prototype.indexOf.call(eps, el); };
+    return {
+      playing: !a.paused && !a.ended,
+      src: a.currentSrc || a.src,
+      t: a.currentTime,
+      stripShown: shown(strip),
+      stripText: strip ? strip.textContent.replace(/\\s+/g, ' ').trim() : null,
+      toggleLabel: strip ? document.getElementById('sheetNowToggle').getAttribute('aria-label') : null,
+      scrubShown: shown(scrub),
+      litCount: lit.length,
+      litIdx: lit.length ? idx(lit[0]) : -1,
+      onIdx: idx(document.querySelector('.ep.on')),
+      eq: lit.length ? getComputedStyle(lit[0].querySelector('.ep-eq')).display : null,
+      litBar: lit.length ? getComputedStyle(lit[0].querySelector('.ep-bar')).display : null,
+      playLabel: document.querySelector('.sheet-play .play-label').textContent,
+      orangeButtons: filled
+    };
+  `;
+
+  const heard = await p.eval(READ_NOW);
+  check(heard.litCount === 1 && heard.litIdx === 0 && heard.eq === 'flex',
+        'the playing episode is marked on the rail', [heard.litIdx, heard.eq]);
+  check(heard.litBar === 'none',
+        'and the equaliser replaces the progress bar rather than crowding it', heard.litBar);
+  check(!heard.stripShown,
+        'no stand-in strip while the selected episode IS the one playing — that is the plain case');
+
+  // A section this full of "the mark is there" needs to prove it can see one
+  // leave, or it passes just as happily with a blind probe (CLAUDE.md §3a.5).
+  // It has to run HERE, while something is playing: pause below and no chip
+  // carries the class, so the probe would find nothing and read as clean. The
+  // class comes straight back — the next chip tap repaints through syncEpMarks.
+  const blindEq = await p.eval(`
+    var el = document.querySelector('.ep.playing');
+    el.classList.remove('playing');
+    return { eq: getComputedStyle(el.querySelector('.ep-eq')).display };
+  `);
+  check(blindEq.eq === 'none', 'self-test: strip the class and the equaliser really vanishes', blindEq.eq);
+
+  // The regression itself.
+  await p.eval(`document.querySelectorAll('.ep')[3].click(); return 1;`);
+  await sleep(400);
+  const kept = await p.eval(READ_NOW);
+  check(kept.playing && kept.src === lit.src,
+        'choosing another date leaves the audio alone — it is a selection, not a switch');
+  check(kept.scrubShown, 'THE SCRUBBER SURVIVES: the sheet hides the player bar, so it owes one');
+  check(kept.stripShown && /Playing/.test(kept.stripText || ''),
+        'and a strip names what is actually in the player', kept.stripText);
+  check(/^Pause /.test(kept.toggleLabel || ''),
+        'whose button pauses THAT episode, not the selected one', kept.toggleLabel);
+  check(kept.litCount === 1 && kept.litIdx === 0 && kept.onIdx === 3,
+        'the rail now says two different things: this is playing, that is selected',
+        [kept.litIdx, kept.onIdx]);
+  check(kept.orangeButtons === 1,
+        'exactly ONE filled accent button on screen — the strip reports, the button offers',
+        kept.orangeButtons);
+  check(/^Play · /.test(kept.playLabel || ''),
+        'and that button names what it would switch to', kept.playLabel);
+
+  // Pausing from the strip must not make the strip go away — that would drop the
+  // listener back into the hole this whole section is about.
+  await p.clickInPlace('.sheet-now-toggle');
+  await sleep(500);
+  const held = await p.eval(READ_NOW);
+  check(!held.playing, 'the strip really pauses the audio', held.playing);
+  check(held.stripShown && /Paused/.test(held.stripText || ''),
+        'and STAYS, now saying Paused — vanishing here is how you get lost again', held.stripText);
+  check(/^Resume /.test(held.toggleLabel || ''), 'offering to resume', held.toggleLabel);
+
+  // One tap back to what you were hearing.
+  await p.clickInPlace('.sheet-now-back');
+  await sleep(400);
+  const home = await p.eval(READ_NOW);
+  check(home.onIdx === 0, 'the strip is the way back to the episode in the player', home.onIdx);
+  check(!home.stripShown,
+        'and retires once it has nothing left to tell you');
+
+  // The same duty for the strip: "it retires" is an assertion of absence, so the
+  // probe has to demonstrate it would have seen the strip had it been there.
+  const blindStrip = await p.eval(`
+    var strip = document.getElementById('sheetNow');
+    strip.hidden = false;
+    var seen = strip.getBoundingClientRect().height > 2;
+    strip.hidden = true;
+    return { seen: seen, gone: strip.getBoundingClientRect().height <= 2 };
+  `);
+  check(blindStrip.seen && blindStrip.gone,
+        'self-test: the probe can tell a shown strip from a hidden one', blindStrip);
+
+  await p.eval(`var a=document.querySelector('audio'); a.pause(); a.removeAttribute('src'); return 1;`);
+
   // ---- keyboard ----
   console.log('\n#### keyboard');
   await open(p, fx.many[0].id);

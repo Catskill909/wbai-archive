@@ -3538,15 +3538,25 @@
     var chips = list.map(function(e){
       var lb = epLabel(e), f = heardFrac(e), on = (String(e.id) === String(r.id));
       var state = f >= 1 ? ', played' : (f > 0 ? ', ' + Math.round(f * 100) + '% played' : '');
+      // data-lb is the chip's label without any state, because syncEpMarks()
+      // rebuilds the accessible name (progress *and* "playing now") on every
+      // transport change and must not have to re-derive it from the row.
       return '<button type="button" class="ep'+(on ? ' on' : '')+
           (f >= 1 ? ' done' : (f > 0 ? ' part' : ''))+'" role="radio" '+
           'aria-checked="'+(on ? 'true' : 'false')+'" tabindex="'+(on ? '0' : '-1')+'" '+
           'data-id="'+esc(e.id)+'" data-pct="'+Math.round(f * 100)+'" '+
+          'data-lb="'+esc(lb.day+' '+lb.date)+'" '+
           'aria-label="'+esc(lb.day+' '+lb.date+state)+'">'+
           '<span class="ep-day">'+esc(lb.day)+'</span>'+
           '<span class="ep-date">'+esc(lb.date)+'</span>'+
+          // Three marks share one row and only ever one shows: progress, done,
+          // and — taking precedence over both — the equaliser that says THIS is
+          // the episode you are hearing. Selection is an orange ring and is a
+          // different question ("what will Play play?"), so the two never
+          // compete for the same pixels.
           '<span class="ep-mark" aria-hidden="true"><span class="ep-bar"></span>'+
             '<svg class="ep-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>'+
+            '<span class="ep-eq"><i></i><i></i><i></i></span>'+
           '</span>'+
         '</button>';
     }).join('');
@@ -3576,6 +3586,18 @@
       el.classList.toggle('part', f > 0 && f < 1);
       var bar = el.querySelector('.ep-bar');
       if(bar) bar.style.setProperty('--pct', Math.round(f * 100) + '%');
+      // Which chip is the sound in the room. Without this the rail says nothing
+      // about playback, so selecting a second date left the episode you were
+      // actually hearing looking exactly like one you had never opened.
+      // barMode: a live takeover leaves a paused archive track in nowPlaying.
+      var mp3 = row && row.mp3;
+      var load = !!mp3 && mp3 === loadingMp3;
+      var live = !!mp3 && barMode === 'archive' && mp3 === nowPlaying.mp3 &&
+                 !audio.paused && !audio.ended && !load;
+      el.classList.toggle('playing', live || load);
+      var base = el.dataset.lb || '';
+      var state = f >= 1 ? ', played' : (f > 0 ? ', ' + Math.round(f * 100) + '% played' : '');
+      el.setAttribute('aria-label', base + state + (load ? ', loading' : (live ? ', playing now' : '')));
     });
   }
   // Open the sheet on an old episode and its chip must be on screen, or the rail
@@ -3652,6 +3674,26 @@
       ? '<button class="sheet-restart" id="sheetRestart" type="button" hidden>Start over</button>'
       : '';
 
+    // The transport for whatever is actually loaded, shown by syncSheetScrub()
+    // only when that is a DIFFERENT episode of this show than the one selected.
+    //
+    // This sheet covers the docked player bar (z-index 180 vs 80), so it owes a
+    // transport for anything it hides. Before this row, picking a second date
+    // while listening hid the scrubber and turned Pause into "Play · Jul 31" —
+    // the episode still playing then had no control anywhere on screen, and no
+    // mark on its chip either. Quiet on purpose: the one orange button below
+    // stays the only orange thing, because it is the only offer.
+    var nowStrip = r.mp3
+      ? '<div class="sheet-now" id="sheetNow" hidden>'+
+          '<button class="sheet-now-toggle" id="sheetNowToggle" type="button" aria-label="Pause">'+
+            '<span class="sheet-now-glyph"></span></button>'+
+          '<button class="sheet-now-back" id="sheetNowBack" type="button">'+
+            '<span class="sheet-now-k" id="sheetNowK">Playing</span>'+
+            '<span class="sheet-now-ep" id="sheetNowEp"></span>'+
+          '</button>'+
+        '</div>'
+      : '';
+
     // Mirrors the docked player's scrubber; revealed by syncSheetScrub() once
     // this episode is the one loaded in the audio element.
     var scrub = r.mp3
@@ -3701,6 +3743,10 @@
         (links ? '<div class="sheet-links">'+links+'</div>' : '') +
         epsHtml(r) +
         (play ? '<div class="sheet-actions">'+play+restart+'</div>' : '') +
+        // Strip above its own scrubber, both below the offer: the pair reads as
+        // the player it stands in for, and in the ordinary case (what plays is
+        // what is selected) the strip is hidden and this is the old layout.
+        nowStrip +
         scrub
     };
   }
@@ -3748,14 +3794,56 @@
     wrap.appendChild(btn);
   }
 
-  // The sheet's scrubber only makes sense for the episode currently loaded in
-  // the audio element, so it is hidden until that is this sheet's episode.
+  // The row of THIS SHOW that the audio element currently holds, or null.
+  //
+  // Deliberately not "is anything playing": a sheet open on show A while show B
+  // plays is a case where closing really does leave A behind, and the ✕ already
+  // says so (see sheetWillMinimize). Loaded-but-paused counts — pausing from the
+  // strip must not make the strip disappear.
+  function sheetShowRow(){
+    if(barMode !== 'archive') return null;          // the bar is on the stream
+    var mp3 = nowPlaying.mp3;
+    if(!mp3 || !sheetRowId) return null;
+    var here = rowById(sheetRowId), row = rowByMp3(mp3);
+    if(!here || !row) return null;
+    return showKey(row) === showKey(here) ? row : null;
+  }
+
+  // The sheet's scrubber tracks the audio element, so it makes sense for any
+  // episode of this show — not only the selected one. Hiding it on a chip tap is
+  // what left a listener with no transport at all (see nowStrip in sheetHtml).
   function syncSheetScrub(){
     var box = document.getElementById('sheetScrub');
     if(!box) return;
-    var active = !!sheetMp3 && nowPlaying.mp3 === sheetMp3;
+    var row = sheetShowRow();
+    var active = !!row;
     box.hidden = !active;
+    syncSheetNow(row);
     if(active && !seeking){ applyDuration(); paintScrubTime(); }
+  }
+
+  // The strip appears only when what you hear is not what the buttons describe.
+  function syncSheetNow(row){
+    var strip = document.getElementById('sheetNow');
+    if(!strip) return;
+    var other = !!row && row.mp3 !== sheetMp3;
+    strip.hidden = !other;
+    if(!other) return;
+    var loading = (row.mp3 === loadingMp3);
+    var playing = !loading && !audio.paused && !audio.ended;
+    var word = loading ? 'Loading' : (playing ? 'Playing' : 'Paused');
+    var date = epLabel(row).date;
+    document.getElementById('sheetNowK').textContent = word;
+    document.getElementById('sheetNowEp').textContent = date;
+    var g = strip.querySelector('.sheet-now-glyph');
+    if(g) g.innerHTML = loading ? svgSpin() : (playing ? svgPause() : svgPlay());
+    var toggle = document.getElementById('sheetNowToggle');
+    toggle.setAttribute('aria-label', (loading ? 'Loading ' : (playing ? 'Pause ' : 'Resume ')) + date);
+    toggle.disabled = loading;
+    var back = document.getElementById('sheetNowBack');
+    back.dataset.id = row.id;
+    // The way back to what you are hearing, so a wrong tap costs one tap.
+    back.setAttribute('aria-label', 'Show ' + date + ', the episode in the player');
   }
 
   // "Start over" is only an offer when there is somewhere to start over *from*.
@@ -3983,6 +4071,11 @@
     if(art){ openLightbox(art.dataset.photo, art); return; }
     var btn = e.target.closest('.sheet-play');
     if(btn){ togglePlayFrom(btn); return; }
+    // The strip controls the audio element, which is exactly what togglePlayback
+    // does — the strip is only ever shown while the bar is in archive mode.
+    if(e.target.closest('.sheet-now-toggle')){ togglePlayback(); return; }
+    var back = e.target.closest('.sheet-now-back');
+    if(back){ selectEpisode(back.dataset.id); return; }
     if(e.target.closest('.sheet-restart')){ restartSheetEpisode(); return; }
     if(e.target.closest('.eps-all')){ toggleEps(); return; }
     var ep = e.target.closest('.ep');

@@ -202,7 +202,7 @@ a modal with artwork, host, description, air date, retention, the show's links,
 and its own play button and scrubber.
 
 The modal that opens from a show's title, its category line, or the **More**
-link. Six things about it are load-bearing:
+link. Seven things about it are load-bearing:
 
 1. **Empty fields are not rendered.** Every block — host, description, each
    fact, each link — is emitted only when its value is non-empty. WBAI documents
@@ -229,9 +229,29 @@ link. Six things about it are load-bearing:
 5. **The sheet's scrubber is the player bar's scrubber.** `scrubs()` returns
    every scrubber currently in the DOM, and `applyDuration()` / `paintScrubTime()`
    / `resetScrubber()` / `bindRange()` all operate over that list. Adding a third
-   one anywhere means adding it to `scrubs()`, nothing else. The sheet's copy is
-   hidden unless its episode is the one loaded in the `<audio>` element.
-6. **Buttons can't nest.** In list rows the title block is a `<button>` and the
+   one anywhere means adding it to `scrubs()`, nothing else. The sheet's copy
+   follows the `<audio>` element, not the selection — see 6.
+6. **The sheet covers the docked player bar, so it owes a transport for
+   everything it hides.** It sits at `z-index:180`, the bar at `80` (unlike the
+   weekly schedule, which stops at `bottom:var(--player-h)` and leaves the bar
+   reachable). Until 2026-08-08 the sheet's scrubber was shown only when the
+   *selected* episode was the loaded one, so picking a second date from the
+   episode rail mid-listen hid the scrubber, turned Pause into `Play · Jul 31`,
+   and left the episode still playing with no control anywhere on screen and no
+   mark on its chip. Three things fix it and must stay together:
+   `sheetShowRow()` keeps the scrubber alive for any episode **of this show**;
+   `.ep.playing` puts a teal equaliser on the chip that is actually sounding
+   (orange stays "what Play will play" — two questions, two colours); and
+   `.sheet-now` is a quiet outlined strip, shown only when those two diverge,
+   carrying pause/resume, `Playing · Aug 7`, and a label that is a button back to
+   that episode. **Exactly one filled `--accent` button is on screen at any
+   time** — the strip reports a fact, the orange button makes the only offer.
+   Rejected on the way: a confirmation dialog (a fourth stacked layer guarding
+   something one tap undoes, and `playTrack()` calls `resumeRemember()` first, so
+   nothing is lost) and autoplay-on-select (breaks the rail's rule that choosing
+   is not playing, and fires a multi-megabyte download from a browsing tap).
+   `docs/episode-rail.md` has the full reasoning.
+7. **Buttons can't nest.** In list rows the title block is a `<button>` and the
    play control is its sibling. In gallery cards the artwork *is* the play button,
    so the title overlay and More link are siblings positioned on top of it inside
    `.card-wrap` — which is also why the card's hover states key off
@@ -482,6 +502,25 @@ Verify player UI by asserting on state instead: that `.sheet-scrub` exists and
 un-hides, that `data-mp3` is on the button, that `updatePlayButtons()` swapped
 the glyph. Launch with `--mute-audio`, and kill the browser by its
 `--user-data-dir` when you're done.
+
+**The one sanctioned exception, and what it costs to earn.**
+`test/episode-rail/rail-tests.js` ("the transport survives choosing another
+date") really does click Play, because the bug it guards is *"the audio kept
+playing and the listener lost every control for it"* — and there is no way to
+assert that against a stopped element. §3a of `CLAUDE.md` is the stronger rule
+here: the previous version of this behaviour had a green suite and a broken
+screen. If you need the same, take all four precautions or take none of it:
+
+1. `--mute-audio` on the browser (`run.sh` does).
+2. A `trap cleanup EXIT` that `pkill`s by `--user-data-dir`, so an assertion
+   failure mid-section still kills the stream. This is the one that matters —
+   the incident above was a browser that outlived its script.
+3. Pause **and** `removeAttribute('src')` at the end of the section, so the tab
+   is silent and the Media Session entry is gone before the run even finishes.
+4. Confirm afterwards: `ps aux | grep rail-chrome-profile` must be empty.
+
+Everything that does *not* require real playback still asserts on state. Don't
+widen this.
 
 ### Weekly schedule
 

@@ -44,6 +44,37 @@ the default (newest, or whatever card you came from) is still reachable in one
 tap from a cold open. This is the rule most likely to be "simplified" away by
 someone adding autoplay-on-select; the suite asserts it in capitals.
 
+**Choosing is not playing — so the sheet owes a transport for what already is.**
+This is the other half of the rule above, and it was missing until 2026-08-08.
+The sheet sits at `z-index:180` and the docked player bar at `80`, so the sheet
+*covers* the transport; the sheet's own scrubber was the only replacement, and
+`syncSheetScrub()` hid it unless the selected episode was the one loaded. Tap a
+second date while listening and the scrubber disappeared, Pause became
+`Play · Jul 31`, and the episode still playing had no control anywhere on screen
+— and no mark on its chip either, so it was not even findable. Three fixes, all
+of which must stay:
+
+- **The rail says which chip is the sound in the room.** `.ep.playing` draws an
+  equaliser (teal, `--accent-2`), taking precedence over the progress bar and the
+  tick — while an episode is playing, that is the only thing about it worth a
+  mark. Selection stays orange. Two questions, two colours, never the same ink:
+  teal is *what you hear*, orange is *what Play would play*.
+- **The scrubber tracks the audio element, not the selection.** `sheetShowRow()`
+  keeps it alive for any episode **of this show** (and only this show — a sheet
+  open on show A while show B plays is the case the ✕ already describes).
+- **A stand-in strip** appears only when the loaded episode is not the selected
+  one: pause/resume, `Playing · Aug 7`, and the label is a button back to that
+  episode, so a wrong chip tap costs one tap. It is outlined and teal on purpose.
+  **There is exactly one filled orange button on screen at any time** — the strip
+  reports a fact, the button makes the only offer. The suite counts them in
+  painted colour.
+
+Two things that were considered and rejected: a confirmation dialog (a fourth
+stacked layer guarding an action that is one tap to undo and loses no position —
+`playTrack()` calls `resumeRemember()` first), and autoplay-on-select, which
+breaks the rule directly above and fires a multi-megabyte fetch from a tap that
+reads as browsing.
+
 **`replaceState`, never `pushState`.** Same reason the filters don't push (see
 `urlFor`/`syncUrl` in `app.js`): Back must keep meaning "close the sheet", not
 "undo six chip taps". The URL still follows the selection, so a shared link names
@@ -125,8 +156,11 @@ attribute, which this app's CSP discards (see below).
 
 ## Tests
 
-`test/episode-rail/run.sh` — headless Chrome against the running app, 53 checks
-at desktop and phone widths. Fixtures are **derived** from whatever the listing
+`test/episode-rail/run.sh` — headless Chrome against the running app, 82 checks
+at desktop and phone widths. The transport section streams a real episode with a
+synthesized click (a programmatic one would be refused by the autoplay policy)
+and asserts what reaches the viewport: rendered box heights, the audio element's
+own `paused`/`currentSrc`, and the count of buttons *painted* `--accent`. Fixtures are **derived** from whatever the listing
 currently holds (`pickFixtures()`), never hardcoded: every episode id rotates out
 within its retention window, so a written-down id is a test that fails for the
 wrong reason in two months. Includes a self-test that strips the mark classes and

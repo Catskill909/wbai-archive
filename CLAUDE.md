@@ -211,8 +211,13 @@ code that ran.
   a slot's most recent row, so without it there is no path. Read
   `docs/episode-rail.md` before extending it. Two rules it must not lose:
   choosing a chip **never** starts playback (play stays one deliberate tap), and
-  selection uses `replaceState`, so Back still means "close the sheet". Its
-  suite is `test/episode-rail/run.sh` (headless Chrome, 53 checks, fixtures
+  selection uses `replaceState`, so Back still means "close the sheet". A third
+  joined them on 2026-08-08: because the sheet **covers** the docked player bar,
+  it owes a transport for whatever is loaded — the scrubber tracks the audio
+  element rather than the selection, the playing chip carries an equaliser, and a
+  quiet teal strip appears when the two diverge. Exactly one filled orange button
+  is on screen at any time. Its
+  suite is `test/episode-rail/run.sh` (headless Chrome, 82 checks, fixtures
   derived from the live listing rather than hardcoded ids that rotate out).
 - **Usage counters** live in `public/track.js` (loaded separately from `app.js`
   so counting can never affect playback) and `POST /api/ev`. They carry **no
