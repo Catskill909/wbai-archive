@@ -1,0 +1,34 @@
+#!/bin/sh
+# Storage-safety gate. Runs on every commit; typically ~30ms.
+#
+# It checks what is STAGED, not the working tree — `git add -p` plus a later
+# edit make those differ, and checking the wrong one would wave through the very
+# commit that reintroduces the bug.
+#
+# This exists because the data directory's failure mode is silence: an emptied
+# volume is indistinguishable from a first boot, the app keeps serving, and
+# `data/feeds.json` holds the only copy of listings upstream has already
+# forgotten. By the time anyone notices, the deploy that caused it is days back.
+#
+# Install (per clone — hooks are not carried by git):
+#   npm run hooks:install
+#
+# Bypass, if you are certain and in a hurry:
+#   git commit --no-verify
+# Prefer marking the specific line `storage-safety:allow` instead, so the
+# exception is recorded next to the thing it excuses rather than lost in a shell.
+set -e
+
+ROOT=$(git rev-parse --show-toplevel)
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node not found; skipping storage-safety check" >&2
+  exit 0
+fi
+
+node "$ROOT/tools/check-storage-safety.js" --staged || {
+  echo "" >&2
+  echo "Commit refused: this change could cost the production data directory." >&2
+  echo "See docs/DEPLOYMENT.md § Protecting the data directory." >&2
+  exit 1
+}

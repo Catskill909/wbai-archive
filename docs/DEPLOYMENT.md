@@ -201,6 +201,85 @@ fail: `./data` persists across restarts unconditionally, `freshVolume` goes
 false after the first run, and `instanceId` never changes. Locally these fields
 confirm the code works. Only the deployed host can tell you the storage does.
 
+## Protecting the data directory
+
+Since 2026-08-07 the data directory is **not a cache**. `feeds.json` accumulates
+the episodes that fall out of upstream's five-item-per-show window
+(`mergeFeedItems`), so it holds listings that exist nowhere else — not upstream,
+not in the repo, not in the image. A re-harvest cannot rebuild it, because the
+source has already forgotten. Treat losing it as permanent.
+
+Everything about this failure is quiet. An emptied volume is indistinguishable
+from a first boot: the app starts, serves, and refills with whatever the current
+window holds. `readJsonFile` discards a file it cannot parse and starts from
+`{}` — right for a cache, and the reason an unreadable `feeds.json` becomes a
+*thin* one the moment the next harvest saves. There is no crash to notice.
+
+Three layers, and none of them substitutes for another.
+
+### 1. Before the commit — `npm run check:storage`
+
+Installed as a pre-commit hook by `npm run hooks:install` (once per clone; git
+does not carry hooks). It checks the **staged** content and refuses the commit on
+anything that could cost the volume:
+
+| Rule | What it catches |
+| --- | --- |
+| `dockerfile-no-volume` | A `VOLUME` line — creates a fresh anonymous volume per container. The historical bug. |
+| `dockerfile-no-bulk-copy` | `COPY . .` / `ADD .` — bakes a developer's local `data/` into the image. |
+| `dockerfile-no-data-removal` | A `RUN` that deletes `/app/data` — runs on every build. |
+| `data-dir-default` | `DATA_DIR` no longer resolving from the env with `./data` as fallback: the mount stays put and the app writes elsewhere. |
+| `seed-outside-data-dir` | A seed under `DATA_DIR`, where the mount shadows it. |
+| `no-raw-writes-to-persisted-paths` | `writeFileSync`/`unlinkSync`/`rmSync` on a persisted path instead of `writeJsonAtomic`. |
+| `compose-mount-matches-data-dir` | `DATA_DIR` and the mount target drifting apart. |
+| `gitignore-protects-data` / `dockerignore-excludes-data` | `data/` becoming trackable or copyable. |
+| `no-staged-data-files` | Live station data staged for commit. |
+
+Override a single line with a `storage-safety:allow` comment — recorded next to
+the thing it excuses — rather than `git commit --no-verify`, which leaves no
+trace. Self-test: `node test/storage-guard/selftest.js`, part of `npm test`; it
+breaks every rule on a fixture and requires the guard to notice, because a guard
+that has never failed has not been shown to work.
+
+**It is static config analysis and nothing more.** It cannot tell you the volume
+is mounted. Passing it says only that this commit does not contain a known way of
+losing the data.
+
+### 2. After the deploy — read `/healthz`
+
+Per CLAUDE.md §4 a local pass is *no* evidence here; there is no container
+boundary on a laptop, so every storage check passes by construction. The one
+question worth asking is whether `storage.instanceId` is **the same value as
+before the deploy** — same id, same directory. See
+[Verifying a deployment](#verifying-a-deployment) for the rest of the fields and
+which ones lie.
+
+Take the reading *before* deploying too, or there is nothing to compare against:
+
+```bash
+curl -s https://YOUR-DOMAIN/healthz | sed 's/.*"instanceId":"\([^"]*\)".*/\1/'
+```
+
+### 3. Before anything that might replace the volume — take a copy
+
+There is no backup in this stack. Coolify does not snapshot volumes, the image
+carries only `seed/showinfo.json` (show descriptions, not listings), and nothing
+else anywhere holds `feeds.json`. Before changing storage settings, migrating
+host, or any deploy you have reason to distrust:
+
+```bash
+# From the host running the container
+docker cp wbai-archive:/app/data ./wbai-data-$(date +%Y%m%d)
+tar czf wbai-data-$(date +%Y%m%d).tgz wbai-data-$(date +%Y%m%d)
+```
+
+Restore by copying the files back into the mounted volume with the container
+stopped. A copy taken *after* the volume was replaced is a copy of nothing —
+check `freshVolume` first.
+
+The same applies locally: `./data` is gitignored, so `git clean -xdf` deletes it
+and your laptop's accumulated `feeds.json` with it.
+
 ## Troubleshooting
 
 ### Descriptions missing from the info sheet

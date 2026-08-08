@@ -149,6 +149,23 @@ data dir's identity:
 Same instinct as §1: don't conclude anything about code you haven't proven is the
 code that ran.
 
+**A pre-commit guard now blocks the known ways of losing it.**
+`npm run hooks:install` (once per clone) wires `tools/check-storage-safety.js`
+into `pre-commit`; it reads the **staged** content and refuses a `VOLUME` line, a
+bulk `COPY . .`, a `DATA_DIR` default that has drifted, a compose mount that no
+longer matches it, a raw `writeFileSync` over a persisted path, and live `data/`
+files staged for commit. Override one line with a `storage-safety:allow` comment
+rather than `--no-verify`, so the exception lives next to what it excuses. Its
+self-test (`test/storage-guard/`, in `npm test`) breaks every rule against a
+fixture and requires the guard to catch it.
+
+**It proves nothing about production.** It is static analysis of config: it says
+this commit contains no *known* way of losing the volume. Whether the volume
+actually persisted is still only answerable by `storage.instanceId` across two
+deploys. And there is no backup in this stack — before anything that might
+replace the volume, take a copy (`docker cp`); see
+`docs/DEPLOYMENT.md` § Protecting the data directory.
+
 ## 5. Project shape (orientation)
 
 - Zero-dependency Node server (`server.js`) = static files + a proxy for WBAI

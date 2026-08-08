@@ -8,3 +8,13 @@ README.md
 .DS_Store
 .env
 .env.*
+
+# The live data directory must never enter the image. The Dockerfile copies
+# named paths rather than `COPY . .`, so today this is belt to that braces —
+# but if a bulk COPY is ever added, this line is the only thing standing
+# between a developer's local data/ and every container built from it. Baked-in
+# data is worse than none: with no volume mounted it looks like working
+# persistence and silently resets on every deploy.
+data
+test
+
