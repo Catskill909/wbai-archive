@@ -2706,17 +2706,25 @@
        while the ::before below keeps a full finger's worth of hit area around
        it — which is why `position:relative` is in the base rule and not only in
        the coarse-pointer block: the ::before needs this element as its
-       containing block at every width. */
+       containing block at every width.
+       IT ENDS AT THE CONTENT COLUMN, like everything else in the bar. It used
+       to be pulled out past the column into the right gutter — in flow with a
+       negative margin, absolutely positioned above 1400 — which left ~87px of
+       empty bar between the status text and a lone circle sitting alone
+       outside the 1180 column, the only element on the page to do so. A 28px
+       chip is smaller than the ±15s buttons; it read as heavy because nothing
+       was near it, and isolation inflates weight. Aligned right in flow it is
+       the same size and stops drawing the eye. Centred vertically for the same
+       reason: pinned to the title's line it also floated above the transport
+       row it belongs to. (Phones keep the old top-right position — see the
+       max-width:700 block, where it is out of flow so the scrubber can run the
+       full width.) */
     flex:none; cursor:pointer; position:relative;
     border:1px solid color-mix(in srgb, var(--ink) 26%, transparent);
     width:28px; height:28px; border-radius:999px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
     background:var(--surface-3); color:var(--ink);
-    /* hard-right: cancel the 1180-column inset (measured in vw, since % here is the
-       bar's already-inset content box) so it sits ~8px off the true edge, and lift
-       it a little toward the top of the bar */
-    margin-left:auto; align-self:flex-start; margin-top:-3px;
-    margin-right:calc(-1 * max(0px, 50vw - 590px) - 8px);
+    margin-left:auto; align-self:center;
     transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
   }
   @media (hover:hover) and (pointer:fine){
@@ -2764,17 +2772,12 @@
       padding-inline:max(1rem, calc((100% - 1180px) / 2 + 1rem));
     }
   }
-  /* Wide screens: the right gutter beyond the 1180 column is now deep enough to hold
-     Close on its own. Lift Close out of the flex row and pin it to the true right edge
-     (where it already sat) so the status text ends flush with the content column
-     instead of being shoved into the gutter beside Close. The bar is position:fixed,
-     so absolute here anchors to the full-width bar. */
-  @media (min-width:1400px){
-    .player-close{
-      position:absolute; right:8px; top:calc(.6rem - 3px);
-      margin:0; align-self:auto;
-    }
-  }
+  /* There was a min-width:1400 block here that pinned Close to the true right
+     edge, out in the gutter, so the status text could end flush with the content
+     column. That trade is the wrong way round: a consistent right edge for the
+     whole bar is worth more than ~36px of extra room for "Paused". Close is back
+     in flow at every width above 700 and the status text now ends where the ✕
+     begins. See the note in the .player-close rule above. */
 
   .play-btn.playing{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
   .row-link{color:inherit; text-decoration:none;}
@@ -2792,15 +2795,14 @@
      when; this owns the where, and the where is decided by three things that
      were already fixed elsewhere in this file:
 
-     RIGHT GUTTER on desktop, WHICH IT SHARES with .player-close. That ✕ ends
-     playback, and it is pulled out to ~8px from the true right edge at every
-     width above 1360 (in flow with a negative margin below 1400, absolutely
-     positioned above it) — so it and this button are in the same margin. They do
-     not overlap horizontally, but 6px of clearance would read as one cluster of
-     two circles, and the wrong one of them stops the audio. The separation is
-     bought vertically instead: the min-width:1360 block below lifts this to 2rem
-     above the bar rather than the .9rem used everywhere else, which is the whole
-     reason that override exists. Do not tighten it back to .9rem.
+     RIGHT GUTTER on desktop. This is now the ONLY thing out here: .player-close
+     used to be pulled into the same margin, and the min-width:1360 block below
+     lifts this to 2rem above the bar rather than the .9rem used everywhere else
+     so the two circles never read as one cluster — of which the wrong one stops
+     the audio. The ✕ has since moved back inside the content column, so that
+     lift is now air rather than a clearance, but keep it: 2rem is where this
+     button has always sat on desktop and .9rem would put it back on the bar's
+     own shadow. §8 of test/to-top measures the real gap either way.
 
      1360px IS THE SWITCH, not 1180. The free gutter beside the content column is
      (100vw - 1180)/2, so 1180 is where it becomes 0 and 1360 is where it reaches
@@ -2874,8 +2876,8 @@
      gap to the listing is a constant 1.4rem at every width. Gutter-centring looks
      identical at 1360 and abandons the button in the middle of a 370px margin at
      1920.
-     The 2rem bottom (against .9rem elsewhere) is the vertical separation from
-     .player-close — see the ✕ note at the top of this section. */
+     The 2rem bottom (against .9rem elsewhere) dates from when .player-close
+     shared this margin — see the ✕ note at the top of this section. */
   @media (min-width:1360px){
     .to-top{
       left:calc(50% + 590px + 1.4rem);
