@@ -195,6 +195,14 @@ what the server found on disk at boot:
   diagnostic. See the table under [Deploy on Coolify](#deploy-on-coolify).
 - **`storage.showinfoNow`** — count after seeding. Reads ~47 whether or not a
   volume is mounted, so it diagnoses nothing. Don't use it.
+- **`storage.quarantined`** — normally `[]`, and the one field here that is an
+  alarm rather than a measurement. A non-empty list means a file on the volume
+  would not parse at boot and its bytes were renamed aside
+  (`feeds.json.corrupt-<timestamp>`) rather than left to be overwritten. The
+  server is running on an empty store for that file, so whatever it had
+  accumulated now exists **only** in the quarantined copy. Act on it before the
+  next harvest widens the gap — see
+  [Protecting the data directory](#protecting-the-data-directory).
 
 **None of this can be checked locally.** With no container there is no mount to
 fail: `./data` persists across restarts unconditionally, `freshVolume` goes
@@ -211,11 +219,37 @@ source has already forgotten. Treat losing it as permanent.
 
 Everything about this failure is quiet. An emptied volume is indistinguishable
 from a first boot: the app starts, serves, and refills with whatever the current
-window holds. `readJsonFile` discards a file it cannot parse and starts from
-`{}` — right for a cache, and the reason an unreadable `feeds.json` becomes a
-*thin* one the moment the next harvest saves. There is no crash to notice.
+window holds. There is no crash to notice.
 
-Three layers, and none of them substitutes for another.
+Four layers, and none of them substitutes for another.
+
+### 0. At boot — an unreadable `feeds.json` is quarantined, not discarded
+
+`readJsonFile` throws away anything it cannot parse and returns the fallback,
+which is correct for a cache and was catastrophic here: start from `{}` and the
+next harvest writes a thin store straight over the thick one, about ten seconds
+later. `feeds.json` therefore loads through `readIrreplaceableJson`, which
+separates the two ways of reaching "empty":
+
+- **absent** — a first boot, or a volume already replaced. Nothing to save;
+  proceed as before, and `storage.freshVolume` reports it.
+- **exists but will not parse** — the bytes on disk are worth more than this
+  process's opinion of them. They are renamed to
+  `feeds.json.corrupt-<timestamp>` and the app carries on with an empty store.
+
+Quarantine rather than refusing to write, deliberately: refusing would preserve
+the file but leave the server unable to persist anything until a human noticed,
+trading a rare recoverable problem for a guaranteed outage. A rename needs no
+free space and keeps every byte — a truncated JSON usually still holds nearly
+all its records, so recovery is a repair job rather than a loss. It also removes
+the corrupt file from the path the next atomic write would replace, which is
+what made the bad bytes the last copy and then no copy at all.
+
+It is loud: an error in the log and `storage.quarantined` in `/healthz`. It still
+needs a person — the quarantined file is now the only copy of whatever it held.
+Suite: `test/feeds-quarantine/`, which boots real servers against throwaway data
+dirs and checks the disk afterwards, because "the bytes still exist" is not
+something reading the source can establish.
 
 ### 1. Before the commit — `npm run check:storage`
 

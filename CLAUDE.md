@@ -159,6 +159,15 @@ rather than `--no-verify`, so the exception lives next to what it excuses. Its
 self-test (`test/storage-guard/`, in `npm test`) breaks every rule against a
 fixture and requires the guard to catch it.
 
+**An unreadable `feeds.json` is quarantined, never discarded.** It loads through
+`readIrreplaceableJson`, not `readJsonFile`: a file that exists but will not
+parse is renamed to `feeds.json.corrupt-<timestamp>` and the app continues on an
+empty store, rather than starting from `{}` and letting the next harvest write a
+thin file over the thick one ten seconds later. An *absent* file is still a
+normal first boot. Reported by `storage.quarantined` in `/healthz` (normally
+`[]`) and as a log error — and it still needs a human, because the quarantined
+copy is then the only one. Suite: `test/feeds-quarantine/`.
+
 **It proves nothing about production.** It is static analysis of config: it says
 this commit contains no *known* way of losing the volume. Whether the volume
 actually persisted is still only answerable by `storage.instanceId` across two

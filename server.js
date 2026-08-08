@@ -40,6 +40,11 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
  * only /healthz can answer. Never conclude anything about that from a local run.
  */
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+// Files that existed at boot and could not be parsed, and where their bytes were
+// moved so they are still recoverable. Declared up here rather than on
+// storageDiag because the irreplaceable store loads long before that object
+// exists. Reported by /healthz; empty is the normal state.
+const quarantined = [];
 // Which station this deployment is. Only stamped into data files for now, so a
 // volume that gets restored or attached to the wrong app is caught rather than
 // silently merged. The full per-station configuration story is ROADMAP.md item 4.
@@ -357,7 +362,10 @@ const FEEDS_TTL = 6 * 60 * 60 * 1000;
 const FEED_CONCURRENCY = 5;   // a small station's Apache. Do not raise.
 
 // slug -> { lastModified, fetchedAt, channel:{...}, items:[...] }
-const feedStore = readJsonFile(FEEDS_PATH, {});
+// readIrreplaceableJson, NOT readJsonFile: this store accumulates episodes that
+// upstream's five-item window has dropped, so an unparseable file must be moved
+// aside rather than discarded — see the long note on that function.
+const feedStore = readIrreplaceableJson(FEEDS_PATH, {});
 
 // Every slug the scrape has ever named, kept forever once seen. Confirmed
 // 2026-08-04: `heavywaits` had a live 2-item feed while archive2's listing had
@@ -1082,6 +1090,75 @@ function readJsonFile(file, fallback) {
 }
 
 /**
+ * Load a file we cannot afford to lose.
+ *
+ * `readJsonFile` above discards anything it cannot parse and hands back the
+ * fallback. That is right for a cache — the next poll refills it — but it is
+ * catastrophic for `feeds.json`, which since 2026-08-07 ACCUMULATES the episodes
+ * that fall out of upstream's five-item window (`mergeFeedItems`). Upstream has
+ * already forgotten those; this file is the only copy. Start from `{}` and the
+ * next harvest saves a thin store straight over the thick one, and the loss is
+ * permanent, silent, and about ten seconds wide.
+ *
+ * So: distinguish the two ways of arriving at "empty", because only one is a
+ * problem.
+ *
+ *   - The file is ABSENT. A genuine first boot, or a volume that was already
+ *     replaced (whereupon the data is gone before we got here — nothing to
+ *     save). Proceed exactly as before; `storage.freshVolume` reports it.
+ *   - The file EXISTS and will not parse. Something is wrong and the bytes on
+ *     disk are worth more than this process's opinion. Move them aside under a
+ *     timestamped name and let the app carry on with an empty store.
+ *
+ * Quarantine rather than refusal, deliberately. Refusing to write would preserve
+ * the file but leave the server unable to persist anything until a human
+ * noticed — trading a rare, recoverable problem for a guaranteed outage of the
+ * thing that makes the app useful. A rename needs no free space, is atomic
+ * within the filesystem, and keeps every byte: a truncated JSON usually still
+ * holds nearly all its records, so recovery is a repair job rather than a loss.
+ *
+ * The rename also matters mechanically. Left in place, the corrupt file is what
+ * the next atomic write replaces — the bad bytes would be the LAST copy, and
+ * then not even that.
+ */
+function readIrreplaceableJson(file, fallback) {
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    if (e.code !== 'ENOENT') {
+      // Present but unreadable (permissions, I/O). Do not quarantine — we cannot
+      // read it, so we must not assume we could move it either, and renaming a
+      // file we failed to read risks making a transient fault permanent.
+      console.error(`[cache] ${path.basename(file)} exists but could not be read:`, e.message);
+      quarantined.push({ file: path.basename(file), movedTo: null, reason: e.code || 'unreadable' });
+    }
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') return parsed;
+    throw new SyntaxError('parsed, but not a JSON object');
+  } catch (e) {
+    const kept = `${file}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    let movedTo = null;
+    try {
+      fs.renameSync(file, kept);
+      movedTo = path.basename(kept);
+    } catch (e2) {
+      console.error(`[cache] could not quarantine ${path.basename(file)}:`, e2.message);
+    }
+    quarantined.push({ file: path.basename(file), movedTo, reason: e.message, bytes: raw.length });
+    console.error(
+      `[cache] ${path.basename(file)} is UNREADABLE (${e.message}). ${raw.length} bytes kept as ` +
+      `${movedTo || 'NOTHING — the quarantine failed'}. Starting from empty; this file accumulates ` +
+      `listings upstream no longer serves, so recover it before the next harvest overwrites the gap.`
+    );
+    return fallback;
+  }
+}
+
+/**
  * Write JSON so that a crash can never leave a half-written file.
  *
  * `writeFileSync` straight over the live file truncates it first: a crash, a
@@ -1352,6 +1429,11 @@ function storageReport() {
     showinfoOnDisk: storageDiag.showinfoOnDisk,
     showinfoNow: Object.keys(showInfo).length,
     feedsOnDisk: feedsDiag.onDisk,
+    // Normally []. A non-empty list means a file on the volume would not parse
+    // at boot and its bytes were moved aside — the app is running on an empty
+    // store for that file, so anything it accumulated is in the quarantined copy
+    // and nowhere else. Needs a human before it scrolls out of the logs.
+    quarantined,
   };
 }
 
