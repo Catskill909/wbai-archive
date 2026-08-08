@@ -41,6 +41,28 @@ const path = require('path');
 
 const APP = process.env.APP || 'http://localhost:8080';
 const STATE = process.env.STATE || path.join('data', 'schedule-audit.json');
+
+/**
+ * THE CONFIG CUTOVER — the single most misleading thing about this data.
+ *
+ * WBAI's own scheduling tools were misconfigured until late July 2026: wrong
+ * shows, wrong and new timeslots, wrong artwork. The records were then fixed by
+ * hand, show by show, so the change is a smear rather than an instant.
+ *
+ * Archive2 retains ~115 days of rows and data/feeds.json accumulates for ever,
+ * which means MOST of what either source holds describes the OLD, broken setup.
+ * Reading it as the station's current intent produces confident wrong answers —
+ * "this slot has been empty for months" when the slot did not exist until two
+ * weeks ago. So everything older than this date is labelled `old config` and is
+ * never on its own grounds for a finding.
+ *
+ * The default is inferred, not confirmed: the Wednesday 3am rebroadcast recorded
+ * under `soundreb` on 2026-07-29 and under `ftsb` on 2026-08-05, and `ftsb` has
+ * no Tuesday 2026-07-28 recording though retention would still show one. Set
+ * CUTOVER=YYYY-MM-DD once the real date is known.
+ */
+const CUTOVER = process.env.CUTOVER || '2026-07-26';
+const CUTOVER_TS = Math.floor(new Date(CUTOVER + 'T00:00:00Z').getTime() / 1000);
 const ARCHIVE2 = 'https://archive2.wbai.org/';
 const WBAI_SCHED = 'https://wbai.org/schedule/';
 const UA = 'wbai-archive schedule-audit (+https://github.com/Catskill909/wbai-archive)';
@@ -241,6 +263,49 @@ function looksLike(a, b) {
   return dice(na, nb) >= 0.72;
 }
 
+// ------------------------------------------------------ diagnosing no-feed
+
+/**
+ * Why does a show that advertises a feed have none? Pure, so it can be tested;
+ * the two mechanisms below were established from public data on 2026-08-08 and
+ * are the whole reason this function can say anything useful.
+ *
+ * **Feed generation is show-level and RETROACTIVE.** `soundreb` sat with an
+ * empty feed and a single Jul 29 recording; a confessor change published that
+ * already-recorded episode the same day. So a podcast-side fix does reach back
+ * over whatever is still in retention — you do not have to wait for the next
+ * broadcast.
+ *
+ * **`Private` is per RECORDING and is not cleared retroactively.** At the same
+ * moment, `ftsb`'s two recordings still carried `private="1"` after the show's
+ * Private box was unticked, and its feed stayed empty. Nothing published because
+ * nothing was eligible. Those episodes are only recoverable if the flag can be
+ * cleared on the recordings themselves, and they expire on schedule regardless.
+ *
+ * Hence the split: "private since the cutover" is a different instruction to the
+ * human than "not private", and both are different from "this show has not
+ * recorded under the current configuration at all".
+ */
+function whyNoFeed(rec, cutover) {
+  // Nothing recorded since the cutover: this describes the OLD setup. The show
+  // was likely retired or renamed when the schedule was rebuilt, so its
+  // confessor record is a ghost to chase, not a bug to fix.
+  if (rec.since === 0) {
+    return { kind: 'no-feed-old', why:
+      `no recording since the ${cutover} config cutover — OLD CONFIG, likely retired or renamed rather than broken; confirm the slot still exists before chasing it` };
+  }
+  if (rec.priv >= rec.since && rec.priv > 0) {
+    return { kind: 'no-feed', why:
+      'every recording since the cutover is private=1 — confessor: untick Private. It is stored per RECORDING, so unticking it on the show does NOT publish episodes already recorded; those need the flag cleared on the recordings themselves, before they expire' };
+  }
+  if (rec.priv > 0) {
+    return { kind: 'no-feed', why:
+      `${rec.priv} of ${rec.rows} recordings are private=1 — confessor: check Private on the recordings, not just the show` };
+  }
+  return { kind: 'no-feed', why:
+    'not private, so the podcast side is what is off — check this show\'s own confessor record: the Podcast box and "# In Podcast". A fix there publishes retained episodes retroactively (soundreb did, 2026-08-08)' };
+}
+
 // ---------------------------------------------------------------- audit
 
 async function run() {
@@ -261,14 +326,18 @@ async function run() {
   // slug -> what upstream says about it
   const up = new Map();
   for (const r of rows) {
-    const rec = up.get(r.sho) || { sho: r.sho, title: r.title, rows: 0, priv: 0, rss: 0, newest: 0, minDaysLeft: 999 };
+    const rec = up.get(r.sho) || { sho: r.sho, title: r.title, rows: 0, since: 0, priv: 0, rss: 0, newest: 0, minDaysLeft: 999 };
     rec.rows++;
+    // Rows recorded under the CURRENT configuration. A show with none of these
+    // has told us nothing about how it is set up today.
+    if (r.dt >= CUTOVER_TS) rec.since++;
     if (r.private) rec.priv++;
     if (r.hasRSS) rec.rss++;
     if (r.dt > rec.newest) { rec.newest = r.dt; rec.title = r.title || rec.title; }
     if (r.daysLeft >= 0) rec.minDaysLeft = Math.min(rec.minDaysLeft, r.daysLeft);
     up.set(r.sho, rec);
   }
+  const staleRows = rows.filter((r) => r.dt && r.dt < CUTOVER_TS).length;
   const mine = new Set(ours.map((r) => r.sho));
   const claimed = [...up.values()].filter((r) => r.rss > 0);
   const unclaimed = [...up.values()].filter((r) => r.rss === 0);
@@ -279,13 +348,9 @@ async function run() {
   // 1. Claims a feed, we hold nothing. This is the Soundboard shape.
   for (const r of claimed) {
     if (mine.has(r.sho)) continue;
-    const why = r.priv === r.rows
-      ? 'every listed recording is private=1 — confessor: untick Private (it is per-RECORDING, so only future recordings are rescued)'
-      : r.priv > 0
-        ? `${r.priv}/${r.rows} recordings private=1 — confessor: check Private`
-        : 'not private — check its own confessor record: Podcast box and "# In Podcast"';
-    add('no-feed', r.sho, `${r.title || r.sho}: archive2 advertises a feed, app holds nothing`, {
-      rows: r.rows, private: r.priv, daysLeft: r.minDaysLeft, why,
+    const v = whyNoFeed(r, CUTOVER);
+    add(v.kind, r.sho, `${r.title || r.sho}: archive2 advertises a feed, app holds nothing`, {
+      rows: r.rows, since: r.since, private: r.priv, daysLeft: r.minDaysLeft, why: v.why,
     });
   }
 
@@ -319,7 +384,7 @@ async function run() {
 
   // ---- optional proof, only for the slugs already flagged
   if (OPT.probe) {
-    const targets = findings.filter((f) => f.kind === 'no-feed').slice(0, PROBE_CAP);
+    const targets = findings.filter((f) => f.kind === 'no-feed' || f.kind === 'no-feed-old').slice(0, PROBE_CAP);
     for (const f of targets) {
       const xml = await head(`${ARCHIVE2}xml/${encodeURIComponent(f.id)}.xml`);
       const rss = await head(`${ARCHIVE2}getrss.php?id=${encodeURIComponent(f.id)}`);
@@ -333,10 +398,12 @@ async function run() {
   return {
     at: started.toISOString(),
     app: APP,
+    cutover: CUTOVER,
     counts: {
       archive2Rows: rows.length, archive2Slugs: up.size,
       claimFeed: claimed.length, noFeedLink: unclaimed.length,
       appSlugs: mine.size, weeklySlots: slots.length,
+      staleRows,
     },
     findings,
   };
@@ -373,12 +440,15 @@ function render(report, d) {
   L.push(`schedule-audit  ${report.at}`);
   L.push(`archive2: ${c.archive2Rows} rows / ${c.archive2Slugs} shows (${c.claimFeed} claim a feed, ${c.noFeedLink} do not)`);
   L.push(`app: ${c.appSlugs} shows   wbai.org: ${c.weeklySlots} weekly slots`);
+  L.push(`config cutover ${report.cutover} — ${c.staleRows} of ${c.archive2Rows} rows predate it (OLD CONFIG, not current intent)`);
   L.push('');
 
   if (!report.findings.length) {
     L.push('nothing to report — every show the station lists is reachable in the app');
   } else {
-    const order = ['no-feed', 'leak', 'scrape', 'slot-unheld', 'feed-only', 'slot-unmatched'];
+    // Loudest first, and `no-feed-old` deliberately below the live ones: it is
+    // context, not a job.
+    const order = ['no-feed', 'leak', 'scrape', 'slot-unheld', 'no-feed-old', 'feed-only', 'slot-unmatched'];
     for (const kind of order) {
       const g = report.findings.filter((f) => f.kind === kind);
       if (!g.length) continue;
@@ -407,7 +477,7 @@ function render(report, d) {
 // The parsers and the matcher are the parts that can be wrong silently, so they
 // are exported and exercised offline by test/schedule-audit/. Requiring this
 // file must never touch the network — hence the main guard.
-module.exports = { parseArchive2, parseWbaiGrid, weeklySlots, looksLike, dice, prefixWords, diff };
+module.exports = { parseArchive2, parseWbaiGrid, weeklySlots, looksLike, dice, prefixWords, diff, whyNoFeed };
 
 if (require.main === module) {
   run().then((report) => {

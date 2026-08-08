@@ -127,6 +127,33 @@ for (const [a, b, why] of diffPairs.slice(1)) {
 }
 check(T.dice('democracy now', 'law and disorder') < 0.72, 'dice keeps unrelated titles apart');
 
+console.log('\n#### why a show has no feed');
+// The config cutover (late July 2026) is the most misleading thing in this data:
+// archive2 retains ~115 days, so over HALF its rows describe the old, broken
+// setup. A show with nothing recorded since then has told us nothing about how
+// it is configured today, and must not be reported as a live bug.
+const old = T.whyNoFeed({ rows: 4, since: 0, priv: 0 }, '2026-07-26');
+check(old.kind === 'no-feed-old', 'nothing recorded since the cutover is OLD CONFIG, not a live finding', old.kind);
+check(/retired or renamed/.test(old.why), 'and says so, rather than sending someone after a ghost');
+
+// ftsb, 2026-08-08: both post-cutover recordings private, feed empty.
+const privCase = T.whyNoFeed({ rows: 2, since: 2, priv: 2 }, '2026-07-26');
+check(privCase.kind === 'no-feed', 'private recordings since the cutover IS a live finding');
+check(/untick Private/.test(privCase.why), 'and names the box');
+check(/per RECORDING/.test(privCase.why) && /already recorded/.test(privCase.why),
+      'and warns that the show-level untick does not publish episodes already recorded — the thing that cost us a wrong prediction');
+
+// soundreb, 2026-08-08: not private, feed empty, then a confessor change
+// published its already-recorded Jul 29 episode the same day.
+const pod = T.whyNoFeed({ rows: 1, since: 1, priv: 0 }, '2026-07-26');
+check(pod.kind === 'no-feed', 'not-private-but-empty is a live finding too');
+check(/Podcast box/.test(pod.why), 'and points at the podcast side instead');
+check(/retroactiv/i.test(pod.why),
+      'and records that a podcast-side fix reaches back over retained episodes (soundreb proved it)');
+
+const mixed = T.whyNoFeed({ rows: 5, since: 3, priv: 2 }, '2026-07-26');
+check(mixed.kind === 'no-feed' && /2 of 5/.test(mixed.why), 'a partial private set is quantified', mixed.why);
+
 console.log('\n#### week-over-week diff');
 const prev = { at: '2026-08-01T00:00:00Z', findings: [
   { kind: 'no-feed', id: 'ftsb', msg: 'ftsb' },

@@ -5,6 +5,26 @@ which was absent from the weekly schedule. Kept because the diagnosis path
 generalises: every future "why isn't show X here?" is the same five questions in
 the same order, and four of the five turned out to be dead ends here.
 
+## Read this before you read any dates: the config cutover
+
+**WBAI's own scheduling tools were misconfigured until late July 2026** — wrong
+shows, wrong and new timeslots, wrong artwork. The records were then fixed by
+hand, show by show, so the change is a smear rather than an instant.
+
+Archive2 retains ~115 days of rows and `data/feeds.json` accumulates for ever,
+so **most of what either source holds describes the OLD, broken setup** — on
+2026-08-08 it was 302 of 554 rows, over half. Reading it as the station's current
+intent produces confident wrong answers: "this slot has been empty for months"
+when the slot did not exist until two weeks ago.
+
+So: **anything older than the cutover is not evidence about how the station is
+configured today.** `tools/schedule-audit.js` takes `CUTOVER=YYYY-MM-DD` (default
+`2026-07-26`) and files those shows under `no-feed-old` — context, not a job.
+
+The default is inferred and should be confirmed: the Wednesday 3 am rebroadcast
+recorded under `soundreb` on Jul 29 (old) and `ftsb` on Aug 5 (new), and `ftsb`
+has no Tuesday Jul 28 recording though retention would still be showing one.
+
 ## The rule that makes this possible
 
 **The feeds are the only content source** (`server.js`, "podcast feeds"). An
@@ -105,21 +125,45 @@ every retained episode of `ftsb` marked private, nothing is eligible, the file i
 never written, `/xml/ftsb.xml` 404s, and the passthrough emits an empty body.
 `# In Podcast: 2` against exactly 2 retained-and-private episodes fits.
 
-**Ticking the box off does not fix the episodes already recorded.** The flag is
-per-recording, and a fetch taken *after* the setting was saved still shows
-`private="1"` on both existing rows. Expect the fix to take effect on the **next
-recording** (Tue Aug 11, 12:00 am ET), not retroactively — and the two existing
-episodes to age out unharvested (Days to Live 14; they had 9 and 10 days left on
-2026-08-08). Once upstream forgets them nothing brings them back, because
-`data/feeds.json` only accumulates what we harvested while it was published.
+## The two mechanisms, and which one is retroactive
 
-## Still open: `soundreb`
+This is the part worth remembering, because guessing it wrong costs a week of
+waiting for nothing. Both halves were established from public data on 2026-08-08,
+within an hour of each other.
 
-**From The Soundboard - Rebroadcast** is a *separate* show record and a separate
-problem. One row (Wed Jul 29 3:00 am, 2:00:04, 3 days left), a working mp3, a
-`getrss.php` link — and **not private**, yet its feed is empty too. Private does
-not explain this one. Check its own confessor record: most likely its Podcast box
-or its `# In Podcast` count, neither of which is visible from outside.
+**The podcast side is show-level and RETROACTIVE.** `soundreb` sat with an empty
+feed and one Jul 29 recording. A confessor change published *that already-recorded
+episode* the same afternoon — `getrss.php?id=soundreb` went from 0 bytes to 1,971,
+and the app harvested it minutes later. So a podcast-side fix reaches back over
+whatever is still in retention. **You do not have to wait for the next broadcast.**
+
+**`Private` is per RECORDING and is not cleared retroactively.** At that same
+moment `ftsb`'s two rows still carried `private="1"` — after the show's Private
+box had been unticked — and its feed stayed empty. Nothing published because
+nothing was eligible.
+
+The consequence for `ftsb`: the next recording (Tue Aug 11) should be public and
+publish normally, but the Aug 4 and Aug 5 episodes stay invisible unless the flag
+can be cleared **on the recordings themselves**, and they expire on schedule
+regardless (Days to Live 14; 9 and 10 left on 2026-08-08). Once upstream forgets
+them nothing brings them back — `data/feeds.json` only accumulates what we
+harvested while it was published.
+
+*(An earlier version of this doc said the fix could not be retroactive at all.
+`soundreb` disproved that within the hour. The distinction is which flag.)*
+
+## Resolved: `soundreb`
+
+**From The Soundboard - Rebroadcast** is a separate show record and was a
+separate problem: one row (Wed Jul 29 3:00 am), a working mp3, a `getrss.php`
+link, **not private**, and an empty feed. Private never explained it, and it is
+now fixed — its feed serves 1,971 bytes and the app holds the episode. It is the
+worked example of the retroactive half above.
+
+Note the slug migration it reveals: the Wednesday 3 am rebroadcast recorded as
+`soundreb` on Jul 29 and as `ftsb` on Aug 5. Both of the show's slots now record
+under `ftsb`, so `ftsb`'s Private flag was suppressing the Tuesday *and* the
+Wednesday broadcast.
 
 ## What the audit ruled out
 
