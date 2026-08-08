@@ -152,6 +152,20 @@ The two constraints that decide everything:
 - **5 items per feed, hard cap.** 77 feeds carry 5, two carry 2, 19 carry 1.
 - **98 of 131 show slugs have a feed at all.** The other 33 return `404`.
 
+⚠️ **That 5-item cap is a window, not the station's history — and we now keep
+what falls out of it.** Until 2026-08-07 `fetchFeed` replaced `items` with
+whatever the feed currently listed, so the app could never hold more than five
+episodes of any show and forgot every sixth the day it rotated out. It now
+unions the fresh window with what is already held (`mergeFeedItems`), keyed on
+the `mp3` URL.
+
+What makes that worth doing is that **the audio outlives the listing**: on
+2026-08-07 archive2 still returned `200` for episodes from 2026-05-20, about
+eleven weeks after they had dropped out of every feed that once listed them.
+So a remembered item is a playable episode, not a dead row. This is an
+observation about someone else's retention policy, so re-measure it before
+relying on it — if it stops holding, the symptom is a `404` on tap.
+
 Together those reproduce **67% of the 530-row listing**, so the feeds are a
 supplement, not a replacement for the scrape.
 

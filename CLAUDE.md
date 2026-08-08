@@ -165,11 +165,13 @@ code that ran.
   the unmodified app in headless Chrome against a fake station. Run **both**
   `./run.sh` and `./run.sh --strict` — the strict pass is the one that catches
   autoplay-policy regressions.
-- `npm test` runs the four suites that need no browser: `test/feed-scan/`
+- `npm test` runs the suites that need no browser: `test/feed-scan/`
   (the upstream scanner's diff and notable/routine split, entirely offline),
-  `test/storage/` (the mount-probe parser), `test/studio/` (the auth gate,
-  against a real server process) and `test/usage/` (a counter must reach the
-  disk before the process is killed). The browser suites are per-directory
+  `test/feed-merge/` (episodes that rotate out of upstream's 5-item window must
+  survive the next harvest), `test/photomap/`, `test/storage/` (the mount-probe
+  parser), `test/studio/` (the auth gate, against a real server process) and
+  `test/usage/` (a counter must reach the disk before the process is killed).
+  The browser suites are per-directory
   `./run.sh` scripts. Add new offline suites to `npm test` in the same commit
   that writes them — `test/feed-scan/selftest.js` sat outside it until
   2026-08-05 and therefore had never once run in anger.
@@ -177,6 +179,14 @@ code that ran.
   through `writeJsonAtomic` and are flushed on `SIGTERM` — if you add a new file
   here, use `writeJsonSoon`/`writeJsonAtomic` rather than `fs.writeFileSync`, or
   it will be lost on every redeploy and truncated by any crash.
+  **Since 2026-08-07 `data/feeds.json` is irreplaceable.** It used to be a cache
+  — upstream serves five episodes per show, we held those five, and a wiped
+  volume cost one harvest. It now *accumulates* the episodes that fall out of
+  that window (`mergeFeedItems`), so it is the only copy of the station's older
+  listings anywhere: delete it and no re-harvest brings them back, because
+  upstream has already forgotten them. This raises the stakes on §4 from
+  "annoying" to "lossy" — verify `storage.instanceId` across deploys, and take a
+  copy before anything that might replace the volume.
 - **`/studio` is a password-gated station view** (`STUDIO_PASSWORD`; unset means
   the routes do not exist). Its markup is in `admin/` — *deliberately* outside
   `public/`, because anything under `public/` is served to anyone who asks and
@@ -216,3 +226,8 @@ code that ran.
 - **This repo is a template.** Other Pacifica stations deploy it with the same
   tools, so prefer one env var over three, plain JSON over a database, and a
   setting over a code edit. `.env.example` is the list; keep it current.
+  Stations on a *newer* archiver than WBAI's publish a ready-made JSON catalog
+  (shows + episodes + now-playing) that would replace the scrape and the whole
+  `/xml/` sweep for them. Nothing reads it yet; the measured analysis and the
+  adopt-in-order plan are in `docs/pacifica-json-dev.md`. WBAI itself cannot use
+  it — its archive and confessor are too old — so that path is for the clones.

@@ -404,3 +404,168 @@ If you need to change styles at runtime from a test, go through CSSOM
 (`el.style.zIndex = '80'`), which CSP does not block. And treat a suspiciously
 clean result from an injected stylesheet as a bug in the test until proven
 otherwise.
+
+### 7.7 "Alternates weekly" was also how a REPLACED show looked *(2026-08-07)*
+
+`deriveSchedule` buckets six weeks of rows by (weekday, slot) and keeps every
+show that appeared in each bucket. Two shows in one bucket was rendered as
+**"alternates weekly"** — which is true for a fortnightly slot, and completely
+wrong for a slot whose lineup simply *changed*. Nothing in the derivation could
+tell those apart, so every show WBAI dropped or moved went on haunting its old
+slot with a label claiming it still airs there.
+
+WBAI's schedule changed in late July 2026 and made this impossible to miss —
+**21 of the derived slots carried two shows.** Sunday is the clean proof, three
+consecutive weeks in the data:
+
+| | 07-19 | 07-26 | 08-02 |
+|---|---|---|---|
+| 09:00 | Radio Forum | Animal Matters | Animal Matters |
+| 13:00 | Any Day | WBAI Sports | WBAI Sports |
+| 18:00 | Deadline NYC | Rick Smith Show | Rick Smith Show |
+| 24:00 | All Mixed Up | Groovelines | Groovelines |
+| 02:00 | — | All Mixed Up | All Mixed Up |
+
+One lineup, then two straight weeks of a different one. That is a cutover, not
+an alternation — and All Mixed Up is the tell: it kept Sun 00:00 on the strength
+of a single airing on 07-19, having since aired twice at 02:00.
+
+**`schedDropStale()` drops a challenger** (never `shows[0]`, the incumbent) on
+either of two tests:
+
+- **moved** — the show has aired *more recently in a different slot*. A real
+  alternate's newest airing is the one in this slot; a show that moved has a
+  newer one in its new home. This is what catches a move in the same week it
+  happens.
+- **stale** — it trails the incumbent by `SCHED_STALE_SEC` (14 days). A
+  fortnightly alternate trails by exactly 7 and survives. A replaced show falls
+  a further week behind every week, so this **self-heals**: there is no list of
+  dead shows to maintain, and none to forget to update.
+
+Result on the live data: **21 multi-show slots → 9**, with all four Sunday
+cutover slots and both overnight Tuesday ones corrected.
+
+**What this deliberately does NOT do**, and please don't add it: drop a show
+because it "only aired here once". Upstream feeds retain five items (§7.8), so
+a genuine alternate that aired once since the June outage is byte-for-byte
+indistinguishable from a show that was dropped. Deleting a real alternate is the
+worse of the two failures — the schedule would quietly stop listing a show that
+is actually on the air — and `stale` collects those a week later anyway. Tue
+05:00 (Aware Show / Equal Time For Free Thought) is exactly this case and is
+*expected* to read as alternating until 08-11.
+
+The nine survivors all trail by exactly 7 days, which is the genuinely ambiguous
+shape. If one of them is still there after its next airing, it is a real
+alternate; if it vanishes, `stale` did its job.
+
+### 7.8 How little evidence the derivation actually has
+
+Upstream serves **at most five items per feed** (84 of 125 feeds sat at exactly
+five on 2026-08-07). Until that same day `fetchFeed` *replaced* `items` on every
+fetch, so the app held five episodes per show and nothing older — §7.7's rules
+were designed against exactly that. It accumulates now (`mergeFeedItems`, see
+[UPSTREAM.md](UPSTREAM.md)), but the depth it has accumulated only starts from
+the day the merge shipped, so treat the notes below as live for a good while yet.
+
+Three consequences for this file:
+
+1. **A six-week window does not mean six weeks of evidence** — not yet. A daily
+   show's five items cover five days; a weekly show's cover five weeks *if it
+   aired every week*. Any rule that counts airings is still counting feed
+   retention as much as it is counting broadcasts.
+2. **This gets better on its own, and §7.7 gets sharper with it.** Once the
+   store holds several months, "did this show air here last fortnight or not"
+   becomes an answerable question rather than an inference from five items, and
+   the `stale` heuristic could be replaced by actually looking. Don't tighten
+   those thresholds until the history is there — check how far back
+   `data/feeds.json` really reaches before assuming it is.
+3. **There is a real hole in the data: 2026-06-24 → 2026-07-16**, zero episodes
+   across all 125 feeds. WBAI's archive recorder was down for ~3½ weeks. It is
+   not a harvest failure and it is not recoverable — the proof is that feeds
+   fetched on 2026-08-07 still listed June episodes (Black Star News: 06-02,
+   06-09, 06-16, 07-21, 08-04), which a five-item feed could not do if anything
+   had aired in between. Expect it in the studio's air-date histogram forever;
+   it is not a bug report.
+
+### 7.9 There is a published schedule grid, and we read only its pictures
+
+*(measured 2026-08-08 — analysis, nothing adopted)*
+
+`UPSTREAM.schedule` → `confessor2.wbai.org/playlist/pub_sched.php` is fetched
+already, on the photo-map refresh. `fetchPhotoMap()` runs one regex over it for
+`pix/<slug>_med_<id>.jpg` and throws the rest away. The rest is **WBAI's actual
+weekly schedule grid**, 190 KB of it.
+
+It is far more machine-readable than "pixel grid" suggests. Each cell:
+
+```
+class="cat_14" style="position:absolute;left:220px;top:720px;height:80px;..."
+  tooltip=' 03:00 PM<br><b>Black Star News</b><br><br><full description>
+            <img class="dj_img" src=".../pix/blackstarnews_med_NNN.jpg">Milton Allimadi'
+  ><div>Black Star News</div><div class="cat_host_16">Milton Allimadi</div>
+```
+
+- **day** = `left / 110` (Sunday 0 … Saturday 6)
+- **start** = `top / 40` half-hours from 06:00, station wall clock
+- **duration** = `height / 40` half-hours
+- **category** = `cat_NN`, the *same numeric vocabulary* as `CAT_MAP`
+- plus title, host, host photo and **the full show description**
+
+The pixel arithmetic is checkable against the page's own printed time in each
+tooltip: **135 cells, 0 mismatches**, on each of three weeks. Do that check in
+any parser built on this — it is free and it is the difference between a layout
+change breaking loudly and breaking silently.
+
+`?dte=<sunday-epoch>&op=next|prev` walks weeks, **including future ones**
+(the week of 8-09 was already published on 8-07).
+
+#### What it would fix
+
+- **Descriptions for every show, in a file we already download.** This is the
+  `/api/showinfo` on-air-only harvest problem (CLAUDE.md §4) solved outright.
+- **Next week.** Air-time derivation cannot know the future, by construction.
+- **The §7.7 ambiguity.** The grid never puts two shows in one cell — so
+  alternation, if represented at all, is different shows in different weeks, and
+  two fetches settle what currently takes two weeks of waiting.
+
+#### Why it has not been adopted, and must not be adopted naively
+
+**It is a schedule, not a record of what aired, and the two disagree.** Measured
+for the week of 2026-08-02, grid vs. what the feeds show actually broadcast:
+
+| | |
+|---|---|
+| both present, agree | **29** |
+| both present, disagree | **5** |
+| in grid, nothing aired (mostly 5-item feed retention) | 101 |
+| aired, absent from grid | 2 |
+
+~85% on slots where both exist, and **all five disagreements are overnight**
+(Thu 00:00/03:00/04:00, Fri 00:00/02:00) — the replay hours, where a station
+departs from its published grid most.
+
+Worse for our purposes: **past weeks re-render under the current template.**
+Asked for the week of 7-26, it answers with today's lineup, not the lineup that
+aired. At Tue 05:00 all three fetched weeks name *Shenu Living*, a show that
+appears nowhere in what actually broadcast (that slot aired Equal Time For Free
+Thought, then Aware Show). The schedule was edited shortly before this project
+began, and the grid shows the edit applied backwards.
+
+So the two sources answer different questions, and this app mostly asks the
+second one:
+
+- **grid** — what the station *intends* to broadcast. Authoritative for "what's
+  on", and the only source for "what's on next week".
+- **air times** — what actually exists as playable audio. Authoritative for an
+  *archive*, which cannot offer a listener a recording that was never made.
+
+`deriveSchedule` should therefore keep deriving. The grid is a candidate
+**second** signal — best used for descriptions, for future weeks, and as a
+cross-check whose *disagreements are themselves the useful output* (a slot where
+grid and air times diverge for weeks is either a stale schedule entry or a show
+that quietly stopped, and both are worth surfacing in `/studio`).
+
+⚠️ And it is a scrape of positioned HTML, which is the class of dependency this
+project spent 2026-07-29 moving away from (see `docs/xml-feed-migration.md`).
+Anything built here needs the tooltip self-check above, and must degrade to the
+derived schedule rather than to an empty week.

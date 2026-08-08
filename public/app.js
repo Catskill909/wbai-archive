@@ -2652,6 +2652,11 @@
   var SCHED_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var SCHED_WINDOW_SEC = 6 * 7 * 86400;  // 4w and 6w derive identical templates; 8w+ resurrects stale lineups
   var SCHED_SNAP_MIN = 20;               // 529/535 rows start exactly on the :00/:30 grid; stragglers are 6-14 min late recorder starts
+  // A show still in the window but this far behind the slot's most recent
+  // occupant has been REPLACED, not alternating. 14 days is the smallest value
+  // that clears a fortnightly alternate (which trails by exactly 7) — see
+  // docs/schedule-dev.md §7.7 for the lineup change this was measured against.
+  var SCHED_STALE_SEC = 14 * 86400;
 
   // `dateText` rather than Intl-with-a-timezone: upstream already formats it in
   // the station's own wall clock ("Wednesday, August 5, 2026 9:00 pm"), so the
@@ -2674,6 +2679,42 @@
     return Math.abs(s - min) <= SCHED_SNAP_MIN ? (s % 1440) : min;
   }
 
+  // A slot holding two shows means one of two very different things, and the
+  // window alone cannot tell them apart: the slot genuinely ALTERNATES week to
+  // week (Tue 15:00 is Black Star News, then Sojourner Truth, then Black Star
+  // News), or the station CHANGED ITS LINEUP and the loser is a ghost still
+  // sitting in a slot it no longer airs in. Shipped without this distinction,
+  // and every replaced show was labelled "alternates weekly" — see
+  // docs/schedule-dev.md §7.7 for the July 2026 change that exposed it.
+  //
+  // `shows` arrives most-recent-first, so shows[0] is the slot's incumbent and
+  // is never dropped. A challenger is a ghost when either holds:
+  //
+  //   moved  — it has aired MORE RECENTLY somewhere else. A real alternate's
+  //            newest airing is the one in this slot; a show that moved has a
+  //            newer one in its new home. Catches a move the same week it
+  //            happens, which the age test below cannot.
+  //   stale  — it trails the incumbent by >= SCHED_STALE_SEC. A fortnightly
+  //            alternate trails by exactly 7 days and survives; a replaced show
+  //            falls further behind every week until it ages out of the window
+  //            entirely, so this self-heals with no list to maintain.
+  //
+  // Deliberately NOT a rule: "only ever aired here once". A genuine alternate
+  // whose feed retains one post-outage episode looks identical to a dropped
+  // show, and deleting a real alternate is the worse failure — the schedule
+  // would silently stop mentioning a show that is actually on. Those resolve
+  // themselves on the next airing via `stale`.
+  function schedDropStale(shows, key, showLast){
+    if(shows.length < 2) return shows;
+    var top = shows[0];
+    return shows.filter(function(r, i){
+      if(i === 0) return true;
+      var seen = showLast[normTitle(r.title)];
+      if(seen && seen.key !== key && seen.dt > r.dt) return false;   // moved
+      return (top.dt - r.dt) < SCHED_STALE_SEC;                      // replaced
+    });
+  }
+
   // rows -> { Sunday: [ {min, durMin, shows:[row,..]} ... ] ... }
   // shows.length > 1 means the slot alternates week to week (Mon 18:00 is
   // BreakThrough News some weeks, Chris Hedges Report others). Grouped by
@@ -2682,7 +2723,8 @@
   function deriveSchedule(list){
     var newest = list.reduce(function(max, r){ return Math.max(max, r.dt || 0); }, 0);
     var cutoff = newest - SCHED_WINDOW_SEC;
-    var slots = {};   // "day|min" -> { titleKey -> most recent row }
+    var slots = {};     // "day|min" -> { titleKey -> most recent row }
+    var showLast = {};  // titleKey -> newest airing ANYWHERE, and the slot it was in
     list.forEach(function(r){
       if(r.source === 'feed-only' || !r.dt || r.dt < cutoff) return;
       var w = schedWall(r);
@@ -2691,6 +2733,7 @@
       var bucket = slots[key] || (slots[key] = {});
       var t = normTitle(r.title);
       if(!bucket[t] || r.dt > bucket[t].dt) bucket[t] = r;
+      if(!showLast[t] || r.dt > showLast[t].dt) showLast[t] = { dt: r.dt, key: key };
     });
     var week = {};
     SCHED_DAYS.forEach(function(d){ week[d] = []; });
@@ -2699,6 +2742,7 @@
       if(!week[parts[0]]) return;
       var shows = Object.keys(slots[key]).map(function(t){ return slots[key][t]; })
         .sort(function(a, b){ return b.dt - a.dt; });   // most recently aired first
+      shows = schedDropStale(shows, key, showLast);
       week[parts[0]].push({
         min: parseInt(parts[1], 10),
         durMin: schedLenMin(shows[0]),

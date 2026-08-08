@@ -464,6 +464,43 @@ function parseFeedXml(xml) {
 }
 
 /**
+ * Union what a feed just told us with what we already hold.
+ *
+ * Upstream serves only its five newest episodes per show, so replacing `items`
+ * wholesale — which this did until 2026-08-07 — meant the app could never be
+ * deeper than five episodes deep, and every sixth episode was forgotten the day
+ * it rotated out. That is not an archive; it is a mirror of a five-item window.
+ *
+ * The audio outlasts the listing, which is the fact that makes accumulating
+ * worth anything: archive2 was still serving 200s for episodes from 2026-05-20
+ * on 2026-08-07, roughly eleven weeks after they had dropped out of every feed
+ * that once listed them. Remembering an item therefore keeps a PLAYABLE
+ * episode, not a dead row. If that ever stops being true the failure is a 404
+ * on tap, so re-measure this before assuming it still holds.
+ *
+ * Keyed by `mp3`, which encodes the broadcast date and slot
+ * (`wbai_260806_080000dn.mp3`) and is the same key `feedIndex()` joins listing
+ * rows on. Fresh wins on collision: upstream can correct a title or a
+ * description, and the newer telling of the same episode is the better one.
+ *
+ * Growth is the accepted cost of the choice: ~500 episodes / 370 KB today,
+ * order +2 MB a year at WBAI's rate. The cap below is NOT a retention policy —
+ * 2000 items is ~38 years of a weekly show — it is a guard against upstream
+ * changing mp3 URLs in a way that makes every episode look new forever (a
+ * cache-busting query string would do it), which would otherwise grow the file
+ * without bound and silently.
+ */
+const FEED_ITEM_CAP = 2000;
+function mergeFeedItems(prevItems, freshItems) {
+  if (!prevItems || !prevItems.length) return freshItems;
+  const byMp3 = new Map();
+  for (const it of prevItems) if (it && it.mp3) byMp3.set(it.mp3, it);
+  for (const it of freshItems) if (it && it.mp3) byMp3.set(it.mp3, it);
+  const all = [...byMp3.values()].sort((a, b) => (b.dt || 0) - (a.dt || 0));
+  return all.length > FEED_ITEM_CAP ? all.slice(0, FEED_ITEM_CAP) : all;
+}
+
+/**
  * Conditional fetch of one feed. The feeds serve Last-Modified and honour
  * If-Modified-Since with a 0-byte 304, which makes a full sweep almost free
  * after the first one — there is no ETag and no gzip upstream, so this is the
@@ -514,7 +551,11 @@ async function fetchFeed(slug, force = false) {
     lastModified: res.headers.get('last-modified') || '',
     fetchedAt: Date.now(),
     channel: parsed.channel,
-    items: parsed.items,
+    // Accumulate rather than replace — see mergeFeedItems. Every early-return
+    // above hands back `prev` untouched, so a 304, a failure and an empty body
+    // all keep the accumulated history for free; this is the only path that
+    // could ever have discarded it.
+    items: mergeFeedItems(prev && prev.items, parsed.items),
   };
 }
 
@@ -3288,4 +3329,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { probeMount, pickPhotoMap, parseArchive };
+module.exports = { probeMount, pickPhotoMap, parseArchive, mergeFeedItems };
