@@ -2945,15 +2945,18 @@
         '<div class="sched-shows">'+
           e.shows.map(function(r){
             var c = CAT_BY_KEY[r.cat] || CAT_BY_KEY.special;
-            // The card look (border, cat-colour edge, background) lives on the
-            // wrap rather than on .sched-show, so the row can carry the on-air
+            // The card look (border, edge handle, background) lives on the wrap
+            // rather than on .sched-show, so the row can carry the on-air
             // treatment without nesting anything inside the button.
-            // The colour rides on a data-* attribute and is applied through
-            // CSSOM by schedApplyCatColour(). It was a style="--cat:…" attribute
-            // until 2026-08-06, which the app's own CSP (style-src 'self', no
-            // unsafe-inline) had been silently discarding the whole time — so
-            // the hover edge has never actually been the category's colour.
-            return '<div class="sched-show-wrap" data-title="'+esc(r.title)+'" data-cat="'+esc(c.color)+'">'+
+            //
+            // The handle is deliberately ONE colour for every row, not the
+            // category's. A colour-coded edge asks the reader to hold a legend
+            // in their head and there is no key in this dialog to hold it
+            // against — and the category is written in words on the row
+            // underneath the title anyway ("Public Affairs · Randy Credico"),
+            // so the colour was decoration carrying no information. Removed
+            // 2026-08-08. `c.label` below is the part that actually says it.
+            return '<div class="sched-show-wrap" data-title="'+esc(r.title)+'">'+
               '<button class="sched-show" type="button" data-id="'+esc(r.id)+'"'+
                 ' aria-label="More about '+esc(r.title)+'">'+
                 '<span class="sched-thumb">'+(r.photo ? '<img loading="lazy" alt="" src="'+esc(r.photo)+'">' : '')+'</span>'+
@@ -2975,7 +2978,6 @@
         '</div>'+
       '</div>';
     }).join('');
-    schedApplyCatColour();
     schedApplyLiveHighlight();
     schedScrollToLive();
   }
@@ -2992,13 +2994,6 @@
     var ca = coreKey(ka), cb = coreKey(kb);
     if(ca && ca === cb) return true;
     return dice(ka.split(' '), kb.split(' ')) >= 0.72;
-  }
-  // CSP blocks inline style attributes, so the per-category custom property has
-  // to be set through CSSOM after the markup lands. Called from paintSchedule().
-  function schedApplyCatColour(){
-    schedBody.querySelectorAll('.sched-show-wrap').forEach(function(w){
-      if(w.dataset.cat) w.style.setProperty('--cat', w.dataset.cat);
-    });
   }
   // Toggles the LIVE badge and Listen button in place, no re-render — called
   // on every 15s now-playing poll so the highlight moves show to show while

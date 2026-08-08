@@ -1842,16 +1842,37 @@
   /* The wrap carries the card look — border, cat-colour edge, background —
      so the Listen Live pill can sit inside that same card, to the right of
      the .sched-show button, without nesting a button inside a button. */
+  /* The left edge is a HANDLE, not a legend. It used to be the category's
+     colour, which asked the reader to carry a key this dialog never showed —
+     and the category is already spelled out in words on the line under the
+     title. So it is one colour for every row now (2026-08-08), earning its
+     keep as structure: it gives the row a leading edge to scan down and a
+     place for the on-air state to land.
+
+     Drawn as an inset pseudo-element rather than a border-left so it can have
+     rounded ends and breathe inside the card, instead of running hard into the
+     corner radius. Tinted from --accent so it belongs to the app's warmth, but
+     kept low enough that it never competes with the live row, which takes the
+     accent at full strength. */
   .sched-show-wrap{
+    --sched-handle: color-mix(in srgb, var(--accent) 30%, var(--outline-strong));
+    position:relative;
     display:flex; align-items:center; gap:.5rem;
-    padding:.45rem .6rem .45rem .75rem;
-    border:1px solid var(--outline); border-left:3px solid var(--cat, var(--outline-strong));
+    padding:.45rem .6rem .45rem .95rem;
+    border:1px solid var(--outline);
     border-radius:12px;
     background:var(--surface-2);
     transition:background .15s ease, border-color .15s ease;
   }
+  .sched-show-wrap::before{
+    content:""; position:absolute; left:6px; top:.5rem; bottom:.5rem;
+    width:3px; border-radius:999px;
+    background:var(--sched-handle);
+    transition:background .15s ease;
+  }
   @media (hover:hover) and (pointer:fine){
-    .sched-show-wrap:hover{ background:var(--surface-3); border-color:var(--outline-strong); border-left-color:var(--cat, var(--outline-strong)); }
+    .sched-show-wrap:hover{ background:var(--surface-3); border-color:var(--outline-strong); }
+    .sched-show-wrap:hover::before{ background:color-mix(in srgb, var(--accent) 48%, var(--outline-strong)); }
   }
   /* The show itself is now a bare tap target — no border/background of its
      own, both live one level up on the wrap. */
@@ -1869,6 +1890,12 @@
   .sched-show-wrap.sched-show-live{
     background:color-mix(in srgb, var(--accent) 10%, var(--surface-2));
     border-color:color-mix(in srgb, var(--accent) 45%, var(--outline-strong));
+  }
+  /* The one row allowed the accent outright — which is the whole reason the
+     resting handle stays muted. */
+  .sched-show-wrap.sched-show-live::before{ background:var(--accent); }
+  @media (hover:hover) and (pointer:fine){
+    .sched-show-wrap.sched-show-live:hover::before{ background:var(--accent); }
   }
   @media (hover:hover) and (pointer:fine){
     .sched-show-wrap.sched-show-live:hover{ background:color-mix(in srgb, var(--accent) 16%, var(--surface-3)); }
