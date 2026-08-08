@@ -471,12 +471,19 @@ function parseFeedXml(xml) {
  * deeper than five episodes deep, and every sixth episode was forgotten the day
  * it rotated out. That is not an archive; it is a mirror of a five-item window.
  *
- * The audio outlasts the listing, which is the fact that makes accumulating
- * worth anything: archive2 was still serving 200s for episodes from 2026-05-20
- * on 2026-08-07, roughly eleven weeks after they had dropped out of every feed
- * that once listed them. Remembering an item therefore keeps a PLAYABLE
- * episode, not a dead row. If that ever stops being true the failure is a 404
- * on tap, so re-measure this before assuming it still holds.
+ * Accumulating is worth doing because the audio usually — not always — outlasts
+ * its listing. Measured 2026-08-08 against 60 URLs that were in NO feed (built
+ * by stepping broadcast cycles back from each feed's oldest listed item):
+ * 44 still returned 200, 16 did not, and 10 of those 16 fall inside the
+ * 2026-06-24 → 07-16 recorder outage, where nothing was recorded to delete.
+ *
+ * So a remembered item is USUALLY a playable episode. It is not guaranteed:
+ * feed length is a per-show setting and audio retention is a separate per-show
+ * axis, so some shows are deleted soon after rotating out while others persist
+ * far longer (confirmed by the station 2026-08-08). Nothing in the XML path
+ * says which — there is no `expires` here, unlike Pacifica's JSON catalog. Some
+ * accumulated rows will therefore 404 on tap; that must fail visibly, never
+ * silently (CLAUDE.md §3). See docs/UPSTREAM.md for the measurement.
  *
  * Keyed by `mp3`, which encodes the broadcast date and slot
  * (`wbai_260806_080000dn.mp3`) and is the same key `feedIndex()` joins listing

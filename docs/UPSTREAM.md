@@ -152,19 +152,46 @@ The two constraints that decide everything:
 - **5 items per feed, hard cap.** 77 feeds carry 5, two carry 2, 19 carry 1.
 - **98 of 131 show slugs have a feed at all.** The other 33 return `404`.
 
-⚠️ **That 5-item cap is a window, not the station's history — and we now keep
-what falls out of it.** Until 2026-08-07 `fetchFeed` replaced `items` with
-whatever the feed currently listed, so the app could never hold more than five
-episodes of any show and forgot every sixth the day it rotated out. It now
-unions the fresh window with what is already held (`mergeFeedItems`), keyed on
-the `mp3` URL.
+⚠️ **"5 items" is a per-show setting, not one global rule.** Feed length is
+configured per programme in Pacifica's tools, and *retention of the audio* is a
+separate axis again: storage pressure means some shows' mp3s are deleted soon
+after they rotate out, while others stay reachable long after, and some are
+archived well beyond their feed. Confirmed by the station 2026-08-08. Treat any
+single number here — including the 77/5 tally above — as a snapshot of a mixed
+population, never as a policy.
 
-What makes that worth doing is that **the audio outlives the listing**: on
-2026-08-07 archive2 still returned `200` for episodes from 2026-05-20, about
-eleven weeks after they had dropped out of every feed that once listed them.
-So a remembered item is a playable episode, not a dead row. This is an
-observation about someone else's retention policy, so re-measure it before
-relying on it — if it stops holding, the symptom is a `404` on tap.
+**We now keep what falls out of the window.** Until 2026-08-07 `fetchFeed`
+replaced `items` with whatever the feed currently listed, so the app could never
+hold more than a show's feed length and forgot every episode past it the day it
+rotated out. It now unions the fresh window with what is already held
+(`mergeFeedItems`), keyed on the `mp3` URL.
+
+**How much that is worth, measured properly on 2026-08-08.** An earlier version
+of this note claimed the audio outlives the listing, citing 2026-05-20 files
+still returning `200`. **That was bad evidence** — every item in `feeds.json`
+was, by construction, still listed in its feed, so it only showed that listed
+episodes are playable. The real test needs URLs that are in *no* feed. Built 60
+of them by stepping one and two broadcast cycles back from each feed's oldest
+listed item, using that show's own filename pattern:
+
+| | |
+|---|---|
+| still `200` (playable, unlisted) | **44** |
+| `404` | 16 |
+
+So audio *commonly* outlives its listing — which is what makes accumulating
+worth doing — but not universally. And the failures are mostly not deletions:
+**10 of the 16 fall inside the 2026-06-24 → 07-16 recorder outage**, where
+nothing was ever recorded to delete. The remaining 6 are ambiguous between
+deletion, preemption and a week the show simply did not air, and this method
+cannot separate those.
+
+**The practical consequence: a retained item may be a dead link, and there is
+nothing in the XML path that says which.** No `expires`, no retention hint. That
+is exactly the field Pacifica's JSON catalog publishes per episode (see
+[pacifica-json-dev.md](pacifica-json-dev.md) §4), and it is the strongest single
+argument for that source. Until then, assume some accumulated rows will `404` on
+tap and make sure that fails gracefully rather than silently.
 
 Together those reproduce **67% of the 530-row listing**, so the feeds are a
 supplement, not a replacement for the scrape.
