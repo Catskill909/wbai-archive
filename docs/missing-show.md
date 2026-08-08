@@ -18,6 +18,46 @@ invented phantom rows (nine weekly "A Mansion for the Rat" entries running back 
 April, `daysLeft` climbing 0, 7, 14, 21…). Restoring a scrape fallback to recover
 one show would bring all of those back.
 
+## Don't do this by hand — run the tool
+
+```sh
+npm run audit:schedule          # human summary, saves a snapshot
+node tools/schedule-audit.js --strict --no-save   # exit 1 only if something is NEW
+```
+
+`tools/schedule-audit.js` is this whole afternoon compressed into one command. It
+reads three sources — wbai.org's weekly grid (what the station *says* airs),
+archive2's listing (what was *recorded*, with the `private` and `getrss` flags),
+and the running app's `/api/archive` (what a listener can actually *play*) — and
+reports where they disagree, in five kinds:
+
+| kind | meaning |
+| --- | --- |
+| `no-feed` | archive2 advertises a feed, the app holds nothing. **The Soundboard shape.** Names the likely confessor field. |
+| `slot-unheld` | the station lists this slot, we hold no episode of the show |
+| `leak` | we hold a show with no `getrss` link upstream — the feed-only rule has been softened somewhere |
+| `feed-only` | we hold a show archive2 no longer lists at all (expected occasionally; a wave of them means a broken scrape) |
+| `slot-unmatched` | the grid names a show no archive2 row resembles — most often just a spelling difference, so it is reported as *unmatched*, never as *missing* |
+
+It **remembers**: each run writes a snapshot (`data/schedule-audit.json`, atomic,
+gitignored) and the next run prints a `NEW` / `RESOLVED` diff against it. That is
+the week-to-week view — `RESOLVED` is how you learn a confessor fix actually
+landed, without watching for it.
+
+It is deliberately **not** in `npm test`: it hits the network and upstream state
+changes hourly. Its parsers and matcher *are* tested offline
+(`test/schedule-audit/selftest.js`, 29 checks, in `npm test`).
+
+**What it cannot see:** confessor is password-gated, so nothing reads the
+Podcast / Private / "# In Podcast" boxes that ultimately decide whether a feed is
+written. The tool's job is to point at the exact show and say which fields to
+open. The last step is a human with a login.
+
+**It is polite to upstream:** two page fetches and one local API call, plus a
+capped feed probe for anomalies only. Comparing slug *sets* answers "what is
+missing" in one request; probing all 127 feeds would be 127 requests at a small
+station's server, every run.
+
 ## The five questions, in order
 
 1. **Does the app hold any episode of it?** `/api/archive`, group by `sho`.
