@@ -179,6 +179,12 @@ code that ran.
   through `writeJsonAtomic` and are flushed on `SIGTERM` — if you add a new file
   here, use `writeJsonSoon`/`writeJsonAtomic` rather than `fs.writeFileSync`, or
   it will be lost on every redeploy and truncated by any crash.
+  **A show missing from the app is almost never our bug** — it is upstream
+  publishing no feed, and `docs/missing-show.md` is the diagnosis path (five
+  questions, in order) plus the audit that reconciles archive2's slugs against
+  ours. Read it before touching the harvest: the feed-only rule is what keeps
+  archive2's phantom rows out, so "restore a scrape fallback" trades a
+  correctness guarantee for one show.
   **Since 2026-08-07 `data/feeds.json` is irreplaceable.** It used to be a cache
   — upstream serves five episodes per show, we held those five, and a wiped
   volume cost one harvest. It now *accumulates* the episodes that fall out of
