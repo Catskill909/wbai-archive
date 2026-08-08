@@ -796,7 +796,7 @@
     playerIcon = document.getElementById('playerIcon');
     // The schedule's live pill reports the same state, so it repaints wherever
     // the transport does. Cheap: it returns immediately unless the dialog is up.
-    if(typeof schedApplyLiveHighlight === 'function') schedApplyLiveHighlight();
+    if(typeof schedApplyLiveHighlight === 'function' && !schedRollDay()) schedApplyLiveHighlight();
   }
 
   function updatePlayButtons(){
@@ -2259,8 +2259,10 @@
     // and re-titles itself if the schedule rolls over while it is up
     paintLivePlayer();
     if(barMode === 'live') paintLiveBar();
-    // and move the schedule's LIVE highlight along with it, if it's open
-    schedApplyLiveHighlight();
+    // and move the schedule's LIVE highlight along with it, if it's open —
+    // rolling the day strip over first if midnight has passed since it painted
+    // (schedRollDay repaints and applies the highlight itself when it does).
+    if(!schedRollDay()) schedApplyLiveHighlight();
 
     // keep the OS lock screen in step with the schedule
     liveMeta.title = cur.name;
@@ -2901,7 +2903,54 @@
   // Which weekday it is at the station, without the client holding a timezone:
   // the newest row was recorded within the last few hours, so its (station
   // wall-clock) weekday is station-today for any practical open of this modal.
+  var SCHED_MONTHS = ['january','february','march','april','may','june','july',
+    'august','september','october','november','december'];
+  // The station's current UTC offset, derived rather than configured.
+  //
+  // A row carries the same instant twice: `dt` (epoch) and `dateText` (the
+  // station's own wall clock, "Friday, August 7, 2026 10:00 pm"). The gap
+  // between them IS the offset, so the client can locate itself in the
+  // station's day without ever holding a timezone — the same reason schedWall
+  // reads dateText instead of an Intl formatter (a template-repo concern).
+  // Taken from the newest row, so it follows the station across DST by itself.
+  function schedStationOffsetMs(){
+    var newest = null;
+    rows.forEach(function(r){
+      if(r.dt && r.dateText && (!newest || r.dt > newest.dt)) newest = r;
+    });
+    if(!newest) return null;
+    var m = /^\w+,\s*(\w+)\s+(\d{1,2}),\s*(\d{4})\s+(\d{1,2}):(\d{2})\s*(am|pm)$/i
+      .exec(newest.dateText);
+    if(!m) return null;
+    var mon = SCHED_MONTHS.indexOf(m[1].toLowerCase());
+    if(mon < 0) return null;
+    var h = parseInt(m[4], 10) % 12;
+    if(/pm/i.test(m[6])) h += 12;
+    var wallAsUTC = Date.UTC(parseInt(m[3], 10), mon, parseInt(m[2], 10), h, parseInt(m[5], 10));
+    return wallAsUTC - newest.dt * 1000;
+  }
+  // Which weekday it is AT THE STATION, right now.
+  //
+  // This used to answer with the newest row's weekday, on the reasoning that a
+  // show was archived within the last few hours so its weekday is today's.
+  // That is true for most of the day and wrong in exactly the window a listener
+  // is most likely to be looking: **after midnight, before the first show of
+  // the new day has finished and been archived.** At 00:10 on Saturday the
+  // newest row still said "Friday, August 7, 10:00 pm", so the modal showed
+  // Friday's line-up labelled "Today" and the on-air highlight could not match
+  // — the show playing belonged to a day the schedule was not displaying
+  // (reported 2026-08-08, 12:08 am).
+  //
+  // Now it shifts the real clock by the station's offset and reads the weekday
+  // off that, which is correct at every hour. Falls back to the old heuristic
+  // if `dateText` ever stops parsing, so a format change degrades to the
+  // previous behaviour instead of to no schedule at all.
   function schedToday(){
+    var off = schedStationOffsetMs();
+    if(off !== null){
+      var stationNow = new Date(Date.now() + off);
+      return SCHED_DAYS[stationNow.getUTCDay()];
+    }
     var newest = null;
     rows.forEach(function(r){ if(r.dt && (!newest || r.dt > newest.dt)) newest = r; });
     var w = newest && schedWall(newest);
@@ -2920,10 +2969,17 @@
     return i < 1 ? SCHED_DAYS.slice() : SCHED_DAYS.slice(i).concat(SCHED_DAYS.slice(0, i));
   }
 
-  function paintSchedule(){
-    if(!schedWeek) schedWeek = deriveSchedule(rows);
-    if(!schedDay) schedDay = schedToday();
+  // The weekday paintSchedule() last drew as "today". Compared against the live
+  // clock on every now-playing poll so the strip cannot outlive its own day —
+  // see schedRollDay().
+  var schedPaintedToday = '';
+
+  // The tab strip alone. Split out of paintSchedule() so a midnight rollover
+  // can move the "Today" label without redrawing the list underneath it, which
+  // would reset the reader's scroll (schedScrollToLive starts at scrollTop 0).
+  function schedPaintTabs(){
     var today = schedToday();
+    schedPaintedToday = today;
     schedTabs.innerHTML = schedTabDays().map(function(d){
       var sel = d === schedDay;
       var isToday = d === today;
@@ -2933,6 +2989,46 @@
         '<span class="sched-tab-full">'+(isToday ? 'Today' : d.slice(0, 3))+'</span>'+
         '<span class="sched-tab-min">'+d.slice(0, 1)+'</span></button>';
     }).join('');
+  }
+
+  // Midnight, with the dialog still open.
+  //
+  // The LIVE highlight already walks show to show on the 15s poll, but the day
+  // strip did not move with it: paintSchedule() only runs on open, on a tab
+  // tap, or when rows change, so a modal left up across midnight kept drawing
+  // yesterday and calling it "Today". The highlight then vanished outright,
+  // because schedApplyLiveHighlight() gates on `schedDay === schedToday()` and
+  // the two had drifted apart — the same class of bug as §7.12, one layer up.
+  //
+  // Two cases, deliberately different:
+  //   watching today   — follow the rollover: move the selection to the new day
+  //                      and repaint fully. The scroll-to-live that comes with
+  //                      it is right here, since the new day's first show is
+  //                      what is on air.
+  //   watching another — repaint the TABS ONLY. The "Today" pill moves to the
+  //     day             correct tab, and their scroll position and chosen day
+  //                     are left exactly alone (§3.2: never yank a reading
+  //                     user's scroll).
+  //
+  // Returns true when it repainted the whole dialog, so the caller knows the
+  // highlight has already been applied and need not do it twice.
+  function schedRollDay(){
+    if(!schedIsOpen() || !schedPaintedToday) return false;
+    var today = schedToday();
+    if(today === schedPaintedToday) return false;
+    if(schedDay === schedPaintedToday){
+      schedDay = today;
+      paintSchedule();
+      return true;
+    }
+    schedPaintTabs();
+    return false;
+  }
+
+  function paintSchedule(){
+    if(!schedWeek) schedWeek = deriveSchedule(rows);
+    if(!schedDay) schedDay = schedToday();
+    schedPaintTabs();
     var entries = schedWeek[schedDay] || [];
     if(!entries.length){
       schedBody.innerHTML = '<p class="sched-empty">Nothing derived for '+esc(schedDay)+' yet — the archive is still loading.</p>';

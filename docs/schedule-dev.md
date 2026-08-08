@@ -644,3 +644,102 @@ displaced slot either.
 it arrives with its *own* naming, and this is the function that has to hear
 about it. It is also the reason the schedule can survive a station renaming a
 show mid-week, which is otherwise indistinguishable from a lineup change.
+
+### 7.12 "Today" was yesterday for the first hours of every day
+
+*(reported 2026-08-08 at 12:08 am, from the live site)*
+
+`schedToday()` answered with **the newest archived row's weekday**, on the
+reasoning recorded right there in the comment: a show is archived within the
+last few hours, so its weekday is today's. That holds for most of the day and
+fails in exactly the window where someone is most likely to be looking at a
+radio schedule — **after midnight, before the first show of the new day has
+finished and been archived.**
+
+Measured at 00:10 on Saturday:
+
+| | |
+|---|---|
+| station clock | **Saturday** 2026-08-08 00:10 |
+| on air (`/api/nowplaying`) | Midnight Ravers, 12:00–2:00 am — a *Saturday* show |
+| newest archived row | Friday, August 7, 10:00 pm |
+| `schedToday()` | **Friday** |
+
+Two visible symptoms, one cause. The tab marked "Today" showed **yesterday's**
+line-up, and the on-air highlight vanished — `schedApplyLiveHighlight()` gates on
+`schedDay === schedToday()`, and even past that gate the playing show was not in
+the day being drawn, so nothing could match it. The bug reads as "the live
+highlight broke", which is why the day is the thing to check first.
+
+The window is roughly midnight until the first show of the day is archived —
+one to two hours, every single day.
+
+**The fix keeps the client timezone-free**, which is a template concern and the
+reason `schedWall` parses `dateText` rather than reaching for an Intl formatter
+(§0). A row carries the same instant twice — `dt` (epoch) and `dateText` (the
+station's own wall clock) — so *the difference between them is the station's
+current UTC offset*. `schedStationOffsetMs()` takes it from the newest row,
+`schedToday()` shifts the real clock by it and reads the weekday off that. It is
+correct at every hour and follows the station across DST on its own, because the
+offset is re-derived from a row that is at most a few hours old.
+
+It falls back to the old newest-row heuristic if `dateText` ever stops parsing:
+a format change upstream should degrade to the previous behaviour, not to an
+empty schedule.
+
+⚠️ **Anything else that wants "now" at the station belongs on this offset too.**
+Do not add a second mechanism, and do not reach for `Intl` with a hardcoded zone
+— the whole point is that a station deploying this template configures
+`STATION_TZ` on the server and the client never learns it.
+
+### 7.13 The day strip did not roll over either
+
+*(2026-08-08, found by asking the right question rather than by a bug report:
+"the live highlight moves in real time — does the same happen to the day tabs?")*
+
+No, it did not. §3.2 got the highlight right — `schedApplyLiveHighlight()` runs
+on every 15s now-playing poll and walks the marker from show to show in place.
+But that function only toggles classes on `.sched-show-wrap`. **The tab strip is
+drawn by `paintSchedule()`, which runs on open, on a tab tap, or when rows
+change — and none of those is a clock.**
+
+So a modal left open across midnight kept drawing yesterday and labelling it
+"Today". Worse than cosmetic: once §7.12 made `schedToday()` track the real
+clock, `schedDay` (still yesterday) and `schedToday()` (now today) disagreed, and
+`schedApplyLiveHighlight()` gates on exactly that equality — so **the highlight
+disappeared altogether** and did not return until the reader touched a tab. Same
+family as §7.12, one layer up: something that derives from "now" but is only
+recomputed when something else happens to change.
+
+`schedRollDay()` runs on the same poll and compares `schedToday()` against
+`schedPaintedToday`, the weekday the strip was last drawn for. The two cases are
+deliberately not the same:
+
+| what the reader is looking at | what happens at midnight |
+| --- | --- |
+| **today** | selection follows to the new day, full `paintSchedule()`. The scroll-to-live it brings is *correct* here — the new day's first show is what is on air. |
+| **another day** | `schedPaintTabs()` only. The "Today" pill moves to the right tab; their chosen day and scroll position are untouched. |
+
+That split is the whole point, and it is why the tab strip had to be split out of
+`paintSchedule()` into `schedPaintTabs()`. **`schedScrollToLive()` opens with
+`schedBody.scrollTop = 0`**, so repainting the body under someone reading
+Wednesday would throw them back to the top of Wednesday for no reason they
+could see — precisely the yank §3.2 refuses to do on the 15s poll.
+
+Verified by moving the page's clock rather than waiting for midnight
+(`Date.now` shifted +24h, then one poll cycle):
+
+```
+CASE 1 — watching today
+  before  selected=Saturday  todayTab=Saturday  scrollTop=0
+  after   selected=Sunday    todayTab=Sunday
+CASE 2 — watching another day
+  before  selected=Tuesday   todayTab=Saturday  scrollTop=400
+  after   selected=Tuesday   todayTab=Sunday    scrollTop=400
+```
+
+⚠️ **If you add anything else to this dialog that depends on "now"** — a
+next-up row, a progress bar, a countdown — it belongs on this poll too, and it
+needs the same two-case answer about whose scroll position it is allowed to
+move. The pattern to copy is `schedRollDay()`: recompute from the clock, and
+repaint the smallest thing that can be wrong.

@@ -43,6 +43,24 @@ function check(name, cond, detail) {
 const MAKE_LIVE = `
   var wraps = document.querySelectorAll('.sched-show-wrap');
   if(!wraps.length) return null;
+  // Clear any GENUINELY live row first, so '.sched-show-live' means "the row
+  // this function forced" and nothing else. Without it the tests below tap
+  // '.sched-show-live .sched-show', which is the FIRST match in document order
+  // — and when a real on-air show sorts above the forced row, that is a
+  // different row than the id being asserted against.
+  //
+  // It failed exactly that way at 00:12 on 2026-08-08: the live show was
+  // Midnight Ravers at 12 AM (row 0), above the row this forces (row 3). Ten
+  // minutes earlier the live show was at 9 PM, below it, and the suite passed.
+  // A test that only fails between midnight and ~2 am is worse than one that
+  // fails always, so this is pinned rather than left to the clock.
+  //
+  // It also makes "the on-air row is marked, and ONLY it" true to its name:
+  // that check uses :not(.sched-show-live), which is satisfied by any other row
+  // and so stayed green even while two rows were marked.
+  [].forEach.call(document.querySelectorAll('.sched-show-live'), function(el){
+    el.classList.remove('sched-show-live');
+  });
   var w = wraps[Math.min(3, wraps.length - 1)];
   w.classList.add('sched-show-live');
   w.scrollIntoView({ block: 'center' });
