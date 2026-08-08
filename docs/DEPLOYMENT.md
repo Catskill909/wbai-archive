@@ -294,22 +294,53 @@ Take the reading *before* deploying too, or there is nothing to compare against:
 curl -s https://YOUR-DOMAIN/healthz | sed 's/.*"instanceId":"\([^"]*\)".*/\1/'
 ```
 
-### 3. Before anything that might replace the volume — take a copy
+### 3. Keep two restore paths, and prefer the narrow one
 
-There is no backup in this stack. Coolify does not snapshot volumes, the image
-carries only `seed/showinfo.json` (show descriptions, not listings), and nothing
-else anywhere holds `feeds.json`. Before changing storage settings, migrating
-host, or any deploy you have reason to distrust:
+Neither Coolify nor the app backs anything up. The image carries only
+`seed/showinfo.json` — show descriptions, not listings — so nothing inside this
+stack holds `feeds.json`. Backup therefore comes from the host, and it is worth
+having **two** ways back rather than one.
+
+**Path 1 — file-level (preferred).** `tools/backup-data.sh`, run on the VPS:
 
 ```bash
-# From the host running the container
-docker cp wbai-archive:/app/data ./wbai-data-$(date +%Y%m%d)
-tar czf wbai-data-$(date +%Y%m%d).tgz wbai-data-$(date +%Y%m%d)
+./tools/backup-data.sh /backups        # -> /backups/wbai-data-YYYY-MM-DD.tgz
 ```
 
-Restore by copying the files back into the mounted volume with the container
-stopped. A copy taken *after* the volume was replaced is a copy of nothing —
-check `freshVolume` first.
+It reports the slug count it captured, and warns if `feeds.json` is empty or
+unparseable — a backup whose size nobody looked at is how you find out at restore
+time that it has been archiving an empty directory for six months. Weekly cron:
+
+```
+0 4 * * 0  /opt/wbai/backup-data.sh /backups >> /var/log/wbai-backup.log 2>&1
+```
+
+Restoring touches **only this app**:
+
+```bash
+tar xzf wbai-data-YYYY-MM-DD.tgz
+docker stop wbai-archive
+docker cp data/feeds.json wbai-archive:/app/data/feeds.json
+docker start wbai-archive
+curl -s localhost:8080/healthz         # feedsOnDisk should match the backup
+```
+
+**Path 2 — VPS snapshot (last resort).** A host-level snapshot already contains
+`/var/lib/docker/volumes/`, so the volume is in it. But restoring one rolls the
+whole machine back, taking **every other Coolify app on that host** with it —
+which is precisely why path 1 is worth maintaining alongside it. To recover a
+single file from a snapshot without restoring the machine, mount it and pull:
+
+```
+/var/lib/docker/volumes/<volume-name>/_data/feeds.json
+```
+
+Snapshots taken mid-write are safe: writes are atomic, and an unparseable file is
+quarantined at boot (§0) rather than overwritten, so restoring a torn one cannot
+silently destroy it.
+
+A copy taken *after* the volume was replaced is a copy of nothing — check
+`freshVolume` first.
 
 The same applies locally: `./data` is gitignored, so `git clean -xdf` deletes it
 and your laptop's accumulated `feeds.json` with it.
