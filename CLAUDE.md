@@ -175,6 +175,19 @@ code that ran.
   `./run.sh` scripts. Add new offline suites to `npm test` in the same commit
   that writes them — `test/feed-scan/selftest.js` sat outside it until
   2026-08-05 and therefore had never once run in anger.
+- **Every dialog shares one motion recipe**, and it lives in the `--ov-*` token
+  block at the top of `styles.css` rather than in six hand-copied declarations —
+  the info sheet, live player, donate modal, schedule, on-air chooser and menu
+  drawer all resolve their transitions from it, so they cannot drift apart the
+  way they had. Arrivals land on a real spring (`--ease-panel`, a `linear()`
+  curve behind an `@supports` guard — an unparseable `linear()` inside a
+  `transition` shorthand unsets every longhand, duration included, so the
+  fallback must be a real value); dismissals are faster and use `--ease-exit`.
+  Suite: `test/motion/run.sh`. It exists because §3a applies double here — the
+  first version read the stylesheet back and would have passed a spring that was
+  mathematically perfect and 0.4px tall. Panels used to travel 4% of their
+  height, which is too little for *any* curve to be felt; if you retune this,
+  check the distance before blaming the easing.
 - **Everything persisted lives under `DATA_DIR`** (default `./data`). Writes go
   through `writeJsonAtomic` and are flushed on `SIGTERM` — if you add a new file
   here, use `writeJsonSoon`/`writeJsonAtomic` rather than `fs.writeFileSync`, or

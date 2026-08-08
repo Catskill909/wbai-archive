@@ -35,6 +35,92 @@
        theme-dependent, so declared once. */
     --phone-sheet-gap: 2.25rem;
     --phone-sheet-radius: 20px;
+    /* ---- overlay motion ----
+       Every dialog in here (info sheet, live player, donate, schedule, on-air
+       chooser) shares one recipe, and it is shared through these tokens rather
+       than by copying values — the five of them swap places often enough that
+       any difference in feel reads as a bug. Change them here, all five move.
+
+       Arrival and dismissal are deliberately NOT symmetric. An arrival is
+       something you watch, so it is slower and lands on a spring; a dismissal
+       is something you want out of the way, so it is faster and accelerates
+       out. They used to be the same .22s ease in both directions, which is why
+       opening read as a snap rather than a present.
+
+       --ease-panel is a real damped spring (k=180, c=21, m=1 → ζ≈0.78,
+       ~1.4% overshoot), sampled to 22 points. That tiny overshoot is the whole
+       difference between "CSS eased" and "native": the panel arrives, passes
+       its mark by a hair, and settles. Guarded by @supports below because a
+       linear() the browser cannot parse would poison the whole `transition`
+       shorthand — an unparseable var() in a shorthand unsets *every* longhand,
+       duration included, so the fallback has to be a real value and not a
+       hope. Old engines get a stiff ease-out curve and lose only the overshoot. */
+    --ease-panel: cubic-bezier(.22, 1, .36, 1);
+    --ease-exit: cubic-bezier(.4, 0, 1, 1);
+    /* The desktop panels start at translate(…,-43%) scale(.95) rather than the
+       -46%/.97 they used to: measured, the old travel was 4% of the panel's
+       height and 3% of its scale, and a 1.4% overshoot of a 3% range is 0.04%
+       of scale — about 0.4px on a 700px card. The spring was genuinely running
+       and genuinely invisible. Curve quality cannot rescue a distance that
+       small; the arrival needed something to travel before any of this could be
+       felt. Phones already travelled the full viewport and are unaffected.
+
+       Panel in/out. Note the spring spends its last third settling, so .4s
+       *feels* like about .25s — do not read these as the perceived length. */
+    --ov-in: .4s;
+    --ov-out: .2s;
+    /* The scrim leads in and lags out: it reaches full dim before the panel has
+       landed and is still there after the panel has gone, so the layer never
+       flashes bare content at either end. */
+    --ov-scrim-in: .26s;
+    --ov-scrim-out: .24s;
+    --ov-scrim-out-delay: .05s;
+    /* The four transitions themselves, composed once. A custom property holds
+       an arbitrary token stream, so `transition: var(--ov-panel-tr-in)` is a
+       legal whole-shorthand substitution — which means the five dialogs cannot
+       drift apart the way five hand-copied declarations quietly did.
+       `visibility` is stepped at the END of the exit (0s delayed by the
+       duration) so the panel stays hittable-but-leaving rather than vanishing
+       on frame one; that part is inherited from the original and is load-
+       bearing, not decoration. */
+    --ov-panel-tr-in:
+      transform var(--ov-in) var(--ease-panel),
+      opacity var(--ov-in) ease;
+    --ov-panel-tr-out:
+      transform var(--ov-out) var(--ease-exit),
+      opacity var(--ov-out) ease,
+      visibility 0s linear var(--ov-out);
+    --ov-scrim-tr-in:
+      opacity var(--ov-scrim-in) ease,
+      -webkit-backdrop-filter var(--ov-scrim-in) ease,
+      backdrop-filter var(--ov-scrim-in) ease;
+    --ov-scrim-tr-out:
+      opacity var(--ov-scrim-out) ease var(--ov-scrim-out-delay),
+      -webkit-backdrop-filter var(--ov-scrim-out) ease var(--ov-scrim-out-delay),
+      backdrop-filter var(--ov-scrim-out) ease var(--ov-scrim-out-delay),
+      visibility 0s linear calc(var(--ov-scrim-out) + var(--ov-scrim-out-delay));
+    /* Content stagger: the panel lands, then its contents settle in behind it.
+       The single cheapest thing in here that reads as "app" rather than "web". */
+    --ov-stagger: .34s;
+  }
+  /* See the note above: only swap in the spring where linear() actually parses. */
+  @supports (animation-timing-function: linear(0 0%, 1 100%)){
+    :root{
+      --ease-panel: linear(0.0058 0%, 0.1855 4.76%, 0.4467 9.52%, 0.6983 14.29%,
+        0.8506 19.05%, 0.9417 23.81%, 0.9923 28.57%, 1.0096 33.33%, 1.0136 38.1%,
+        1.0113 42.86%, 1.0078 47.62%, 1.0046 52.38%, 1.0022 57.14%, 1.0009 61.9%,
+        1.0002 66.67%, 0.9999 71.43%, 0.9998 76.19%, 0.9998 80.95%, 0.9999 85.71%,
+        0.9999 90.48%, 1 95.24%, 1 100%);
+    }
+  }
+  /* Phones present these as full-height bottom sheets: the same box that moved
+     4% of its height on desktop now travels the whole viewport, so it needs
+     longer or it reads as a snap. Duration follows distance. Declared on :root
+     so all five inherit it at once — this is the one that was actually wrong. */
+  @media (max-width:560px){
+    :root{ --ov-in:.46s; --ov-out:.26s; }
+  }
+  :root{
     /* The page's side gutter, shared by the hero, the sticky search bar, the
        result strip and the listing so their left and right edges line up all
        the way down. It is ONE token because the alignment is the whole point:
@@ -414,14 +500,24 @@
   }
 
   /* ================= Live player modal ================= */
+  /* Blur starts at 0 and animates up with the dim. At full strength from frame
+     one (which is what it used to be) the background snapped to blurred and
+     *then* darkened — two separate events for one gesture, and the layer read
+     as flat. The var() resolves at computed-value time, so the two states are
+     genuinely blur(0px) and blur(6px) and `backdrop-filter` really does
+     interpolate; same mechanism the theme icon relies on further up. */
   .live-scrim{
     position:fixed; inset:0; z-index:170;
     background:color-mix(in srgb, #000 66%, transparent);
-    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(0px); backdrop-filter:blur(0px);
     opacity:0; visibility:hidden; pointer-events:none;
-    transition:opacity .22s ease, visibility 0s linear .22s;
+    transition:var(--ov-scrim-tr-out);
   }
-  .live-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .22s ease; }
+  .live-scrim.show{
+    opacity:1; visibility:visible; pointer-events:auto;
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    transition:var(--ov-scrim-tr-in);
+  }
 
   .live-player{
     position:fixed; z-index:180; left:50%; top:50%;
@@ -435,12 +531,12 @@
     color:var(--ink);
     border:1px solid var(--outline-strong); border-radius:20px;
     box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
-    transform:translate(-50%, -46%) scale(.97); opacity:0; visibility:hidden;
-    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease, visibility 0s linear .22s;
+    transform:translate(-50%, -43%) scale(.95); opacity:0; visibility:hidden;
+    transition:var(--ov-panel-tr-out);
   }
   .live-player.show{
     transform:translate(-50%, -50%) scale(1); opacity:1; visibility:visible;
-    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
+    transition:var(--ov-panel-tr-in);
   }
   /* Minimize: closing while the stream is running does not stop it, it hands it
      to the docked player bar. So the card collapses *toward* the bar instead of
@@ -455,7 +551,7 @@
     transition:transform .34s cubic-bezier(.4,0,.75,.4), opacity .28s ease .06s;
   }
   @media (prefers-reduced-motion:reduce){
-    .live-scrim, .live-player{ transition-duration:0s; }
+    .live-scrim, .live-player{ transition-duration:0s; transition-delay:0s; }
     .live-player{ transform:translate(-50%,-50%) scale(1); }
     .live-player.minimizing{ transition-duration:0s; }
   }
@@ -617,13 +713,15 @@
       var(--surface-2);
     border:1px solid color-mix(in srgb, var(--danger) 38%, var(--outline-strong));
     box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
-    animation:lpAlertIn .26s cubic-bezier(.2,0,.2,1) both;
+    animation:lpAlertIn .34s var(--ease-panel) both;
   }
   .lp-alert[hidden]{display:none;}
   /* the centring transform has to be carried through the keyframes, or the
      end state (transform:none) would fling the dialog off-centre */
+  /* Travel widened from 8px/.98 for the same reason the big panels were: a
+     spring needs distance or its character never reaches the screen. */
   @keyframes lpAlertIn{
-    from{opacity:0; transform:translate(-50%,-50%) translateY(8px) scale(.98);}
+    from{opacity:0; transform:translate(-50%,-50%) translateY(13px) scale(.96);}
     to{opacity:1; transform:translate(-50%,-50%) scale(1);}
   }
   .lp-alert-icon{
@@ -708,7 +806,7 @@
       var(--surface-2);
     border:1px solid var(--outline-strong);
     box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
-    animation:lpAlertIn .26s cubic-bezier(.2,0,.2,1) both;
+    animation:lpAlertIn .34s var(--ease-panel) both;
   }
   .lp-info[hidden]{display:none;}
   /* The scroll lives on the body, not the dialog, so the close button stays put
@@ -751,7 +849,7 @@
       border-radius:var(--phone-sheet-radius) var(--phone-sheet-radius) 0 0;
       border-bottom:none;
       padding:1.2rem 1.25rem calc(1.2rem + env(safe-area-inset-bottom,0px));
-      animation:lpInfoSheetIn .26s cubic-bezier(.2,0,.2,1) both;
+      animation:lpInfoSheetIn .38s var(--ease-panel) both;
     }
     @keyframes lpInfoSheetIn{ from{opacity:.4; transform:translateY(14%);} to{opacity:1; transform:none;} }
   }
@@ -1331,11 +1429,15 @@
   .menu-scrim{
     position:fixed; inset:0; z-index:150;
     background:color-mix(in srgb, #000 55%, transparent);
-    -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+    -webkit-backdrop-filter:blur(0px); backdrop-filter:blur(0px);
     opacity:0; visibility:hidden; pointer-events:none;
-    transition:opacity .25s ease, visibility 0s linear .25s;
+    transition:var(--ov-scrim-tr-out);
   }
-  .menu-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .25s ease; }
+  .menu-scrim.show{
+    opacity:1; visibility:visible; pointer-events:auto;
+    -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+    transition:var(--ov-scrim-tr-in);
+  }
 
   .menu-panel{
     position:fixed; top:0; right:0; z-index:160;
@@ -1345,12 +1447,21 @@
     background:var(--surface-1); border-left:1px solid var(--outline);
     box-shadow:-24px 0 60px rgba(0,0,0,.45);
     transform:translateX(100%); visibility:hidden;
-    transition:transform .34s cubic-bezier(.4,0,.2,1), visibility 0s linear .34s;
+    /* The drawer is on the same recipe as the five dialogs — it is another
+       "you are in a layer" signal, and one overlay left on its own curve is how
+       a set of them stops feeling like one app. It travels the full width of
+       the panel, though, which is a long way, so it opts out of the shared
+       durations rather than the shared curve. */
+    --ov-in:.44s; --ov-out:.26s;
+    transition:transform var(--ov-out) var(--ease-exit), visibility 0s linear var(--ov-out);
     will-change:transform;
   }
-  .menu-panel.show{ transform:translateX(0); visibility:visible; transition:transform .34s cubic-bezier(.4,0,.2,1); }
+  .menu-panel.show{
+    transform:translateX(0); visibility:visible;
+    transition:transform var(--ov-in) var(--ease-panel);
+  }
   @media (prefers-reduced-motion:reduce){
-    .menu-scrim, .menu-panel{ transition-duration:0s; }
+    .menu-scrim, .menu-panel{ transition-duration:0s; transition-delay:0s; }
   }
   /* The real lock is `html.scroll-lock` up by the root rules — see the long
      comment there for why these body rules can't do the job on their own. They
@@ -1437,11 +1548,15 @@
   .sheet-scrim{
     position:fixed; inset:0; z-index:170;
     background:color-mix(in srgb, #000 62%, transparent);
-    -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
+    -webkit-backdrop-filter:blur(0px); backdrop-filter:blur(0px);
     opacity:0; visibility:hidden; pointer-events:none;
-    transition:opacity .22s ease, visibility 0s linear .22s;
+    transition:var(--ov-scrim-tr-out);
   }
-  .sheet-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .22s ease; }
+  .sheet-scrim.show{
+    opacity:1; visibility:visible; pointer-events:auto;
+    -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
+    transition:var(--ov-scrim-tr-in);
+  }
 
   .sheet{
     position:fixed; z-index:180; left:50%; top:50%;
@@ -1450,12 +1565,12 @@
     background:var(--surface-1); color:var(--ink);
     border:1px solid var(--outline-strong); border-radius:18px;
     box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
-    transform:translate(-50%, -46%) scale(.97); opacity:0; visibility:hidden;
-    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease, visibility 0s linear .22s;
+    transform:translate(-50%, -43%) scale(.95); opacity:0; visibility:hidden;
+    transition:var(--ov-panel-tr-out);
   }
   .sheet.show{
     transform:translate(-50%, -50%) scale(1); opacity:1; visibility:visible;
-    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
+    transition:var(--ov-panel-tr-in);
   }
   /* Closing the sheet while the bar holds this episode is a handoff, not a stop,
      so the card collapses toward the bar exactly as the live player does. Same
@@ -1466,10 +1581,58 @@
     transition:transform .34s cubic-bezier(.4,0,.75,.4), opacity .28s ease .06s;
   }
   @media (prefers-reduced-motion:reduce){
-    .sheet-scrim, .sheet{ transition-duration:0s; }
+    .sheet-scrim, .sheet{ transition-duration:0s; transition-delay:0s; }
     .sheet{ transform:translate(-50%,-50%) scale(1); }
     .sheet.minimizing{ transition-duration:0s; }
   }
+  /* ---- content stagger ----
+     The panel lands, then its contents settle in behind it — header, then the
+     description, then the facts, then the footer, ~35ms apart over 9px. This is
+     the cheapest thing in this file that reads as "app" rather than "page": the
+     dialog stops being a picture that appeared and becomes a surface that
+     assembled itself.
+
+     Gated on a transient `entering` class rather than on `.show`, for two
+     reasons, both of which are invisible in a screenshot — which is exactly why
+     they are written down here:
+
+       1. `paintSheet()` replaces the body's innerHTML on EVERY episode-chip tap
+          (and again when the programs directory lands, a beat after opening).
+          Fresh elements restart a CSS animation, so keyed on `.show` this would
+          re-stagger on every tap and picking a date would make the header
+          flutter. app.js drops `entering` whenever it repaints an already-open
+          sheet, so the rail swaps rows dead still — which is the rule the
+          episode rail was built on: choosing a chip is not an event.
+       2. `animation-fill-mode:both` keeps the final `transform:none` applied
+          for as long as the selector matches, and an animation outranks a
+          transition on the same property. Keyed on `.show`, these four rules
+          would hold a permanent claim on `transform` over half the contents of
+          both dialogs — so any `:active`/`:hover` transform added to one of
+          them later would simply not work, with nothing to say why. None of
+          the current targets has one, which is precisely what makes this the
+          kind of trap you walk into a year from now. Transient class, no
+          lingering fill, no claim to inherit. */
+  @keyframes ovRise{
+    from{ opacity:0; transform:translateY(9px); }
+    to{ opacity:1; transform:none; }
+  }
+  .sheet.entering .sheet-head     { animation:ovRise var(--ov-stagger) var(--ease-panel) .04s  both; }
+  .sheet.entering .sheet-desc-wrap{ animation:ovRise var(--ov-stagger) var(--ease-panel) .075s both; }
+  .sheet.entering .sheet-facts    { animation:ovRise var(--ov-stagger) var(--ease-panel) .11s  both; }
+  .sheet.entering .sheet-foot     { animation:ovRise var(--ov-stagger) var(--ease-panel) .145s both; }
+  .live-player.entering .lp-badge    { animation:ovRise var(--ov-stagger) var(--ease-panel) .04s  both; }
+  .live-player.entering .lp-art      { animation:ovRise var(--ov-stagger) var(--ease-panel) .075s both; }
+  .live-player.entering .lp-meta     { animation:ovRise var(--ov-stagger) var(--ease-panel) .11s  both; }
+  .live-player.entering .lp-transport{ animation:ovRise var(--ov-stagger) var(--ease-panel) .145s both; }
+  /* Same selectors at equal specificity, later in the cascade, so `none` wins
+     without reaching for !important. */
+  @media (prefers-reduced-motion:reduce){
+    .sheet.entering .sheet-head, .sheet.entering .sheet-desc-wrap,
+    .sheet.entering .sheet-facts, .sheet.entering .sheet-foot,
+    .live-player.entering .lp-badge, .live-player.entering .lp-art,
+    .live-player.entering .lp-meta, .live-player.entering .lp-transport{ animation:none; }
+  }
+
   body.sheet-open{ overflow:hidden; }
   /* leave room for the docked player bar so the card never sits on top of it */
   body.has-player .sheet{ max-height:min(76dvh, 700px); }
@@ -1614,19 +1777,24 @@
   /* A framed embed of WBAI's real donate page. Tall + wide on desktop/tablet,
      near full-screen on phones, always with breathing room around the card. */
   /* Scrim and motion are deliberately the info sheet's, to the value: same 62%
-     black, same 5px blur, same .22s cubic-bezier(.2,0,.2,1) rise from -46% at
-     scale .97. It used to be darker (74%) and blurrier (6px) on an `ease` curve,
+     black, same 5px blur, and the same shared --ov-* motion tokens (it no
+     longer names its own durations at all, which is the point — see the token
+     block up top). It used to be darker (74%) and blurrier (6px) on an `ease` curve,
      which made the one dialog that frames someone else's page also the one
      dialog that opened differently — two unrelated signals for "you are in a
      layer", when the sheet already had a good one. Keep these in step. */
   .donate-scrim{
     position:fixed; inset:0; z-index:290;
     background:color-mix(in srgb, #000 62%, transparent);
-    -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
+    -webkit-backdrop-filter:blur(0px); backdrop-filter:blur(0px);
     opacity:0; visibility:hidden; pointer-events:none;
-    transition:opacity .22s ease, visibility 0s linear .22s;
+    transition:var(--ov-scrim-tr-out);
   }
-  .donate-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .22s ease; }
+  .donate-scrim.show{
+    opacity:1; visibility:visible; pointer-events:auto;
+    -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
+    transition:var(--ov-scrim-tr-in);
+  }
   .donate-modal{
     position:fixed; z-index:300;
     top:50%; left:50%;
@@ -1636,17 +1804,17 @@
        be definite or the donate page opens as a letterbox slot. Same 88dvh cap
        as the sheet, so both stop short of the top edge by the same amount. */
     height:min(88dvh, 860px);
-    transform:translate(-50%, -46%) scale(.97);
+    transform:translate(-50%, -43%) scale(.95);
     display:flex; flex-direction:column;
     background:#fff; border-radius:18px; overflow:hidden;
     box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
     opacity:0; visibility:hidden; pointer-events:none;
-    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease, visibility 0s linear .22s;
+    transition:var(--ov-panel-tr-out);
   }
   .donate-modal.show{
     opacity:1; visibility:visible; pointer-events:auto;
     transform:translate(-50%, -50%) scale(1);
-    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
+    transition:var(--ov-panel-tr-in);
   }
   /* Leave room for the docked bar, exactly as the sheet does — donating while
      the live stream plays is the fund-drive case, not an edge case. */
@@ -1697,7 +1865,7 @@
     .donate-close svg{ width:17px; height:17px; }
   }
   @media (prefers-reduced-motion:reduce){
-    .donate-scrim, .donate-modal{ transition-duration:0s; }
+    .donate-scrim, .donate-modal{ transition-duration:0s; transition-delay:0s; }
   }
 
   /* ---------------- Weekly schedule modal ---------------- */
@@ -1710,28 +1878,32 @@
   .sched-scrim{
     position:fixed; inset:0; z-index:163;
     background:color-mix(in srgb, #000 62%, transparent);
-    -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
+    -webkit-backdrop-filter:blur(0px); backdrop-filter:blur(0px);
     opacity:0; visibility:hidden; pointer-events:none;
-    transition:opacity .22s ease, visibility 0s linear .22s;
+    transition:var(--ov-scrim-tr-out);
   }
-  .sched-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .22s ease; }
+  .sched-scrim.show{
+    opacity:1; visibility:visible; pointer-events:auto;
+    -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
+    transition:var(--ov-scrim-tr-in);
+  }
   .sched-modal{
     position:fixed; z-index:165;
     top:50%; left:50%;
     width:min(680px, 94vw);
     height:min(88dvh, 820px);
-    transform:translate(-50%, -46%) scale(.97);
+    transform:translate(-50%, -43%) scale(.95);
     display:flex; flex-direction:column;
     background:var(--surface-1); color:var(--ink);
     border-radius:18px; overflow:hidden;
     box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
     opacity:0; visibility:hidden; pointer-events:none;
-    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease, visibility 0s linear .22s;
+    transition:var(--ov-panel-tr-out);
   }
   .sched-modal.show{
     opacity:1; visibility:visible; pointer-events:auto;
     transform:translate(-50%, -50%) scale(1);
-    transition:transform .22s cubic-bezier(.2,0,.2,1), opacity .22s ease;
+    transition:var(--ov-panel-tr-in);
   }
   body.has-player .sched-modal{ height:min(76dvh, 760px); }
   /* THE DOCKED PLAYER BAR STAYS USABLE UNDER THIS ONE.
@@ -1977,7 +2149,7 @@
     .sched-live-word{ font-size:.58rem; }
   }
   @media (prefers-reduced-motion:reduce){
-    .sched-scrim, .sched-modal{ transition-duration:0s; }
+    .sched-scrim, .sched-modal{ transition-duration:0s; transition-delay:0s; }
   }
   .sheet-titles{ display:flex; flex-direction:column; gap:.5rem; min-width:0; padding-top:.15rem; }
   .sheet-eyebrow{
@@ -2036,13 +2208,25 @@
      Above the schedule (z 200 vs its 180) the way the lightbox sits above the
      sheet. Small and centred: it asks one question and offers exactly three
      answers, so it should never look like another page. */
+  /* Same recipe as the four big dialogs, deliberately quicker: this one asks a
+     question and travels almost no distance, and a .4s spring on a small box
+     that barely moves reads as sluggish rather than considered. Rather than
+     hand-write a second set of transitions (which is how the five of them
+     drifted apart last time), it overrides the duration tokens and inherits the
+     identical curve — so it still *feels* like the rest of the app. */
+  .live-choice-scrim, .live-choice{ --ov-in:.28s; --ov-out:.16s; --ov-scrim-in:.18s; --ov-scrim-out:.16s; }
   .live-choice-scrim{
     position:fixed; inset:0; z-index:195;
-    background:rgba(0,0,0,.55); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px);
+    background:rgba(0,0,0,.55);
+    backdrop-filter:blur(0px); -webkit-backdrop-filter:blur(0px);
     opacity:0; visibility:hidden; pointer-events:none;
-    transition:opacity .18s ease, visibility 0s linear .18s;
+    transition:var(--ov-scrim-tr-out);
   }
-  .live-choice-scrim.show{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .18s ease; }
+  .live-choice-scrim.show{
+    opacity:1; visibility:visible; pointer-events:auto;
+    backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px);
+    transition:var(--ov-scrim-tr-in);
+  }
   .live-choice{
     position:fixed; z-index:200; left:50%; top:50%;
     width:min(400px, calc(100vw - 2.2rem));
@@ -2052,14 +2236,14 @@
     border:1px solid var(--outline-strong); border-radius:18px;
     box-shadow:0 30px 70px -20px rgba(0,0,0,.7), var(--elev-2);
     transform:translate(-50%, -48%) scale(.96); opacity:0; visibility:hidden;
-    transition:transform .18s cubic-bezier(.2,0,.2,1), opacity .18s ease, visibility 0s linear .18s;
+    transition:var(--ov-panel-tr-out);
   }
   .live-choice.show{
     transform:translate(-50%, -50%) scale(1); opacity:1; visibility:visible;
-    transition:transform .18s cubic-bezier(.2,0,.2,1), opacity .18s ease;
+    transition:var(--ov-panel-tr-in);
   }
   @media (prefers-reduced-motion:reduce){
-    .live-choice-scrim, .live-choice{ transition-duration:0s; }
+    .live-choice-scrim, .live-choice{ transition-duration:0s; transition-delay:0s; }
     .live-choice{ transform:translate(-50%,-50%) scale(1); }
   }
   .live-choice-eyebrow{

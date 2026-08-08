@@ -1973,6 +1973,7 @@
     endMinimize();         // re-opened mid-collapse: drop the transform, it wins
     paintLiveCloseBtn();
     livePlayer.classList.add('show');
+    runEnter(livePlayer);
     livePlayerScrim.classList.add('show');
     livePlayer.setAttribute('aria-hidden', 'false');
     onAirBtn.setAttribute('aria-expanded', 'true');
@@ -1988,6 +1989,31 @@
   // never fires, or motion is reduced, the modal is already closed and correct.
   // Shared by both dialogs that close onto the bar: the live player and the show
   // info sheet. Only one of them can be open at a time, so one timer is enough.
+  // ---- Entrance stagger. The panel's own arrival is pure CSS; this marks only
+  // the window during which its *contents* are allowed to animate in behind it.
+  // It has to be a transient class rather than a standing `.show` selector —
+  // the long note on `.sheet.entering` in styles.css has the two things that go
+  // wrong otherwise (a re-stagger on every episode chip, and an animation fill
+  // that lingers and outranks unrelated transitions). Decorative throughout: if
+  // the timer never fires, the class is cleared by the next open regardless.
+  var ENTER_MS = 520;        // stagger duration + last delay, plus slack
+  var enteringPanel = null;
+  var enterTimer = null;
+  function endEnter(){
+    clearTimeout(enterTimer);
+    enterTimer = null;
+    if(enteringPanel){
+      enteringPanel.classList.remove('entering');
+      enteringPanel = null;
+    }
+  }
+  function runEnter(panel){
+    endEnter();              // an open during a previous run
+    panel.classList.add('entering');
+    enteringPanel = panel;
+    enterTimer = setTimeout(endEnter, ENTER_MS);
+  }
+
   var MINIMIZE_MS = 360;
   var minimizeTimer = null;
   var minimizingPanel = null;
@@ -3910,6 +3936,11 @@
   // change and restoring the offset is exact — without it, picking a date from
   // a rail you had to scroll to reach would throw you back to the top.
   function paintSheet(r, keepScroll){
+    // Repainting an already-entering sheet is the episode rail swapping rows,
+    // or the programs directory landing a beat after opening. Neither is an
+    // opening, and innerHTML hands the stagger brand-new elements to run on, so
+    // end the entrance here: choosing a chip must stay dead still.
+    if(enteringPanel === sheet) endEnter();
     var top = keepScroll ? sheetBody.scrollTop : 0;
     sheetRowId = r.id;
     sheetMp3 = r.mp3 || null;
@@ -3982,6 +4013,7 @@
     sheetReturnFocus = trigger || document.activeElement;
     endMinimize();     // re-opened mid-collapse: drop the transform, it wins
     sheet.classList.add('show');
+    runEnter(sheet);
     sheetScrim.classList.add('show');
     sheet.setAttribute('aria-hidden', 'false');
     document.body.classList.add('sheet-open');
