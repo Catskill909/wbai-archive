@@ -17,7 +17,8 @@ for why the server exists, [DEPLOYMENT.md](DEPLOYMENT.md) for shipping it, and
   stream from the header.
 - Opens a routed show modal: Show view restores artwork, host, show description,
   the selected broadcast and links; Past episodes replaces it with a listening-
-  aware episode browser and a persistent in-modal archive player.
+  aware episode browser and an in-modal projection of whichever global audio
+  source—live or archive—currently owns playback.
 - Publishes to the OS media session — lock screen, macOS Now Playing, car
   displays — with working transport controls.
 - Offers ±15s skip in the player bar, and Space / ←/→ keyboard shortcuts.
@@ -197,6 +198,40 @@ to their infrastructure, not to this front end.
 
 ## How each feature works
 
+### Live Player, show profiles, and the archive
+
+The Live Player keeps three states independent: the surface being viewed, the
+source that owns the global player, and the show in browsing context. Opening a
+show or Past episodes never changes audio; only a live Play or archive
+Play/Resume action can do that.
+
+- Artwork remains exclusively **Show info**. The current show's compact **Past
+  episodes** pill resolves `current.altid` to the newest playable archive row and
+  opens that exact slug's archive route. The **Up next** row resolves
+  `next.altid` and opens that show's profile. Both fail quietly when there is no
+  exact playable match; titles never manufacture a route.
+- `/api/nowplaying` forwards both current and next `altid`. Client matching trims
+  and lowercases only the ID; it does not use fuzzy title matching. Archive
+  refresh and the 15-second now-playing poll repaint the routes in place.
+- Rollover retargets the Live Player and global live identity, but never replaces
+  an already-open show/archive context. The listener deliberately returns to the
+  newly current Live Player through the visible player identity.
+- Live ownership is written on every visible transport: `Live · WBAI 99.5 FM`
+  in the full player, an inline **Live** source chip in the page bar (including
+  phone widths), and the same source chip plus Playing/Paused/Connecting state in
+  `#sheetPlayerDock`. The dock is a projection of the global transport, not a
+  second audio element, and live mode has no scrubber or skip controls.
+- Starting live still follows the one-connection/never-reuse contract in
+  [live-audio-pattern.md](live-audio-pattern.md). Starting an archive episode is
+  the only archive takeover path; when live or another episode owns the player,
+  profile and compact archive actions visibly/accessibly say `instead`.
+
+Regression coverage lives in `test/ui/live-archive-tests.js` (exact/no-match
+routing, navigation/audio separation, and rollover), `test/ui/live-info-tests.js`
+(artwork/About behavior), `test/episode-rail/` (72 show/archive checks), and
+`test/live-stream/` (61 default-policy checks including the live modal dock and
+explicit archive takeover; also run under strict autoplay policy).
+
 ### Show modal and Past episodes
 
 **What it does:** clicking a show's title, category line, or **More** opens the
@@ -229,12 +264,12 @@ These rules are load-bearing:
    footer band. At 360px and below the aggregate summary hides rather than
    wrapping the route.
 4. **The modal player owns a stable third region.** `#sheetPlayerDock` is outside
-   `.sheet-body` and `.sheet-foot` and mirrors the global archive `<audio>` for
-   any loaded episode—even one from another show. Browsing cannot hide it,
-   replace it, or move it. It shows the loaded show's artwork, title and date—not
-   the profile currently being browsed. Its title jumps to the playing episode and performs
-   the same lazy show-detail lookup as a front-card open. Closing/minimizing
-   hands transport back to the page player without stopping audio.
+   `.sheet-body` and `.sheet-foot` and mirrors the global source. For archive it
+   shows the loaded show's artwork, title and date—not the profile currently
+   being browsed. For live it shows current artwork, a persistent Live chip,
+   written state, and the same non-seekable transport as the page bar. Browsing
+   cannot hide, replace, or move it. Closing/minimizing hands transport back to
+   the page player without stopping audio.
 5. **Listening history uses progressive disclosure.** Show view reports only
    the selected episode's elapsed/remaining time or `Played`. Past episodes
    summarizes completed/in-progress counts and writes `N% listened`, `Played`,

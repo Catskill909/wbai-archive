@@ -80,6 +80,10 @@
     return location.pathname + (q.length ? '?' + q.join('&') : '');
   }
   var canHistory = !!(window.history && history.replaceState);
+  // A source identity in the in-sheet dock can deliberately hand the sheet back
+  // to the full Live Player. History still owns the close; this callback runs
+  // only after that sheet entry has actually been consumed.
+  var sheetAfterDismiss = null;
   // Filters never add a history entry — only the sheet does, so that one press
   // of Back means "close the sheet", not "undo six keystrokes of searching".
   function syncUrl(){
@@ -555,6 +559,7 @@
   var playerCurrent = document.getElementById('playerCurrent');
   var playerDuration = document.getElementById('playerDuration');
   var playerPhoto = document.getElementById('playerPhoto');
+  var playerLiveSource = document.getElementById('playerLiveSource');
   // fall back to the station icon (art background) if a show photo fails to load
   playerPhoto.addEventListener('error', function(){ playerPhoto.removeAttribute('src'); });
 
@@ -691,7 +696,9 @@
     return !!mp3 && barMode === 'archive' && !playerBar.hidden && nowPlaying.mp3 === mp3;
   }
   function sheetHasDifferentPlayer(mp3){
-    return !!mp3 && barMode === 'archive' && !playerBar.hidden && !!nowPlaying.mp3 && nowPlaying.mp3 !== mp3;
+    if(!mp3 || playerBar.hidden) return false;
+    if(barMode === 'live') return true;
+    return barMode === 'archive' && !!nowPlaying.mp3 && nowPlaying.mp3 !== mp3;
   }
   function playLabelFor(mp3, isLoading, isPlaying){
     var alt = (mp3 && mp3 === sheetMp3) ? sheetEpAlt : '';
@@ -790,12 +797,14 @@
       ? !!liveWanted
       : (!audio.paused && !audio.ended));
     playerToggle.classList.toggle('loading', loading);
-    playerToggle.setAttribute('aria-label',
-      loading ? 'Loading' : (playing ? 'Pause' : 'Play'));
+    playerToggle.setAttribute('aria-label', barMode === 'live'
+      ? (loading ? 'Live stream connecting' : (playing ? 'Pause live stream — playing' : 'Play live stream — paused'))
+      : (loading ? 'Loading' : (playing ? 'Pause' : 'Play')));
     playerIcon.outerHTML = playing
       ? '<svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
       : '<svg id="playerIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
     playerIcon = document.getElementById('playerIcon');
+    syncLiveIdentity();
     // The schedule's live pill reports the same state, so it repaints wherever
     // the transport does. Cheap: it returns immediately unless the dialog is up.
     if(typeof schedApplyLiveHighlight === 'function' && !schedRollDay()) schedApplyLiveHighlight();
@@ -807,8 +816,9 @@
       var loading = (mp3 === loadingMp3);
       var playing = (mp3 === nowPlaying.mp3) && !audio.paused && !audio.ended && !loading;
       var sheetAction = btn.classList.contains('sheet-play');
+      var episodeAction = btn.classList.contains('sheet-episode-play');
       var loadedInDock = sheetAction && sheetPlayerOwns(mp3);
-      var alternate = sheetAction && sheetHasDifferentPlayer(mp3);
+      var alternate = (sheetAction || episodeAction) && sheetHasDifferentPlayer(mp3);
       btn.classList.toggle('playing', playing);
       btn.classList.toggle('loading', loading);
       btn.classList.toggle('is-alternate', alternate);
@@ -817,11 +827,14 @@
       if(g) g.innerHTML = loading ? svgSpin() : (playing ? svgPause() : svgPlay());
       // the info sheet's button is the only one that spells its state out in words
       var lbl = btn.querySelector('.play-label');
+      var insteadLbl = btn.querySelector('.sheet-episode-instead');
       var action = playLabelFor(mp3, loading, playing);
       if(lbl) lbl.textContent = action;
+      if(insteadLbl) insteadLbl.hidden = !alternate || loading || playing;
       btn.setAttribute('aria-label', sheetAction
         ? action.replace(' · ', ' ')+' — '+btn.dataset.title
-        : (loading?'Loading ':(playing?'Pause ':'Play ')) + btn.dataset.title);
+        : (loading?'Loading ':(playing?'Pause ':'Play ')) + btn.dataset.title +
+          (episodeAction && alternate && !loading && !playing ? ' instead' : ''));
     });
     refreshToggleIcon();
     syncSheetPlayer();
@@ -1123,6 +1136,7 @@
   var livePlayer = document.getElementById('livePlayer');
   var livePlayerScrim = document.getElementById('livePlayerScrim');
   var lpClose = document.getElementById('lpClose');
+  var lpBadge = document.getElementById('lpBadge');
   var lpArt = document.getElementById('lpArt');
   var lpTitle = document.getElementById('lpTitle');
   var lpHost = document.getElementById('lpHost');
@@ -1134,6 +1148,8 @@
   var lpNote = document.getElementById('lpNote');
   var lpUpNext = document.getElementById('lpUpNext');
   var lpUpNextText = document.getElementById('lpUpNextText');
+  var lpArchive = document.getElementById('lpArchive');
+  var lpArchiveCount = document.getElementById('lpArchiveCount');
   var lpSong = document.getElementById('lpSong');
   var lpSongText = document.getElementById('lpSongText');
   var lpAlert = document.getElementById('lpAlert');
@@ -1198,6 +1214,34 @@
 
   function setLiveNote(text){ lpNote.textContent = text; }
 
+  function livePlayingNow(){ return !!liveWanted && !liveLoading && !liveErrored; }
+  function liveStateWord(){
+    if(liveErrored) return 'Unavailable';
+    if(liveLoading) return liveRecovering ? 'Reconnecting' : 'Connecting';
+    if(liveWanted) return 'Playing';
+    return liveEngaged ? 'Paused' : 'Ready';
+  }
+  function syncLiveIdentity(){
+    var playing = livePlayingNow();
+    if(lpBadge) lpBadge.classList.toggle('is-playing', playing);
+    if(lpToggle){
+      var lpState = liveStateWord().toLowerCase();
+      lpToggle.setAttribute('aria-label', liveLoading
+        ? 'Live stream '+lpState
+        : (playing ? 'Pause live stream — playing' : 'Play live stream — '+lpState));
+    }
+    if(playerLiveSource) playerLiveSource.hidden = barMode !== 'live';
+    playerBar.classList.toggle('is-playing', barMode === 'live' && playing);
+    if(barMode === 'live'){
+      var stateWord = liveStateWord();
+      setStatus(stateWord);
+      var title = (liveCurrent && liveCurrent.name) || 'WBAI 99.5 FM';
+      var infoBtn = document.getElementById('playerInfoBtn');
+      if(infoBtn) infoBtn.setAttribute('aria-label', 'Open Live Player for '+title+' — live stream '+stateWord.toLowerCase());
+    }
+    if(typeof syncSheetPlayer === 'function') syncSheetPlayer();
+  }
+
   function setLiveIcon(playing){
     lpIcon.outerHTML = playing
       ? '<svg id="lpIcon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
@@ -1205,7 +1249,7 @@
     lpIcon = document.getElementById('lpIcon');
     lpToggle.classList.toggle('playing', playing);
     lpToggle.setAttribute('aria-pressed', playing ? 'true' : 'false');
-    lpToggle.setAttribute('aria-label', playing ? 'Pause live stream' : 'Play live stream');
+    lpToggle.setAttribute('aria-label', playing ? 'Pause live stream — playing' : 'Play live stream — paused');
     // the appbar button doubles as a "you are listening" indicator; it always
     // just opens the modal — pause/stop lives in the docked player bar
     onAirBtn.classList.toggle('playing', playing);
@@ -1217,6 +1261,7 @@
     var onAirLabel = onAirBtn.querySelector('.on-air-label');
     if(onAirLabel) onAirLabel.textContent = playing ? 'On Air' : 'Listen Live';
     paintLiveCloseBtn();
+    syncLiveIdentity();
   }
 
   // The docked bar shows the same connect state as the modal, so the flag has to
@@ -1225,6 +1270,7 @@
     liveLoading = !!on;
     lpToggle.classList.toggle('loading', liveLoading);
     if(barMode === 'live') refreshToggleIcon();
+    else syncLiveIdentity();
   }
 
   // ---- What the close button promises. Closing the modal has never stopped the
@@ -1512,7 +1558,7 @@
   function showLiveReconnecting(){
     setLiveLoading(true);
     setLiveNote('Reconnecting…');
-    if(barMode === 'live') setStatus('Reconnecting…');
+    if(barMode === 'live') syncLiveIdentity();
   }
 
   function liveTick(){
@@ -1768,7 +1814,7 @@
     if(mediaMode === 'live') setPlaybackState('paused');
     if(liveErrored) return;      // liveFailed() owns the note and the bar status
     setLiveNote(liveEngaged ? 'Paused' : 'Tap play to tune in');
-    if(barMode === 'live'){ refreshToggleIcon(); setStatus('Paused'); }
+    if(barMode === 'live') refreshToggleIcon();
   }
 
   // The one and only way audio starts. Always a new element, always a new
@@ -1791,7 +1837,10 @@
     startLiveTicker();
     setLiveLoading(true);
     setLiveNote(auto ? 'Reconnecting…' : 'Connecting…');
-    if(barMode === 'live'){ refreshToggleIcon(); setStatus(auto ? 'Reconnecting…' : 'Connecting…'); }
+    // Live owns the global player as soon as the listener explicitly asks for
+    // it. That makes Connecting visible in the page bar or the sheet projection
+    // without claiming that audio is already playing.
+    showLiveBar();
     paintLiveCloseBtn();          // connecting counts: closing now still hands over
     var el = liveAudio = newLiveEl();
     el.src = liveSrc();
@@ -1899,12 +1948,12 @@
       playerSub.textContent = (liveCurrent.dj ? 'with ' + liveCurrent.dj + ' · ' : '') + 'WBAI 99.5 FM · Live';
     }
     setPlayerPhoto(liveCurrent.photo || '');
+    syncLiveIdentity();
   }
   function showLiveBar(){
     barMode = 'live';
     playerBar.classList.add('live');
     paintLiveBar();
-    setStatus('<span class="player-live"><span class="player-live-dot"></span>Live</span>');
     showPlayerBar();
     refreshToggleIcon();
   }
@@ -1946,10 +1995,39 @@
       if(!liveIsLive) times += ' · schedule may be delayed';
       lpTimes.textContent = times; lpTimes.hidden = false;
     } else { lpTimes.hidden = true; }
+    var currentArchive = latestArchiveRowForShow(liveCurrent.altid);
+    if(currentArchive){
+      var count = episodesFor(currentArchive).length;
+      lpArchiveCount.textContent = count;
+      lpArchive.hidden = false;
+      lpArchive.dataset.altid = liveCurrent.altid;
+      lpArchive.setAttribute('aria-label', 'Past episodes for '+(liveCurrent.name || 'this show')+', '+count+(count === 1 ? ' episode' : ' episodes'));
+    } else {
+      if(document.activeElement === lpArchive) lpToggle.focus();
+      lpArchive.hidden = true;
+      lpArchive.removeAttribute('data-altid');
+      lpArchive.removeAttribute('aria-label');
+    }
     if(liveNext && liveNext.name){
       lpUpNextText.textContent = liveNext.name + (liveNext.start ? ' · ' + liveNext.start : '');
       lpUpNext.hidden = false;
-    } else { lpUpNext.hidden = true; }
+      var nextArchive = latestArchiveRowForShow(liveNext.altid);
+      lpUpNext.disabled = !nextArchive;
+      if(nextArchive){
+        lpUpNext.dataset.altid = liveNext.altid;
+        lpUpNext.setAttribute('aria-label', 'Show information and past episodes for '+liveNext.name+', up next'+(liveNext.start ? ' at '+liveNext.start : ''));
+      } else {
+        if(document.activeElement === lpUpNext) lpToggle.focus();
+        lpUpNext.removeAttribute('data-altid');
+        lpUpNext.removeAttribute('aria-label');
+      }
+    } else {
+      if(document.activeElement === lpUpNext) lpToggle.focus();
+      lpUpNext.hidden = true;
+      lpUpNext.disabled = true;
+      lpUpNext.removeAttribute('data-altid');
+      lpUpNext.removeAttribute('aria-label');
+    }
     // Now-playing track — shown for any show (talk shows play intro songs too),
     // whenever the feed carries one; disappears the moment it clears it (the 15s
     // poll drives this repaint).
@@ -1970,7 +2048,11 @@
   var livePlayerReturnFocus = null;
   function openLivePlayer(){
     if(livePlayer.classList.contains('show')) return;
-    if(typeof closeSheet === 'function' && sheet && sheet.classList.contains('show')) closeSheet();
+    if(typeof closeSheet === 'function' && sheet && sheet.classList.contains('show')){
+      sheetAfterDismiss = openLivePlayer;
+      closeSheet();
+      return;
+    }
     paintLivePlayer();
     // reflect whatever the stream is currently doing
     if(!lpAlert.hidden) setLiveNote('');          // the alert says it all
@@ -2101,6 +2183,8 @@
   lpClose.addEventListener('click', closeLivePlayer);
   livePlayerScrim.addEventListener('click', closeLivePlayer);
   lpToggle.addEventListener('click', toggleLive);
+  lpArchive.addEventListener('click', function(){ openLiveShowArchive(liveCurrent && liveCurrent.altid); });
+  lpUpNext.addEventListener('click', function(){ openLiveShowProfile(liveNext && liveNext.altid); });
 
   // ---------------- Keyboard shortcuts ----------------
   // Space = play/pause, ←/→ = ±SKIP_SECONDS, matching the lock screen and the
@@ -2445,6 +2529,10 @@
     render();
     setClock();
     schedInvalidate();   // the schedule is derived from these rows; keep it in step
+    // Stable current/up-next routes depend on the playable rows, which arrive
+    // after the first now-playing paint on a cold load.
+    paintLivePlayer();
+    if(barMode === 'live') paintLiveBar();
     // The episode rail is derived from them too — an open sheet still holding
     // the pre-refresh list would offer episodes that have just rotated out.
     if(sheet && sheet.classList.contains('show')){
@@ -2599,6 +2687,7 @@
   var sheetPlayerToggle = document.getElementById('sheetPlayerToggle');
   var sheetPlayerOpen = document.getElementById('sheetPlayerOpen');
   var sheetPlayerArt = document.getElementById('sheetPlayerArt');
+  var sheetPlayerLive = document.getElementById('sheetPlayerLive');
   var sheetReturnFocus = null;
   var sheetRowId = null;        // which archive row the sheet is currently showing
   var sheetMp3 = null;
@@ -3618,7 +3707,8 @@
             '<span class="listen-progress sheet-episode-progress"'+(s.kind === 'part' && !playing && !loading ? '' : ' hidden')+' aria-hidden="true"></span>'+
           '</button>'+
           '<button class="sheet-episode-play play-btn'+(playing?' playing':'')+(loading?' loading':'')+'" type="button" '+
-            playAttrs(e, subLine, e.photo || photo, loading, playing)+'>'+glyph(loading, playing)+'</button>'+
+            playAttrs(e, subLine, e.photo || photo, loading, playing)+'>'+glyph(loading, playing)+
+            '<span class="sheet-episode-instead"'+(sheetHasDifferentPlayer(e.mp3) && !loading && !playing ? '' : ' hidden')+'>instead</span></button>'+
         '</div>';
     }).join('');
     return '<div class="sheet-archive-head">'+
@@ -3876,21 +3966,57 @@
     wrap.appendChild(btn);
   }
 
-  // The modal covers the page player, so this dock represents the global archive
-  // audio regardless of which show or route is being browsed. It never lives in
-  // the repainting body/footer and therefore cannot be displaced by a selection.
+  // The modal covers the page player, so this dock projects whichever global
+  // source owns it. It is not a second player: both modes call the same transport
+  // functions as the page bar, and it never lives in the repainting body/footer.
   function syncSheetPlayer(){
     if(!sheetPlayerDock) return;
     var row = barMode === 'archive' && nowPlaying.mp3 ? rowByMp3(nowPlaying.mp3) : null;
-    var active = !!row && !playerBar.hidden;
+    var live = barMode === 'live' && !playerBar.hidden;
+    var active = (live || !!row) && !playerBar.hidden;
     sheetPlayerDock.hidden = !active;
     sheet.classList.toggle('has-sheet-player', active);
     if(!active){
+      sheetPlayerDock.classList.remove('live');
       sheetPlayerDock.classList.remove('is-playing');
+      if(sheetPlayerLive) sheetPlayerLive.hidden = true;
       syncSelectedListening();
       syncSheetFade();
       return;
     }
+    if(live){
+      var livePlaying = livePlayingNow();
+      var liveWord = liveStateWord();
+      var liveTitle = (liveCurrent && liveCurrent.name) || 'WBAI 99.5 FM';
+      var liveArt = (liveCurrent && liveCurrent.photo) || '';
+      sheetPlayerDock.classList.add('live');
+      sheetPlayerDock.classList.toggle('is-playing', livePlaying);
+      if(sheetPlayerLive) sheetPlayerLive.hidden = false;
+      document.getElementById('sheetPlayerState').textContent = liveWord;
+      document.getElementById('sheetPlayerTitle').textContent = liveTitle;
+      document.getElementById('sheetPlayerEpisode').textContent = 'WBAI 99.5 FM';
+      if(sheetPlayerArt){
+        if(liveArt && sheetPlayerArt.getAttribute('src') !== liveArt){
+          sheetPlayerArt.classList.remove('failed');
+          sheetPlayerArt.src = liveArt;
+        } else if(!liveArt){
+          sheetPlayerArt.classList.remove('failed');
+          sheetPlayerArt.removeAttribute('src');
+        }
+      }
+      document.getElementById('sheetPlayerGlyph').innerHTML = liveLoading ? svgSpin() : (livePlaying ? svgPause() : svgPlay());
+      sheetPlayerToggle.disabled = liveLoading;
+      sheetPlayerToggle.setAttribute('aria-label', liveLoading
+        ? 'Live stream '+liveWord.toLowerCase()
+        : (livePlaying ? 'Pause live stream — playing' : 'Play live stream — '+liveWord.toLowerCase()));
+      delete sheetPlayerOpen.dataset.id;
+      sheetPlayerOpen.setAttribute('aria-label', 'Open Live Player for '+liveTitle+' — live stream '+liveWord.toLowerCase());
+      syncSelectedListening();
+      syncSheetFade();
+      return;
+    }
+    sheetPlayerDock.classList.remove('live');
+    if(sheetPlayerLive) sheetPlayerLive.hidden = true;
     var loading = row.mp3 === loadingMp3;
     var playing = !loading && !audio.paused && !audio.ended;
     var word = loading ? 'Loading' : (playing ? 'Playing now' : (audio.ended ? 'Finished' : 'Paused'));
@@ -3936,14 +4062,16 @@
   // With the persistent dock visible, closing always hands that transport back
   // to the page player — even if a different show's profile is being browsed.
   function sheetWillMinimize(){
-    return barMode === 'archive' && !playerBar.hidden && !!nowPlaying.mp3;
+    return !playerBar.hidden && (barMode === 'live' || (barMode === 'archive' && !!nowPlaying.mp3));
   }
   function paintSheetCloseBtn(){
     if(!sheetClose) return;        // called from updatePlayButtons() before wiring
     var min = sheetWillMinimize();
     sheetClose.classList.toggle('minimize', min);
     sheetClose.setAttribute('aria-label', min
-      ? 'Minimize — this episode stays in the player below'
+      ? (barMode === 'live'
+          ? 'Minimize — the live stream stays in the player below'
+          : 'Minimize — this episode stays in the player below')
       : 'Close show info');
     sheetClose.setAttribute('title', min ? 'Minimize' : 'Close');
   }
@@ -3975,6 +4103,34 @@
     }
     return null;
   }
+
+  // Live feed IDs and archive `sho` values are the same upstream slug. Case and
+  // accidental surrounding whitespace are harmless; titles are never a fallback
+  // because a plausible route to the wrong show is worse than no route.
+  function archiveShowId(value){ return String(value || '').trim().toLowerCase(); }
+  function latestArchiveRowForShow(altid){
+    var key = archiveShowId(altid);
+    if(!key) return null;
+    var newest = null;
+    for(var i=0; i<rows.length; i++){
+      var r = rows[i];
+      if(!r.mp3 || archiveShowId(r.sho) !== key) continue;
+      if(!newest || (r.dt || 0) > (newest.dt || 0)) newest = r;
+    }
+    return newest;
+  }
+
+  function openLiveShowRoute(altid, view){
+    var r = latestArchiveRowForShow(altid);
+    if(!r) return;
+    // This is navigation only. Closing the Live Player deliberately leaves its
+    // source and connection untouched; openSheetById owns history/focus as usual.
+    closeLivePlayer();
+    openSheetById(r.id, onAirBtn);
+    if(view === 'archive') setSheetView('archive', 'back');
+  }
+  function openLiveShowArchive(altid){ openLiveShowRoute(altid, 'archive'); }
+  function openLiveShowProfile(altid){ openLiveShowRoute(altid, 'show'); }
 
   // Paint exactly one modal route. The archive replaces the profile body and
   // empties its footer; the player dock sits outside both and is never rebuilt.
@@ -4098,6 +4254,9 @@
     sheetView = 'show';
     if(sheetScrollCue) sheetScrollCue.hidden = true;
     syncUrl();
+    var after = sheetAfterDismiss;
+    sheetAfterDismiss = null;
+    if(after) setTimeout(after, 0);
   }
 
   // Back/forward: the entry either names a sheet or it doesn't — and,
@@ -4156,7 +4315,11 @@
     if(btn){ togglePlayFrom(btn); return; }
     if(e.target.closest('.sheet-player-toggle')){ togglePlayback(); return; }
     var playerOpen = e.target.closest('.sheet-player-open');
-    if(playerOpen){ selectEpisode(playerOpen.dataset.id); return; }
+    if(playerOpen){
+      if(barMode === 'live') openLivePlayer();
+      else selectEpisode(playerOpen.dataset.id);
+      return;
+    }
     var episode = e.target.closest('.sheet-episode-open');
     if(episode){ selectEpisode(episode.dataset.id); return; }
     if(e.target.closest('.sheet-restart')){ restartSheetEpisode(); return; }

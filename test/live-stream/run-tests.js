@@ -69,6 +69,15 @@ const RETURN_TO_TAB = `document.dispatchEvent(new Event('visibilitychange'));
   await p.send('Page.navigate', { url: APP });
   await sleep(2500);
 
+  // A multi-episode show guarantees that S4 can exercise both the profile's
+  // named takeover action and the compact controls in its Past episodes route.
+  const archivePayload = await (await fetch(APP + 'api/archive')).json();
+  const archiveRows = (archivePayload.shows || []).filter(r => r.mp3 && r.sho);
+  const archiveCounts = {};
+  archiveRows.forEach(r => { archiveCounts[String(r.sho).toLowerCase()] = (archiveCounts[String(r.sho).toLowerCase()] || 0) + 1; });
+  const browseFixture = archiveRows.find(r => archiveCounts[String(r.sho).toLowerCase()] > 1);
+  if (!browseFixture) throw new Error('S4: no multi-episode archive fixture');
+
   const probe = () => p.eval(PROBE);
   const openModal = async () => { await p.click('#onAirBtn'); await sleep(400); };
   const closeModal = async () => { await p.click('#lpClose'); await sleep(400); };
@@ -130,6 +139,7 @@ const RETURN_TO_TAB = `document.dispatchEvent(new Event('visibilitychange'));
 
   console.log('\n=== S4: archive playback tears the stream down ===');
   await mark('S4 archive takeover');
+  const beforeBrowse = await probe();
   await closeModal();
   // Start an archive episode the way a listener does: open its info sheet, then
   // press Play in the sheet footer.
@@ -142,10 +152,47 @@ const RETURN_TO_TAB = `document.dispatchEvent(new Event('visibilitychange'));
   // render .show-open and both reach the same .sheet-play, so this path holds
   // whichever view the app defaults to.
   await p.eval(`
-    var opener = document.querySelector('.show-open');
-    if(!opener) throw new Error('no .show-open in the listing');
+    var q=document.getElementById('q');
+    q.value=${JSON.stringify(browseFixture.title)};
+    q.dispatchEvent(new Event('input',{bubbles:true}));
+    var opener=Array.from(document.querySelectorAll('.show-open')).find(function(e){return e.dataset.id===${JSON.stringify(String(browseFixture.id))};});
+    if(!opener) throw new Error('no fixture .show-open in the listing');
     opener.click(); return 1;`);
   await sleep(600);
+  const whileBrowsing = await probe();
+  const liveDock = await p.eval(`
+    var dock=document.getElementById('sheetPlayerDock');
+    var chip=document.getElementById('sheetPlayerLive');
+    var play=document.querySelector('.sheet-play');
+    return {
+      visible:!dock.hidden && dock.getBoundingClientRect().height > 0,
+      live:dock.classList.contains('live'),
+      chip:chip && !chip.hidden ? chip.textContent.trim() : '',
+      state:document.getElementById('sheetPlayerState').textContent.trim(),
+      openAria:document.getElementById('sheetPlayerOpen').getAttribute('aria-label') || '',
+      playLabel:(play && play.querySelector('.play-label') || {}).textContent || ''
+    };`);
+  s = await stats();
+  check('browsing a show leaves the live connection untouched',
+    s.open === 1 && whileBrowsing.currentTime > beforeBrowse.currentTime,
+    `open=${s.open} before=${beforeBrowse.currentTime}s after=${whileBrowsing.currentTime}s`);
+  check('the modal projects the same live transport while the page bar is covered',
+    liveDock.visible && liveDock.live && liveDock.chip === 'Live', JSON.stringify(liveDock));
+  check('the live dock names both source and state accessibly',
+    /live stream playing/i.test(liveDock.openAria) && /^Playing$/.test(liveDock.state), JSON.stringify(liveDock));
+  check('the selected archive action warns that it will replace live',
+    / instead$/.test(liveDock.playLabel), liveDock.playLabel);
+  await p.eval(`document.querySelector('.sheet-archive-open').click(); return 1;`);
+  await sleep(250);
+  const archiveWarnings = await p.eval(`return {
+    visible:Array.from(document.querySelectorAll('.sheet-episode-instead')).filter(function(e){return !e.hidden;}).length,
+    aria:Array.from(document.querySelectorAll('.sheet-episode-play')).map(function(e){return e.getAttribute('aria-label') || '';})
+  };`);
+  check('compact archive-row actions also warn before taking over live',
+    archiveWarnings.visible > 0 && archiveWarnings.aria.every(a => / instead$/.test(a)),
+    JSON.stringify(archiveWarnings));
+  await p.eval(`document.getElementById('sheetRouteBack').click(); return 1;`);
+  await sleep(200);
   const archiveStarted = await p.eval(`
     var play = document.querySelector('.sheet-play');
     if(!play) return false;

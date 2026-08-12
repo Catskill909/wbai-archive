@@ -410,3 +410,25 @@ join the archive sheet makes:
 Covered end to end by `test/ui/live-info-tests.js` (54 assertions). Read that
 file's header before editing it: one dispatched Escape stops headless Chrome
 rendering for the rest of the session, which is why its Escape section is last.
+
+## Show/archive integration — 2026-08-12
+
+The Live Player now provides two exact-ID navigation routes without changing
+the artwork contract: current **Past episodes** opens the matching archive route,
+while interactive **Up next** opens the next show's profile. The server forwards
+`next.altid`; missing or unmatched IDs leave the controls hidden or plainly
+disabled rather than falling back to title similarity.
+
+Navigation never changes playback. When live owns the global player and a show
+modal covers the page bar, `#sheetPlayerDock` projects that same live transport
+with artwork, a text **Live** chip, written state, and Play/Pause only. Its
+identity returns to the full Live Player through the existing modal/history
+lifecycle. The full player, modal dock, and phone-visible page identity all keep
+the Live text when paused or connecting; motion is reserved for actual playback
+and removed under reduced motion.
+
+Archive actions say `instead` whenever live or a different episode owns the
+player. The source changes only when that explicit orange action is pressed.
+`test/ui/live-archive-tests.js` covers exact/no-match routing and rollover;
+`test/live-stream/run-tests.js` covers live continuation through browsing, the
+modal projection, explicit replacement copy, and socket teardown on takeover.

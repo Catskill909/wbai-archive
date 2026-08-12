@@ -1847,6 +1847,8 @@ async function getNowPlaying() {
     },
     next: {
       name: unescapeHtml(nxt.sh_name),
+      // Stable archive identity for exact-ID next-show routing on the client.
+      altid: clean(nxt.sh_altid),
       start: nxt.nxt_start || '',
       end: nxt.nxt_end || '',
     },

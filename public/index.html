@@ -528,6 +528,7 @@
         <button class="sheet-player-open" id="sheetPlayerOpen" type="button" aria-label="Show the episode in the player">
           <span class="sheet-player-state">
             <span class="sheet-player-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="sheet-player-live" id="sheetPlayerLive" hidden><i aria-hidden="true"></i>Live</span>
             <span id="sheetPlayerState">Playing now</span>
           </span>
           <span class="sheet-player-copy">
@@ -648,7 +649,7 @@
         <path d="M6 9l6 6 6-6" />
       </svg>
     </button>
-    <div class="lp-badge" id="lpBadge"><span class="on-air-dot" aria-hidden="true"></span>On Air · WBAI 99.5 FM</div>
+    <div class="lp-badge" id="lpBadge"><span class="on-air-dot" aria-hidden="true"></span>Live · WBAI 99.5 FM</div>
 
     <!-- The artwork IS the way into the show's description — no badge pinned to its
        corner. The card is a centred stack, and anything parked in one corner of
@@ -675,6 +676,12 @@
       <h2 class="lp-title" id="lpTitle">WBAI 99.5 FM</h2>
       <p class="lp-host" id="lpHost" hidden></p>
       <p class="lp-times" id="lpTimes" hidden></p>
+      <button class="lp-archive" id="lpArchive" type="button" hidden>
+        <span>Past episodes</span>
+        <span class="lp-archive-count" id="lpArchiveCount"></span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+      </button>
     </div>
 
     <div class="lp-transport">
@@ -693,8 +700,12 @@
       </label>
     </div>
 
-    <p class="lp-upnext" id="lpUpNext" hidden><span class="lp-upnext-label">Up next</span> <span
-        id="lpUpNextText"></span></p>
+    <button class="lp-upnext" id="lpUpNext" type="button" hidden disabled>
+      <span class="lp-upnext-label">Up next</span>
+      <span id="lpUpNextText"></span>
+      <svg class="lp-upnext-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+    </button>
 
     <p class="lp-song" id="lpSong" hidden><span class="lp-song-label">Now playing</span> <span id="lpSongText"></span>
     </p>
@@ -849,7 +860,10 @@
     <div class="player-main">
       <button class="player-info player-open" id="playerInfoBtn" type="button"
         aria-label="Show info for the current episode">
-        <span class="player-title" id="playerTitle">&mdash;</span>
+        <span class="player-title-line">
+          <span class="player-live-source" id="playerLiveSource" hidden><i aria-hidden="true"></i>Live</span>
+          <span class="player-title" id="playerTitle">&mdash;</span>
+        </span>
         <span class="player-sub" id="playerSub"></span>
       </button>
       <div class="player-scrub">
