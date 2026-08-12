@@ -212,11 +212,13 @@ reload the page. `npm start` serves them directly.
   episodes interaction contract; the filename records the rail it replaced.
 
 Regression suites are zero-dependency too — headless Chrome over the DevTools
-protocol, driving the unmodified app. Each needs the server running on :8080:
+protocol, driving the unmodified app. Each needs the server running on :8080;
+the show-modal suite can instead receive a deployed `BASE` URL:
 
 ```sh
 ./test/live-stream/run.sh            # live audio; also run with --strict
 ./test/episode-rail/run.sh            # Show/Past episodes modal, listening memory, dock
+BASE=https://wbai.supersoul.top ./test/episode-rail/run.sh  # same suite against production
 ./test/touch/run.sh                  # coarse-pointer affordances, overlay scroll locks
 ./test/to-top/run.sh                 # back-to-top: show/hide rule, geometry, hit tests
 ./test/ui/run.sh                     # listing, rows, reload, clock

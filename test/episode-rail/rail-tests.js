@@ -10,7 +10,10 @@
 //   5. the modal player survives browsing and never covers the archive list.
 const { connect, sleep } = require('../live-stream/cdp.js');
 
-const BASE = 'http://localhost:8080';
+// Defaults to local development; BASE=https://… runs the identical read/interaction
+// audit against a deployed build. Browser state is isolated in the suite's
+// temporary Chrome profile, so listening-history fixtures never touch a user's.
+const BASE = process.env.BASE || 'http://localhost:8080';
 let fails = 0, checks = 0;
 function check(ok, msg, extra) {
   checks++;
@@ -48,6 +51,9 @@ const READ_PROFILE = `
   var play = sheet.querySelector('.sheet-play');
   var date = sheet.querySelector('.sheet-selected-date');
   var archive = sheet.querySelector('.sheet-archive-open');
+  var archivePrimary = sheet.querySelector('.sheet-archive-primary');
+  var archiveCount = sheet.querySelector('.sheet-archive-count');
+  var archiveArrow = sheet.querySelector('.sheet-archive-arrow');
   var dock = document.getElementById('sheetPlayerDock');
   var cue = document.getElementById('sheetScrollCue');
   var sr = sheet.getBoundingClientRect();
@@ -65,6 +71,10 @@ const READ_PROFILE = `
     playAlternate: play ? play.classList.contains('is-alternate') : false,
     playInset: pr && selr ? Math.round(pr.left - selr.left) : -1,
     archive: !!archive,
+    archiveCompact: !!archivePrimary,
+    archiveArrowGap: archiveCount && archiveArrow
+      ? Math.round(archiveArrow.getBoundingClientRect().left - archiveCount.getBoundingClientRect().right)
+      : -1,
     count: archive ? +(archive.querySelector('.sheet-archive-count') || {}).textContent : 0,
     dockHidden: dock.hidden,
     playVisible: !!pr && pr.top >= sr.top && pr.bottom <= sr.bottom,
@@ -148,6 +158,8 @@ const READ_ARCHIVE = `
       'the primary action always names its episode date', s.playLabel);
     check(s.archive && s.count === fx.many.length,
       'one Past episodes row reports the whole archive', [s.count, fx.many.length]);
+    check(s.archiveCompact && s.archiveArrowGap >= 0 && s.archiveArrowGap <= 10,
+      'Past episodes label, count and chevron read as one compact route', s.archiveArrowGap);
     check(s.dockHidden, 'the player dock is absent before audio is loaded');
     check(!s.playAlternate, 'without loaded audio the selected broadcast keeps the primary treatment');
     check(s.playAria.includes(s.playLabel.replace(' · ', ' ')),

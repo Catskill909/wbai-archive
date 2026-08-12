@@ -3685,10 +3685,12 @@
     if(list.length < 2) return '';
     var summary = listeningSummary(list);
     return '<button class="sheet-archive-open" type="button">'+
-        '<span class="sheet-archive-label">Past episodes</span>'+
-        '<span class="sheet-archive-count">'+list.length+'</span>'+
+        '<span class="sheet-archive-primary">'+
+          '<span class="sheet-archive-label">Past episodes</span>'+
+          '<span class="sheet-archive-count">'+list.length+'</span>'+
+          '<svg class="sheet-archive-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>'+
+        '</span>'+
         '<span class="sheet-archive-summary"'+(summary ? '' : ' hidden')+'>'+esc(summary)+'</span>'+
-        '<svg class="sheet-archive-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>'+
       '</button>';
   }
 

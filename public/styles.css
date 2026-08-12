@@ -2321,6 +2321,7 @@
   @media (hover:hover) and (pointer:fine){
     .sheet-archive-open:hover{ background:var(--surface-hover); color:var(--ink); }
   }
+  .sheet-archive-primary{ display:inline-flex; align-items:center; gap:.55rem; flex:none; }
   .sheet-archive-label{ font-size:.83rem; font-weight:750; }
   .sheet-archive-count{
     padding:.12rem .42rem; border-radius:99px; background:var(--surface-3);
@@ -2329,7 +2330,7 @@
   .sheet-archive-summary{
     margin-left:auto; color:var(--ink-faint); font-size:.7rem; white-space:nowrap;
   }
-  .sheet-archive-arrow{ flex:none; width:16px; height:16px; color:var(--ink-dim); }
+  .sheet-archive-arrow{ flex:none; width:16px; height:16px; margin-left:-.1rem; color:var(--ink-dim); }
 
   /* ---- past episodes route ----
      Rows have enough room to say date, listening state, retention and action in

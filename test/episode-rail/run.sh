@@ -12,8 +12,9 @@ cd "$(dirname "$0")"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 [ -x "$CHROME" ] || { echo "Chrome not found at $CHROME"; exit 1; }
 
-curl -sf -m 3 http://localhost:8080/healthz >/dev/null \
-  || { echo "the app must be running on :8080 (node server.js)"; exit 1; }
+BASE="${BASE:-http://localhost:8080}"
+curl -sf -m 15 "$BASE/healthz" >/dev/null \
+  || { echo "the app is not healthy at $BASE"; exit 1; }
 
 PROFILE="${TMPDIR:-/tmp}/wbai-rail-chrome-profile"
 cleanup() { pkill -f "$PROFILE" 2>/dev/null || true; }
@@ -38,5 +39,5 @@ while [ $i -lt 40 ]; do
 done
 
 # Node 20 needs the flag for a WebSocket client; Node 21+ has it natively.
-node --experimental-websocket rail-tests.js 2>&1 \
+BASE="$BASE" node --experimental-websocket rail-tests.js 2>&1 \
   | grep -v ExperimentalWarning | grep -v 'Use \`node'

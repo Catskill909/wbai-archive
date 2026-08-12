@@ -102,6 +102,21 @@ does this for you.
 8. First load triggers a live scrape of the WBAI archive (cached for 5 minutes
    thereafter).
 
+### Deployed show-modal smoke test
+
+The routed Show/Past episodes browser suite can exercise the deployed site with
+the same isolated Chrome profile and current-data fixtures used locally:
+
+```sh
+BASE=https://wbai.supersoul.top test/episode-rail/run.sh
+```
+
+This performs real navigation and an archive-media play request, but Chrome is
+muted: it proves source handoff, transport state, identity, layout and listening
+memory—not audible output. Confirm sound once on a real browser/phone after a
+player release. On 2026-08-12, commit `4b6f352` passed 65/65 in production and
+the deployed JS/CSS hashes matched that commit exactly.
+
 ### Notes
 
 - **No build secrets or database.** The only state is caches — in memory, plus

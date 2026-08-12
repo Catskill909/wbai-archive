@@ -60,7 +60,8 @@ lazy `/api/showinfo/<altid>` lookup and repaints when richer show data arrives.
 - The primary action always names the short date: `Play · Aug 12`, `Resume · Aug
   12`, `Pause · Aug 12`, or `Loading · Aug 12`.
 - `Past episodes N` replaces the profile with the archive list. It never expands
-  the profile footer.
+  the profile footer. Label, count, and chevron stay together as one compact
+  route affordance inside the full-width 44px target.
 - The visible Back control returns to Show view; Close/minimize leaves the modal.
 - Tapping an episode row selects it and returns to Show view without playing.
 - Tapping a row's explicit play icon starts that episode and leaves the archive
@@ -125,10 +126,11 @@ Run:
 
 ```sh
 test/episode-rail/run.sh
+BASE=https://wbai.supersoul.top test/episode-rail/run.sh  # deployed smoke/regression
 ```
 
-The suite derives fixtures from the current archive and checks desktop and phone
-states. It covers:
+The suite derives fixtures from the selected environment's current archive and
+checks desktop and phone states in an isolated Chrome profile. It covers:
 
 - profile-first opening and dated Play labels;
 - archive replacement rather than footer growth;
@@ -142,4 +144,4 @@ states. It covers:
 - phone target sizing, left-aligned selected action, short-phone artwork, an
   explicit overflow guide, and changing playback state in row accessible names.
 
-The suite currently contains 65 checks.
+The suite currently contains 67 checks.

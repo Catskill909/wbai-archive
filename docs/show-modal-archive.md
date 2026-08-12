@@ -1,36 +1,86 @@
 # Show modal and past-archive UX brainstorm
 
-Status: locally implemented as an uncommitted prototype on 2026-08-12. The
-repository remains on `main`; nothing has been pushed.
+Status: routed redesign and playback refinements deployed from `main` at commit
+`4b6f352` on 2026-08-12. A subsequent compact Past episodes affordance is local
+and not yet deployed.
 
-## Local prototype checkpoint
+## Production checkpoint — 2026-08-12
 
-The prototype implements Path A below: one modal, an internal Past episodes
-route, and a persistent modal-level archive player dock.
+Path A below is now the production interface: one modal, an internal Past
+episodes route, and a persistent modal-level archive player dock.
 
-The routed modal was subsequently deployed and audited on a real phone on
-2026-08-12. A second local refinement now implements the findings from that
-audit: orange is the permanent transport color, teal is playback/listening
-state, the dock includes the loaded show's artwork, replacement actions say
-`instead`, and clipped short-phone content gets a measured, explicit guide.
+The deployed refinement makes orange the permanent transport color and teal the
+playback/listening state color. The dock includes the loaded show's artwork;
+replacement actions say `instead`; clipped short-phone content gets a measured,
+explicit guide.
 
-- Rollback baseline: local `main` commit `84237ae`.
-- No feature branch was retained, no commit was created, and nothing was pushed.
-- The brainstorm document was untracked before implementation and is not part of
-  that baseline.
+- Deployed release: `4b6f352` on `main`/`origin/main`.
+- Production `/app.js` and `/styles.css` SHA-256 values matched the files in that
+  commit byte-for-byte during the audit.
+- `https://wbai.supersoul.top/healthz` returned HTTP 200 and `ok:true`: storage
+  was writable and mounted on the established named volume, `freshVolume:false`,
+  with 110 show-info records, 127 feeds, no quarantined files, and no feed
+  failures.
+- The isolated browser suite passed **65/65 against production**, including
+  desktop, phone, 320×568 short-phone overflow, real archive-media selection,
+  dock identity, cross-episode browsing, and listening memory.
+- The owner separately confirmed audible playback and the interface on the live
+  site and a physical phone; headless Chrome is muted and cannot prove sound.
 - Changed application files: `public/index.html`, `public/app.js`, and
   `public/styles.css`.
 - The former rail regression at `test/episode-rail/` now tests the routed modal,
   listening memory, and persistent dock while keeping its established command.
 - `docs/episode-rail.md` documents the implemented behavior.
 
-The local visual review used a 24-episode Democracy Now! fixture on desktop and
-phone, plus active/loading player states. After a secondary audit, the modal-
-specific browser suite passes 50/50, the overlay motion suite 14/14, and the
-touch suite 49/49. The repository unit suite passes. The broad UI suite passed
-all modal, layout, scrolling, row, reload, clock, and live-info sections; its two
-external-link target checks failed because the test browser did not leave
-localhost, unrelated to this modal change.
+The post-deploy styling follow-up binds **Past episodes**, its count, and its
+chevron into one compact visual group while retaining the full-width 44px tap
+target. Its local browser suite passes **67/67**; production correctly remains
+on the 65-check deployed version until this follow-up is pushed.
+
+## Post-launch interface audit — 2026-08-12
+
+### Outcome
+
+No release-blocking hierarchy, overflow, transport-ownership, or responsive
+layout problem remains in the audited paths. The important questions are now
+answered in stable places: profile identity above, selected action in the
+footer, and loaded audio in the dock. Making the desktop modal larger or adding
+more always-visible controls would spend clarity without solving a current
+problem.
+
+### Fixed in the local follow-up
+
+- **Past episodes looked quieter but slightly disconnected.** The label and
+  chevron could read as separate weak marks across the width of a navigation
+  row. Label, count, and chevron now form one tight group; the subdued listening
+  summary can still sit at the far edge. The route remains visually secondary
+  to Play but is plainly one action.
+
+### Worth improving next
+
+1. **Put the date in archive-row Play accessible names.** The visual row makes
+   the target date obvious, but the icon-only button currently announces the
+   show title rather than `Play Democracy Now! — Aug 12`. This is a small,
+   high-confidence screen-reader improvement and does not require visual UI.
+2. **Complete manual assistive-technology coverage.** The automated suite proves
+   focus targets, names, written state, reduced-motion CSS, and reflow geometry;
+   it cannot prove VoiceOver/TalkBack cadence, 200%/400% zoom, or Windows forced
+   colors. Those remain the most valuable validation gaps.
+
+### Observe before changing
+
+- **`Show more` versus `More show information`.** One expands the description;
+  the other scrolls toward clipped content. They are structurally and visually
+  different, and current phone testing found the path clear. Change the cue to
+  `Continue below` only if new listeners confuse the two; do not optimize away
+  a successful affordance from one theoretical wording concern.
+- **Return after tapping the dock identity.** Tapping the loaded show in the dock
+  deliberately changes profile context. A `Back to [show] archive` trail would
+  help only if listeners frequently use that jump and then feel stranded. It
+  would also add state and chrome, so wait for evidence.
+- **Archive density.** Retention, duration, listening status, and Play coexist in
+  each row. Current rows scan well and untouched episodes stay quiet. Revisit
+  only if real history-heavy accounts make rows noisy.
 
 ## Secondary audit — 2026-08-12
 
@@ -70,8 +120,8 @@ the program description; switching shows should resolve the new program.
 - VoiceOver/TalkBack reading order and announcement cadence for route changes,
   playback state, and the seek slider.
 - 200%/400% zoom, large text, phone landscape, and Windows forced-colors.
-- Whether a playing episode should expose Pause in both the selected action and
-  dock, or reserve transport solely for the dock after user feedback.
+- The duplicate-transport question is resolved: when the selected episode is
+  loaded, the dock alone owns Play/Pause.
 - Whether following a different show's in-modal player needs a visible “return
   to the archive I was browsing” affordance. The current action is a deliberate
   context switch and browser history is not expanded.
@@ -85,9 +135,9 @@ closes the one modal entry. This avoids a hidden history step for a route that
 does not change the URL. It remains a user-testing question rather than an
 accidental undocumented behavior.
 
-## The problem in one sentence
+## The historical problem in one sentence
 
-The show modal currently tries to be a show profile, an episode picker, a
+The old show modal tried to be a show profile, an episode picker, a
 selection confirmation, and an audio player in one vertically growing surface.
 Each part works on its own, but their combined states compete for the same space
 and can hide the information or transport the listener needs.
@@ -559,9 +609,9 @@ alone:
 - Which episodes have I already heard, and where did I stop?
 - How do I get back, and how do I leave?
 
-## Current recommendation
+## Decision
 
-Prototype **Path A: the internal Past episodes route with a persistent
-now-playing dock**. It most directly restores the show card, prevents the
+Keep **Path A: the internal Past episodes route with a persistent now-playing
+dock**. It restores the show card, prevents the
 archive from pushing the profile away, and gives browsing and playback stable,
 separate homes while preserving the compact modal character.

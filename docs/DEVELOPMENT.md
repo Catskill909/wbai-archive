@@ -223,6 +223,8 @@ These rules are load-bearing:
    it, returns to Show view, updates the URL with `replaceState`, and does not
    load audio. Only the row's separate Play button starts playback; it leaves
    the archive route and scroll position in place.
+   The `Past episodes`, count, and chevron marks are one compact visual group;
+   the whole neutral row remains its 44px navigation target.
 4. **The modal player owns a stable third region.** `#sheetPlayerDock` is outside
    `.sheet-body` and `.sheet-foot` and mirrors the global archive `<audio>` for
    any loaded episode—even one from another show. Browsing cannot hide it,
