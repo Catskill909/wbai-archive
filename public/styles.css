@@ -1684,7 +1684,7 @@
     background:transparent; color:var(--ink-dim); font:600 .78rem/1 var(--font-body);
     cursor:pointer; transition:background .15s ease, color .15s ease;
   }
-  .sheet-route-back svg{ width:17px; height:17px; }
+  .sheet-route-back svg{ width:17px; height:17px; color:var(--ink); }
   @media (hover:hover) and (pointer:fine){
     .sheet-route-back:hover{ background:var(--surface-hover); color:var(--ink); }
   }
@@ -2313,24 +2313,29 @@
   }
   .sheet-profile-links{ margin:0; padding-top:.8rem; border-top:1px solid var(--outline); }
   .sheet-archive-open{
-    width:100%; min-height:44px; display:flex; align-items:center; gap:.65rem;
-    padding:.5rem .15rem; border:0; border-radius:8px;
-    background:transparent; color:var(--ink-dim); font-family:inherit; text-align:left;
-    cursor:pointer; transition:background .15s ease, color .15s ease;
+    width:100%; min-height:44px; display:flex; align-items:center; justify-content:center;
+    padding:.55rem .75rem; border:1px solid var(--outline-strong); border-radius:12px;
+    background:var(--surface-2); color:var(--ink-dim); font-family:inherit; text-align:center;
+    cursor:pointer; transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
   @media (hover:hover) and (pointer:fine){
-    .sheet-archive-open:hover{ background:var(--surface-hover); color:var(--ink); }
+    .sheet-archive-open:hover{ background:var(--surface-3); color:var(--ink); border-color:var(--outline-strong); }
   }
-  .sheet-archive-primary{ display:inline-flex; align-items:center; gap:.55rem; flex:none; }
+  .sheet-archive-primary{ display:inline-flex; align-items:center; gap:.55rem; flex:0 1 auto; min-width:0; }
   .sheet-archive-label{ font-size:.83rem; font-weight:750; }
   .sheet-archive-count{
     padding:.12rem .42rem; border-radius:99px; background:var(--surface-3);
     color:var(--ink-dim); font-family:var(--font-mono); font-size:.68rem;
   }
-  .sheet-archive-summary{
-    margin-left:auto; color:var(--ink-faint); font-size:.7rem; white-space:nowrap;
-  }
+  .sheet-archive-history{ display:inline-flex; align-items:center; gap:.55rem; min-width:0; }
+  .sheet-archive-history[hidden]{ display:none; }
+  .sheet-archive-sep, .sheet-archive-summary{ color:var(--ink-faint); font-size:.7rem; white-space:nowrap; }
+  .sheet-archive-summary{ overflow:hidden; text-overflow:ellipsis; }
   .sheet-archive-arrow{ flex:none; width:16px; height:16px; margin-left:-.1rem; color:var(--ink-dim); }
+
+  /* Preserve the route instead of squeezing it: on the narrowest phones the
+     profile already reports selected-episode progress immediately above. */
+  @media (max-width:360px){ .sheet-archive-history{ display:none; } }
 
   /* ---- past episodes route ----
      Rows have enough room to say date, listening state, retention and action in

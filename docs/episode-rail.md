@@ -60,8 +60,9 @@ lazy `/api/showinfo/<altid>` lookup and repaints when richer show data arrives.
 - The primary action always names the short date: `Play · Aug 12`, `Resume · Aug
   12`, `Pause · Aug 12`, or `Loading · Aug 12`.
 - `Past episodes N` replaces the profile with the archive list. It never expands
-  the profile footer. Label, count, and chevron stay together as one compact
-  route affordance inside the full-width 44px target.
+  the profile footer. Label, count, listening summary, and chevron stay together
+  in one centered line inside a muted, full-width 44px target. At 360px and
+  below the redundant aggregate summary hides before the route can squeeze.
 - The visible Back control returns to Show view; Close/minimize leaves the modal.
 - Tapping an episode row selects it and returns to Show view without playing.
 - Tapping a row's explicit play icon starts that episode and leaves the archive
@@ -144,4 +145,4 @@ checks desktop and phone states in an isolated Chrome profile. It covers:
 - phone target sizing, left-aligned selected action, short-phone artwork, an
   explicit overflow guide, and changing playback state in row accessible names.
 
-The suite currently contains 67 checks.
+The suite currently contains 72 checks.

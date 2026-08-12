@@ -3688,9 +3688,12 @@
         '<span class="sheet-archive-primary">'+
           '<span class="sheet-archive-label">Past episodes</span>'+
           '<span class="sheet-archive-count">'+list.length+'</span>'+
+          '<span class="sheet-archive-history"'+(summary ? '' : ' hidden')+'>'+
+            '<span class="sheet-archive-sep" aria-hidden="true">·</span>'+
+            '<span class="sheet-archive-summary">'+esc(summary)+'</span>'+
+          '</span>'+
           '<svg class="sheet-archive-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>'+
         '</span>'+
-        '<span class="sheet-archive-summary"'+(summary ? '' : ' hidden')+'>'+esc(summary)+'</span>'+
       '</button>';
   }
 
@@ -3808,7 +3811,8 @@
     if(summaryEl){
       var summary = listeningSummary(episodesFor(r));
       summaryEl.textContent = summary;
-      summaryEl.hidden = !summary;
+      var history = summaryEl.closest('.sheet-archive-history');
+      if(history) history.hidden = !summary;
     }
   }
 

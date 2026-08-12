@@ -74,7 +74,7 @@ navigation and transport inside the existing dialog:
   only while content remains below the scroll body, instead of relying on a
   visual fade alone.
 
-The browser regression is `test/episode-rail/run.sh` (67 checks after the
+The browser regression is `test/episode-rail/run.sh` (72 checks after the
 secondary audit). This is automated evidence, not a replacement for the manual
 screen-reader, zoom/reflow, and forced-colors passes below.
 

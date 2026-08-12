@@ -54,12 +54,15 @@ const READ_PROFILE = `
   var archivePrimary = sheet.querySelector('.sheet-archive-primary');
   var archiveCount = sheet.querySelector('.sheet-archive-count');
   var archiveArrow = sheet.querySelector('.sheet-archive-arrow');
+  var archiveHistory = sheet.querySelector('.sheet-archive-history');
   var dock = document.getElementById('sheetPlayerDock');
   var cue = document.getElementById('sheetScrollCue');
   var sr = sheet.getBoundingClientRect();
   var pr = play && play.getBoundingClientRect();
   var sel = sheet.querySelector('.sheet-selected');
   var selr = sel && sel.getBoundingClientRect();
+  var ar = archive && archive.getBoundingClientRect();
+  var apr = archivePrimary && archivePrimary.getBoundingClientRect();
   return {
     open: sheet.classList.contains('show'),
     profile: !sheet.classList.contains('archive-view'),
@@ -72,9 +75,14 @@ const READ_PROFILE = `
     playInset: pr && selr ? Math.round(pr.left - selr.left) : -1,
     archive: !!archive,
     archiveCompact: !!archivePrimary,
+    archiveCenterDelta: ar && apr
+      ? Math.round(Math.abs((ar.left + ar.width/2) - (apr.left + apr.width/2)))
+      : -1,
     archiveArrowGap: archiveCount && archiveArrow
       ? Math.round(archiveArrow.getBoundingClientRect().left - archiveCount.getBoundingClientRect().right)
       : -1,
+    archiveSummary: archiveHistory && !archiveHistory.hidden
+      ? archiveHistory.textContent.trim().replace(/\\s+/g, ' ') : '',
     count: archive ? +(archive.querySelector('.sheet-archive-count') || {}).textContent : 0,
     dockHidden: dock.hidden,
     playVisible: !!pr && pr.top >= sr.top && pr.bottom <= sr.bottom,
@@ -97,6 +105,11 @@ const READ_ARCHIVE = `
   var accent = getComputedStyle(accentProbe).color; accentProbe.remove();
   var firstPlay = sheet.querySelector('.sheet-episode-play');
   var toggle = document.getElementById('sheetPlayerToggle');
+  var back = document.getElementById('sheetRouteBack');
+  var backArrow = back.querySelector('svg');
+  var inkProbe = document.createElement('i');
+  inkProbe.style.color = 'var(--ink)'; document.body.appendChild(inkProbe);
+  var ink = getComputedStyle(inkProbe).color; inkProbe.remove();
   return {
     archive: sheet.classList.contains('archive-view'),
     routebar: !document.getElementById('sheetRoutebar').hidden,
@@ -119,6 +132,7 @@ const READ_ARCHIVE = `
     dockPlaying: dock.classList.contains('is-playing'),
     toggleOrange: getComputedStyle(toggle).backgroundColor === accent,
     rowActionOrange: firstPlay ? getComputedStyle(firstPlay).color === accent : false,
+    backArrowBright: getComputedStyle(backArrow).color === ink,
     colors: [accent, getComputedStyle(toggle).backgroundColor,
       firstPlay ? getComputedStyle(firstPlay).color : 'none'],
     backTarget: (function(){
@@ -160,6 +174,8 @@ const READ_ARCHIVE = `
       'one Past episodes row reports the whole archive', [s.count, fx.many.length]);
     check(s.archiveCompact && s.archiveArrowGap >= 0 && s.archiveArrowGap <= 10,
       'Past episodes label, count and chevron read as one compact route', s.archiveArrowGap);
+    check(s.archiveCenterDelta <= 1,
+      'the muted Past episodes route is centered as one intent', s.archiveCenterDelta);
     check(s.dockHidden, 'the player dock is absent before audio is loaded');
     check(!s.playAlternate, 'without loaded audio the selected broadcast keeps the primary treatment');
     check(s.playAria.includes(s.playLabel.replace(' · ', ' ')),
@@ -173,6 +189,7 @@ const READ_ARCHIVE = `
     await sleep(150);
     s = await p.eval(READ_ARCHIVE);
     check(s.archive && s.routebar, 'Past episodes replaces the profile and gets a real Back header');
+    check(s.backArrowBright, 'the archive Back chevron has a bright, visible exit cue');
     check(s.rows === fx.many.length, 'the archive view contains every episode', [s.rows, fx.many.length]);
     check(s.footEmpty, 'the archive does not grow the profile footer');
     check(s.bodyClearsDock, 'the scroll body reserves the dock region');
@@ -292,6 +309,8 @@ const READ_ARCHIVE = `
   await open(p, part.id);
   let s = await p.eval(READ_PROFILE);
   check(/^Resume · /.test(s.playLabel), 'partly heard selected episode offers Resume with its date', s.playLabel);
+  check(/in progress/.test(s.archiveSummary) && s.archiveCenterDelta <= 1,
+    'listening summary stays centered inside the single-line archive route', s.archiveSummary);
   check(/listened/.test(s.selectedStatus) && /left/.test(s.selectedStatus),
     'Show view explains elapsed and remaining listening time', s.selectedStatus);
   await p.clickInPlace('.sheet-archive-open');

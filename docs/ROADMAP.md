@@ -10,8 +10,9 @@ documents only what is built and working.
 Ordered most valuable first. Each is independent; none blocks another.
 
 The Show/Past episodes modal is not a roadmap proposal: its routed redesign is
-live at `4b6f352`, including the artwork/color/short-phone refinements. A compact
-Past episodes label/count/chevron follow-up exists locally. The feature is
+live at `4b6f352`, including the artwork/color/short-phone refinements. A centered
+single-line Past episodes container and brighter archive Back-chevron follow-up
+exist locally. The feature is
 documented in [DEVELOPMENT.md](DEVELOPMENT.md),
 [show-modal-archive.md](show-modal-archive.md), and
 [episode-rail.md](episode-rail.md). Its remaining device/user-feedback checks are
