@@ -63,7 +63,7 @@ const CONCURRENCY = 5; // a small station's Apache. Do not raise this.
 const NOTABLE = new Set([
   'CAP_CHANGED',      // the cap moved; the migration arithmetic is stale
   'CLAIM_MISMATCH',   // the 2026-07-29 regression, caught while it is still a claim
-  'FEED_UNFETCHED',   // a live feed the harvest will never fetch: silent content loss
+  'FEED_DELISTED',    // a live feed no longer claimed by the current archive listing
   'FEED_LOST',        // including 200-with-zero-bytes, the July failure mode
   'SLUG_GONE',        // a show we remember is no longer offered anywhere
 ]);
@@ -238,8 +238,8 @@ function diff(prevState, now) {
   // alongside this fix) and synthesizes display rows straight from the feed
   // when no listing row exists (applyFeeds's `feedOnlySlugs`), so this is no
   // longer silent content loss — but it is still worth a human's attention:
-  // it means upstream dropped a real show from its own listing.
-  const unfetched = (r) => !r.claimed && live(r);
+  // it records either a removed XML claim or a show leaving the current lineup.
+  const delisted = (r) => !r.claimed && live(r);
 
   for (const [slug, r] of Object.entries(now.feeds)) {
     const p = prev[slug];
@@ -267,12 +267,17 @@ function diff(prevState, now) {
     } else if (!mismatch(r) && mismatch(p)) {
       changes.push({ kind: 'CLAIM_RESOLVED', slug, detail: live(r) ? 'feed now exists' : 'listing stopped advertising it' });
     }
-    if (unfetched(r) && !unfetched(p)) {
+    if (delisted(r) && !delisted(p)) {
+      const placement = r.listed === false
+        ? (r.scheduled === true
+          ? 'absent from the archive listing but still present on the current schedule'
+          : 'absent from the current archive listing and schedule')
+        : 'still listed, but no longer marked with an XML button';
       changes.push({
-        kind: 'FEED_UNFETCHED', slug,
-        detail: `${r.items} items, but the listing shows no XML button — the server will pick this up ` +
-          'on its slow unclaimed probe (or already has); still worth a look, since it means upstream ' +
-          'dropped a real show from its own listing',
+        kind: 'FEED_DELISTED', slug,
+        detail: `${r.items} items in a live feed; ${placement} — the app keeps remembered episodes ` +
+          'as feed-only history. This can be normal after a lineup update, but is worth noting as ' +
+          'part of the schedule change.',
       });
     }
 
@@ -360,12 +365,20 @@ if (require.main !== module) return;
   const feeds = {};
   // The claim is recorded after probing, so a 304 (which carries the previous
   // record forward wholesale) still gets today's claim rather than yesterday's.
-  for (const r of results) feeds[r.slug] = Object.assign({}, r, { claimed: claims.get(r.slug) === true });
+  const listed = new Set([...fromDropdown, ...fromRows]);
+  const scheduled = new Set(fromSchedule);
+  for (const r of results) {
+    feeds[r.slug] = Object.assign({}, r, {
+      claimed: claims.get(r.slug) === true,
+      listed: listed.has(r.slug),
+      scheduled: scheduled.has(r.slug),
+    });
+  }
 
   const liveFeeds = results.filter((r) => r.status === 200 && !r.empty && r.items > 0);
   const isLive = (r) => r.status === 200 && !r.empty && r.items > 0;
   const mismatched = Object.values(feeds).filter((r) => r.claimed && !isLive(r));
-  const unfetchable = Object.values(feeds).filter((r) => !r.claimed && isLive(r));
+  const delisted = Object.values(feeds).filter((r) => !r.claimed && isLive(r));
   const now = {
     scannedAt: new Date().toISOString(),
     sources: {
@@ -379,7 +392,7 @@ if (require.main !== module) return;
     withoutFeed: results.length - liveFeeds.length,
     claimed: Object.values(feeds).filter((r) => r.claimed).length,
     mismatched: mismatched.length,
-    unfetchable: unfetchable.length,
+    delisted: delisted.length,
     maxItems: liveFeeds.reduce((m, r) => Math.max(m, r.items), 0),
     notModified: results.filter((r) => r.notModified).length,
     feeds,
@@ -402,13 +415,13 @@ if (require.main !== module) return;
     console.log(`  feeds live: ${now.withFeed}   no feed: ${now.withoutFeed}   ` +
       `max items/feed: ${now.maxItems}   304s: ${now.notModified}`);
     console.log(`  listing claims a feed: ${now.claimed}   ` +
-      `claim without a feed: ${now.mismatched}   feed without a claim: ${now.unfetchable}`);
+      `claim without a feed: ${now.mismatched}   live feed not currently claimed: ${now.delisted}`);
     if (now.mismatched) {
       console.log('  ! ' + now.mismatched + ' show(s) advertise a podcast XML button with no feed behind it.');
       console.log('    Publishing off `hasRSS` would put them in the app. Gate on the fetch.');
     }
 
-    const order = ['CAP_CHANGED', 'CLAIM_MISMATCH', 'FEED_UNFETCHED', 'FEED_LOST', 'FEED_APPEARED', 'SLUG_GONE', 'NEW_FEED', 'CLAIM_RESOLVED', 'NEW_SLUG', 'ITEM_COUNT', 'NEW_EPISODE'];
+    const order = ['CAP_CHANGED', 'CLAIM_MISMATCH', 'FEED_DELISTED', 'FEED_LOST', 'FEED_APPEARED', 'SLUG_GONE', 'NEW_FEED', 'CLAIM_RESOLVED', 'NEW_SLUG', 'ITEM_COUNT', 'NEW_EPISODE'];
     const list = (cs) => {
       cs.slice().sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
         .forEach((c) => console.log(`    ${c.kind.padEnd(15)} ${c.slug.padEnd(24)} ${c.detail}`));

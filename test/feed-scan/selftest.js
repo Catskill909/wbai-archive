@@ -62,7 +62,7 @@ check('NEW_SLUG when an unseen slug arrives with no feed', () => {
 });
 
 // The claims matter to this one: a feed that appears *without* the listing
-// advertising it is a FEED_UNFETCHED as well, and rightly so. The plain
+// advertising it is a FEED_DELISTED as well, and rightly so. The plain
 // FEED_APPEARED is the case where the button arrives with the feed behind it.
 check('FEED_APPEARED when a known 404 slug starts serving', () => {
   const c = diff(
@@ -157,14 +157,29 @@ check('CLAIM_RESOLVED when the listing stops advertising it', () => {
 // The mirror case: a live feed the listing does not advertise. The server
 // eventually catches these (unclaimed slow probe, plus row synthesis when
 // there is no listing row at all — see server.js applyFeeds) but it is still
-// worth a human's attention, since it means upstream dropped a real show from
-// its own listing.
-check('FEED_UNFETCHED when a live feed has no XML button', () => {
+// worth a human's attention as evidence of either a removed XML claim or a show
+// leaving the current lineup.
+check('FEED_DELISTED when a live feed remains after a schedule update', () => {
   const c = diff(
-    state({ dn: { slug: 'dn', status: 404, claimed: false } }, 5),
-    { maxItems: 5, feeds: { dn: liveFeed({ slug: 'dn', claimed: false }) } });
-  assert.ok(kinds(c).includes('FEED_UNFETCHED'), kinds(c));
-  assert.match(c.find((x) => x.kind === 'FEED_UNFETCHED').detail, /slow unclaimed probe/);
+    state({ retired: { slug: 'retired', status: 404, claimed: false, listed: true, scheduled: true } }, 5),
+    { maxItems: 5, feeds: { retired: liveFeed({
+      slug: 'retired', claimed: false, listed: false, scheduled: false,
+    }) } });
+  assert.ok(kinds(c).includes('FEED_DELISTED'), kinds(c));
+  const detail = c.find((x) => x.kind === 'FEED_DELISTED').detail;
+  assert.match(detail, /absent from the current archive listing and schedule/);
+  assert.match(detail, /feed-only history/);
+  assert.match(detail, /normal after a lineup update/);
+});
+
+check('FEED_DELISTED distinguishes a removed XML button from a retired show', () => {
+  const c = diff(
+    state({ current: liveFeed({ slug: 'current', claimed: true, listed: true, scheduled: true }) }, 5),
+    { maxItems: 5, feeds: { current: liveFeed({
+      slug: 'current', claimed: false, listed: true, scheduled: true,
+    }) } });
+  assert.deepStrictEqual(kinds(c), ['FEED_DELISTED']);
+  assert.match(c[0].detail, /still listed, but no longer marked with an XML button/);
 });
 
 console.log('\nsilence is real, not blindness:');

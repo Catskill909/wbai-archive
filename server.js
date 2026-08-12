@@ -377,6 +377,20 @@ const feedStore = readIrreplaceableJson(FEEDS_PATH, {});
 // show vanish from every list it publishes while the feed kept working.
 const KNOWN_SLUGS_PATH = process.env.KNOWN_SLUGS_PATH || path.join(DATA_DIR, 'known-slugs.json');
 const knownSlugs = new Set(readJsonFile(KNOWN_SLUGS_PATH, []));
+
+/**
+ * Shows remembered from an earlier listing but not claimed by today's listing.
+ *
+ * A lineup update makes this set grow legitimately: a retired show disappears
+ * from the current schedule/listing while its feed and older recordings remain
+ * useful archive material. Keep discovery memory separate from current station
+ * intent so getArchive can probe those feeds without putting their rows back
+ * into the derived weekly schedule (`source:'feed-only'` is excluded there).
+ */
+function unclaimedFeedSlugs(claimedSlugs) {
+  const claimed = new Set(claimedSlugs);
+  return [...knownSlugs].filter((slug) => !claimed.has(slug));
+}
 /**
  * Feed harvest diagnostics.
  *
@@ -992,7 +1006,7 @@ async function getArchive() {
 
     // Anything remembered that today's scrape does not claim as a live feed —
     // covers both "still listed, button gone" and "not listed anywhere at all".
-    const unclaimedSlugs = [...knownSlugs].filter((s) => !feedSlugs.includes(s));
+    const unclaimedSlugs = unclaimedFeedSlugs(feedSlugs);
     if (Date.now() - feedsHarvestedAt > FEEDS_TTL) {
       if (!feedsInFlight) {
         // refreshStaleFeeds only ever refreshes a slug that IS in today's scrape
@@ -3418,4 +3432,11 @@ if (require.main === module) {
   });
 }
 
-module.exports = { probeMount, pickPhotoMap, parseArchive, mergeFeedItems };
+module.exports = {
+  probeMount,
+  pickPhotoMap,
+  parseArchive,
+  mergeFeedItems,
+  unclaimedFeedSlugs,
+  applyFeeds,
+};

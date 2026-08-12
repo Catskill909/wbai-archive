@@ -77,7 +77,7 @@ what decides whether the scheduled workflow fails and mails you.
 | --- | --- |
 | `CAP_CHANGED` | **max episodes-per-feed moved — the migration plan is now out of date** |
 | `CLAIM_MISMATCH` | the listing advertises a feed that isn't there — the 2026-07-29 regression |
-| `FEED_UNFETCHED` | a live feed with no XML button — upstream dropped a real show from its own listing |
+| `FEED_DELISTED` | a live feed is no longer claimed by the current archive listing — often a retired show after a lineup update |
 | `FEED_LOST` | was serving, now isn't — including `200`-with-zero-bytes |
 | `SLUG_GONE` | a remembered slug is no longer offered anywhere |
 
@@ -102,6 +102,14 @@ failed four of the first eight runs. WBAI is bringing feeds online a show at a
 time — twenty slugs are still waiting for a first archived episode — and each one
 that arrives needs no action at all: the hourly harvest finds it. Alarming on a
 feed *arriving* only made sense while feeds were the thing being migrated to.
+
+`FEED_DELISTED` is a mention, not a deletion instruction. WBAI's late-July
+schedule correction replaced old shows and added new ones while archive2 and the
+app still held earlier recordings. The current lineup and the historical archive
+therefore should not have identical slug sets: the weekly schedule excludes
+`source:'feed-only'` rows, while the archive deliberately keeps their remembered,
+playable episodes. One transition is useful context about the lineup change; a
+wave of them can still mean the upstream listing parser or page has broken.
 
 ## Load
 

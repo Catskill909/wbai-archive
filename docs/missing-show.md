@@ -21,6 +21,15 @@ So: **anything older than the cutover is not evidence about how the station is
 configured today.** `tools/schedule-audit.js` takes `CUTOVER=YYYY-MM-DD` (default
 `2026-07-26`) and files those shows under `no-feed-old` — context, not a job.
 
+The inverse is intentional too: after the schedule is corrected, a retired show
+can disappear from archive2's current listing while its feed and earlier audio
+remain live. The app keeps those recordings as `source:'feed-only'` archive
+history, but excludes them from the derived weekly schedule. A `FEED_DELISTED`
+scan notice therefore records lineup turnover; it does not mean those older
+episodes should be removed. One retired show is normal context after an update.
+Many disappearing at once still deserve investigation because they can indicate a
+broken upstream listing or parser rather than a real programming change.
+
 The default is inferred and should be confirmed: the Wednesday 3 am rebroadcast
 recorded under `soundreb` on Jul 29 (old) and `ftsb` on Aug 5 (new), and `ftsb`
 has no Tuesday Jul 28 recording though retention would still be showing one.
@@ -56,7 +65,7 @@ reports where they disagree, in five kinds:
 | `no-feed` | archive2 advertises a feed, the app holds nothing. **The Soundboard shape.** Names the likely confessor field. |
 | `slot-unheld` | the station lists this slot, we hold no episode of the show |
 | `leak` | we hold a show with no `getrss` link upstream — the feed-only rule has been softened somewhere |
-| `feed-only` | we hold a show archive2 no longer lists at all (expected occasionally; a wave of them means a broken scrape) |
+| `feed-only` | historical episodes for a show archive2 no longer lists; expected after lineup changes, while a wave can mean a broken scrape |
 | `slot-unmatched` | the grid names a show no archive2 row resembles — most often just a spelling difference, so it is reported as *unmatched*, never as *missing* |
 
 It **remembers**: each run writes a snapshot (`data/schedule-audit.json`, atomic,

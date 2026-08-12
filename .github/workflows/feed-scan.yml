@@ -82,7 +82,7 @@ jobs:
             echo 'detail<<SCAN_DETAIL_EOF'
             if [ $CODE -eq 1 ]; then
               printf '%s\n' "$OUT" \
-                | grep -E '^ {4}(CAP_CHANGED|CLAIM_MISMATCH|FEED_UNFETCHED|FEED_LOST|SLUG_GONE)\b' \
+                | grep -E '^ {4}(CAP_CHANGED|CLAIM_MISMATCH|FEED_DELISTED|FEED_LOST|SLUG_GONE)\b' \
                 | sed 's/^ *//'
             elif [ $CODE -ge 2 ]; then
               printf '%s\n' "$OUT" | grep -E '^scan(:| failed:)' || printf '%s\n' "$OUT" | tail -3

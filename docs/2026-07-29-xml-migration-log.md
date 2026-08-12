@@ -89,7 +89,7 @@ is why `catchUpFeeds()` exists.
 
 **A feed advertised is not a feed that exists**, and the gap moves in both
 directions. `test/feed-scan/` now tracks the claim beside the reality
-(`CLAIM_MISMATCH`, `FEED_UNFETCHED`) precisely because nothing else would have
+(`CLAIM_MISMATCH`, now `FEED_DELISTED`) precisely because nothing else would have
 caught the regression above.
 
 ## Operational notes
