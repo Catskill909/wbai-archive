@@ -114,8 +114,10 @@ BASE=https://wbai.supersoul.top test/episode-rail/run.sh
 This performs real navigation and an archive-media play request, but Chrome is
 muted: it proves source handoff, transport state, identity, layout and listening
 memory—not audible output. Confirm sound once on a real browser/phone after a
-player release. On 2026-08-12, commit `4b6f352` passed 65/65 in production and
-the deployed JS/CSS hashes matched that commit exactly.
+player release. On 2026-08-12, commit `6222c7f` passed 72/72 in production and
+the deployed JS/CSS hashes matched that commit exactly. `/healthz` also confirmed
+the established named volume, unchanged instance id, `freshVolume:false`, 112
+show-info records, 127 feeds, and no feed failures or quarantined files.
 
 ### Notes
 

@@ -89,6 +89,9 @@ disclosure:
   status. Untouched episodes remain visually quiet.
 - Live playback temporarily outranks saved history on that row instead of
   stacking an equalizer, progress bar, completion check, and selection ring.
+- The active row has a restrained teal edge and light teal surface wash alongside
+  written `Playing`; the local post-launch polish raises that wash from 7% to
+  11% for faster scanning without competing with orange transport.
 
 Orange remains the transport/action color, including play and pause glyphs in
 archive rows and the dock's main toggle. Teal remains listening/playback state,

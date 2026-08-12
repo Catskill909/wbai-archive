@@ -1,8 +1,8 @@
 # Show modal and past-archive UX brainstorm
 
-Status: routed redesign and playback refinements deployed from `main` at commit
-`4b6f352` on 2026-08-12. A subsequent compact Past episodes affordance is local
-and not yet deployed.
+Status: routed redesign, playback refinements, compact Past episodes identity
+pill, and brighter archive Back cue deployed from `main` at commit `6222c7f` on
+2026-08-12. A hair-stronger playing-row tint is the only local follow-up.
 
 ## Production checkpoint — 2026-08-12
 
@@ -14,14 +14,14 @@ playback/listening state color. The dock includes the loaded show's artwork;
 replacement actions say `instead`; clipped short-phone content gets a measured,
 explicit guide.
 
-- Deployed release: `4b6f352` on `main`/`origin/main`.
+- Deployed release audited here: `6222c7f` on `main`/`origin/main`.
 - Production `/app.js` and `/styles.css` SHA-256 values matched the files in that
   commit byte-for-byte during the audit.
 - `https://wbai.supersoul.top/healthz` returned HTTP 200 and `ok:true`: storage
   was writable and mounted on the established named volume, `freshVolume:false`,
-  with 110 show-info records, 127 feeds, no quarantined files, and no feed
+  with 112 show-info records, 127 feeds, no quarantined files, and no feed
   failures.
-- The isolated browser suite passed **65/65 against production**, including
+- The isolated browser suite passed **72/72 against production**, including
   desktop, phone, 320×568 short-phone overflow, real archive-media selection,
   dock identity, cross-episode browsing, and listening memory.
 - The owner separately confirmed audible playback and the interface on the live
@@ -32,14 +32,17 @@ explicit guide.
   listening memory, and persistent dock while keeping its established command.
 - `docs/episode-rail.md` documents the implemented behavior.
 
-The post-deploy styling follow-up centers **Past episodes**, its count, listening
+The deployed styling follow-up centers **Past episodes**, its count, listening
 summary, and chevron on one line inside a compact muted pill below the show
 host/title. It retains a 44px tap target without forming another full-width
 footer band. The aggregate summary hides at 360px and below rather than
 wrapping. The archive Back chevron is brighter than its label so the return path
-reads immediately. Its local browser suite passes **72/72**;
-production correctly remains on the 65-check deployed version until this
-follow-up is pushed.
+reads immediately. Production and the local browser suite both pass **72/72**.
+
+The final local polish raises only the active archive row's teal surface mix
+from 7% to 11%. The teal edge, written `Playing`, orange transport, and player
+dock already identify it without color; this small lift improves at-a-glance
+scanning without turning the whole row into a second primary action.
 
 ## Post-launch interface audit — 2026-08-12
 
@@ -52,7 +55,7 @@ footer, and loaded audio in the dock. Making the desktop modal larger or adding
 more always-visible controls would spend clarity without solving a current
 problem.
 
-### Fixed in the local follow-up
+### Findings resolved
 
 - **Past episodes looked quieter but slightly disconnected.** The label and
   chevron could read as separate weak marks across the width of a navigation
@@ -64,6 +67,10 @@ problem.
   brighter primary ink; `Show info` stays muted. This adds a clear return cue and
   subtle balance against the close/minimize control without creating a second
   primary button.
+- **The active archive row was a hair too quiet.** Its existing teal edge and
+  written state were clear, but the 7% surface wash disappeared at a glance.
+  The local 11% wash is deliberately restrained; orange remains the transport
+  color and no layout or state behavior changes.
 
 ### Worth improving next
 

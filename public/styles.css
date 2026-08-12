@@ -2364,7 +2364,9 @@
     background:var(--surface-1); transition:background .15s ease;
   }
   .sheet-episode.is-playing{
-    background:color-mix(in srgb, var(--accent-2) 7%, var(--surface-1));
+    /* A restrained lift from the neutral rows: enough to find the audio at a
+       glance, while orange remains the only transport/action emphasis. */
+    background:color-mix(in srgb, var(--accent-2) 11%, var(--surface-1));
     box-shadow:inset 3px 0 var(--accent-2);
   }
   .sheet-episode-open{

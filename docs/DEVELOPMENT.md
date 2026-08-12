@@ -244,6 +244,8 @@ These rules are load-bearing:
    playback/history state, always paired with text, an equalizer, a check, or a
    bar. The equalizer animates only while audio is actually playing and becomes
    static under reduced motion.
+   The active archive row reinforces its written state with a teal edge and an
+   11% teal surface wash; do not strengthen it into a filled action treatment.
 6. **Descriptions remain program-level.** Priority is showinfo by `sho` slug,
    then the title-matched program directory, then `shortdesc`. Switching dates
    inside one slug intentionally keeps the program description. The feed's
