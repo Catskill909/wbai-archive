@@ -2313,8 +2313,9 @@
   }
   .sheet-profile-links{ margin:0; padding-top:.8rem; border-top:1px solid var(--outline); }
   .sheet-archive-open{
-    width:100%; min-height:44px; display:flex; align-items:center; justify-content:center;
-    padding:.55rem .75rem; border:1px solid var(--outline-strong); border-radius:12px;
+    width:auto; max-width:100%; min-height:44px; align-self:flex-start;
+    display:flex; align-items:center; justify-content:center;
+    padding:.5rem .8rem; border:1px solid var(--outline-strong); border-radius:999px;
     background:var(--surface-2); color:var(--ink-dim); font-family:inherit; text-align:center;
     cursor:pointer; transition:background .15s ease, color .15s ease, border-color .15s ease;
   }
@@ -2612,6 +2613,7 @@
     .sheet-head{ flex-direction:column; align-items:center; text-align:center; padding-right:0; gap:1rem; }
     .sheet-art{ width:min(184px, 48vw, 22dvh); height:min(184px, 48vw, 22dvh); }
     .sheet-titles{ align-items:center; }
+    .sheet-archive-open{ align-self:center; }
     .sheet-actions{ justify-content:flex-start; }
     .sheet-links{ justify-content:center; }
     /* .sheet-titles is shrink-to-fit inside a centred column, so flex-start

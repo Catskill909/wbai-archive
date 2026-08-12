@@ -61,8 +61,10 @@ lazy `/api/showinfo/<altid>` lookup and repaints when richer show data arrives.
   12`, `Pause · Aug 12`, or `Loading · Aug 12`.
 - `Past episodes N` replaces the profile with the archive list. It never expands
   the profile footer. Label, count, listening summary, and chevron stay together
-  in one centered line inside a muted, full-width 44px target. At 360px and
-  below the redundant aggregate summary hides before the route can squeeze.
+  in one centered line inside a muted 44px pill below the show host/title. At
+  360px and below the redundant aggregate summary hides before the route can
+  squeeze. Keeping this route with show identity removes a full-width band from
+  the selected-broadcast/player stack.
 - The visible Back control returns to Show view; Close/minimize leaves the modal.
 - Tapping an episode row selects it and returns to Show view without playing.
 - Tapping a row's explicit play icon starts that episode and leaves the archive

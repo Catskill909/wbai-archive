@@ -3769,12 +3769,13 @@
             (c.label ? '<span class="sheet-eyebrow">'+catIcon(r.cat)+esc(c.label)+'</span>' : '')+
             '<h2 id="sheetTitle">'+esc(r.title)+'</h2>'+
             (host ? '<div class="sheet-host">with '+esc(host)+'</div>' : '')+
+            episodeBrowseButton(r)+
           '</div>'+
         '</div>'+
         (desc ? '<div class="sheet-desc-wrap"><p class="sheet-desc" id="sheetDesc">'+esc(desc)+'</p></div>' : '')+
         (links ? '<div class="sheet-links sheet-profile-links">'+links+'</div>' : ''),
-      // One dated broadcast and one route to the archive. Episode count no longer
-      // changes this footer's height; the separate player dock owns transport.
+      // One dated broadcast. Archive navigation belongs to the show identity
+      // above; the footer stays about this selection and nothing else.
       foot:
         '<div class="sheet-selected">'+
           '<span class="sheet-selected-k">Selected broadcast</span>'+
@@ -3785,7 +3786,7 @@
             retentionBadge(r)+
           '</div>'+listen+
           (play ? '<div class="sheet-actions">'+play+restart+'</div>' : '')+
-        '</div>'+episodeBrowseButton(r)
+        '</div>'
     };
   }
 

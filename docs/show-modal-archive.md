@@ -33,10 +33,11 @@ explicit guide.
 - `docs/episode-rail.md` documents the implemented behavior.
 
 The post-deploy styling follow-up centers **Past episodes**, its count, listening
-summary, and chevron on one line inside a muted container while retaining the
-full-width 44px tap target. The aggregate summary hides at 360px and below
-rather than wrapping. The archive Back chevron is brighter than its label so the
-return path reads immediately. Its local browser suite passes **72/72**;
+summary, and chevron on one line inside a compact muted pill below the show
+host/title. It retains a 44px tap target without forming another full-width
+footer band. The aggregate summary hides at 360px and below rather than
+wrapping. The archive Back chevron is brighter than its label so the return path
+reads immediately. Its local browser suite passes **72/72**;
 production correctly remains on the 65-check deployed version until this
 follow-up is pushed.
 
@@ -56,8 +57,9 @@ problem.
 - **Past episodes looked quieter but slightly disconnected.** The label and
   chevron could read as separate weak marks across the width of a navigation
   row, and the listening summary looked like unrelated footer metadata. All four
-  parts now form one centered, single-line intent inside a muted container. The
-  route remains visually secondary to Play but is plainly one action.
+  parts now form one centered, single-line intent inside a muted pill attached
+  to the show identity. The route remains visually secondary to Play, is plainly
+  one action, and no longer creates another horizontal layer above the player.
 - **The archive Back path lacked edge contrast.** Only its chevron now uses the
   brighter primary ink; `Show info` stays muted. This adds a clear return cue and
   subtle balance against the close/minimize control without creating a second

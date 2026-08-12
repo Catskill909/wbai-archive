@@ -224,8 +224,10 @@ These rules are load-bearing:
    load audio. Only the row's separate Play button starts playback; it leaves
    the archive route and scroll position in place.
    `Past episodes`, count, listening summary, and chevron form one centered line
-   in a muted container; the whole row remains its 44px navigation target. At
-   360px and below the aggregate summary hides rather than wrapping the route.
+   in a muted pill directly below the show host (or title when host is absent).
+   The pill remains a 44px navigation target without creating a third full-width
+   footer band. At 360px and below the aggregate summary hides rather than
+   wrapping the route.
 4. **The modal player owns a stable third region.** `#sheetPlayerDock` is outside
    `.sheet-body` and `.sheet-foot` and mirrors the global archive `<audio>` for
    any loaded episode—even one from another show. Browsing cannot hide it,

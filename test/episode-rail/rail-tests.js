@@ -63,6 +63,8 @@ const READ_PROFILE = `
   var selr = sel && sel.getBoundingClientRect();
   var ar = archive && archive.getBoundingClientRect();
   var apr = archivePrimary && archivePrimary.getBoundingClientRect();
+  var identityEnd = sheet.querySelector('.sheet-host') || document.getElementById('sheetTitle');
+  var ier = identityEnd && identityEnd.getBoundingClientRect();
   return {
     open: sheet.classList.contains('show'),
     profile: !sheet.classList.contains('archive-view'),
@@ -78,6 +80,8 @@ const READ_PROFILE = `
     archiveCenterDelta: ar && apr
       ? Math.round(Math.abs((ar.left + ar.width/2) - (apr.left + apr.width/2)))
       : -1,
+    archiveIsPill: ar ? ar.width < sr.width * .85 : false,
+    archiveUnderIdentity: ar && ier ? ar.top >= ier.bottom : false,
     archiveArrowGap: archiveCount && archiveArrow
       ? Math.round(archiveArrow.getBoundingClientRect().left - archiveCount.getBoundingClientRect().right)
       : -1,
@@ -174,8 +178,9 @@ const READ_ARCHIVE = `
       'one Past episodes row reports the whole archive', [s.count, fx.many.length]);
     check(s.archiveCompact && s.archiveArrowGap >= 0 && s.archiveArrowGap <= 10,
       'Past episodes label, count and chevron read as one compact route', s.archiveArrowGap);
-    check(s.archiveCenterDelta <= 1,
-      'the muted Past episodes route is centered as one intent', s.archiveCenterDelta);
+    check(s.archiveCenterDelta <= 1 && s.archiveIsPill && s.archiveUnderIdentity,
+      'the muted Past episodes route is a compact pill under show identity',
+      [s.archiveCenterDelta, s.archiveIsPill, s.archiveUnderIdentity]);
     check(s.dockHidden, 'the player dock is absent before audio is loaded');
     check(!s.playAlternate, 'without loaded audio the selected broadcast keeps the primary treatment');
     check(s.playAria.includes(s.playLabel.replace(' · ', ' ')),
