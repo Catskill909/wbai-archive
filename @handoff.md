@@ -42,6 +42,7 @@ Do not collapse those into one state. Navigation must not change the audio. Only
 
 - Live and archive audio share one global bottom player and one Media Session.
 - When live owns the player, clicking the bar's artwork/title already reopens the Live Player.
+- The bottom bar already creates a red **Live** status marker, but that marker lives in `.player-status`, which is hidden at phone widths. If song metadata replaces the fallback subtitle, a phone may have no persistent visible live-source label. The integration must fix that.
 - Starting archive audio stops live audio; starting live audio stops archive audio. They never play simultaneously.
 - Live stream connections follow the one-connection/never-reuse rule. Read `docs/big-audio-bug.md` and `docs/live-audio-pattern.md` before touching transport code.
 
@@ -65,6 +66,7 @@ The current live schedule card already handles the “two possible destinations�
 4. When live owns the player and the user browses an archive, the archived episode's button does not currently say that pressing it will replace live audio. The existing `… instead` wording only detects a *different archived episode*.
 5. Rollover behavior needs a contract: live metadata may change while the user is browsing another surface.
 6. The built-in now-playing snapshot has no stable show IDs, so a title-only match could navigate to the wrong show.
+7. The Show/Archive modal covers the page player, and its internal dock currently renders only archive audio. When live owns the audio, the modal therefore lacks a visible live transport/source marker.
 
 ## Recommended interaction model
 
@@ -79,9 +81,9 @@ Current/next show modal
   Past episodes ── “Show info” ───────> Show profile
   Close ───────────────────────────────> Listing; live audio continues
 
-Persistent live bar
-  artwork/title ───────────────────────> Live Player
-  transport ───────────────────────────> Controls live audio
+Visible live transport (one projection at a time)
+  page bar outside modal ──────────────> Live Player / controls live audio
+  modal dock inside Show/Archive ──────> Live Player / controls same live audio
 
 Archive Play/Resume
   explicit “… instead” action ────────> Stops live, starts archive audio
@@ -117,13 +119,25 @@ Suggested accessible name:
 
 ### 4. Let live audio continue during archive browsing
 
-Opening either destination must not pause, reconnect, replace, or otherwise alter live audio. The persistent bottom bar remains the single return path to live controls:
+Opening either destination must not pause, reconnect, replace, or otherwise alter live audio. Outside a modal, the persistent bottom bar remains the return path to live controls:
 
 - Click/tap its artwork or title → reopen Live Player.
 - Use its transport → pause/resume live.
 - Close the archive/show modal → return to the listing with live still loaded.
 
-Do not add a second live player inside the show modal unless device testing proves the global bar is inaccessible or unclear. Two simultaneous-looking transports would recreate the confusion this redesign removed.
+Inside the Show/Archive modal, the page bar is covered. Extend the existing `#sheetPlayerDock` to represent live mode as well as archive mode. This is not a second player: it is a visible projection of the same global transport in the surface currently covering it, exactly as the dock already works for archive audio.
+
+The live version of that dock should be compact and should contain:
+
+- current-show artwork;
+- a persistent red/orange **Live** source chip;
+- the live show title;
+- a state word such as **Playing**, **Paused**, or **Connecting**;
+- the same orange Play/Pause transport;
+- no scrubber and no ±15-second controls, because a live stream is not seekable;
+- an identity action that returns to the full Live Player.
+
+Only one transport is visible at a time: the page bar outside the modal or the modal dock inside it. Both control the same state and connection.
 
 ### 5. Make source replacement explicit
 
@@ -135,6 +149,36 @@ Generalize the current “different player” test. If *any other source* owns t
 Only pressing that orange action switches the source. Merely opening the profile, entering Past episodes, selecting an episode for details, or closing a modal must leave live untouched.
 
 Orange remains the action color. Teal remains status/progress/playing state, not the dominant invitation to start different audio.
+
+## Live-source identity contract
+
+The interface needs to communicate two related but different facts:
+
+1. **This source is live:** always visible anywhere the live transport is represented.
+2. **The listener is currently hearing it:** represented by motion/state only when playback is actually running.
+
+Use one restrained visual grammar on all three surfaces:
+
+| Surface | Always visible in live mode | Playing treatment | Paused/loading treatment |
+| --- | --- | --- | --- |
+| Full Live Player | `Live · WBAI 99.5 FM` with small station-red dot | Soft dot glow or tiny equalizer | Static dot; explicit Paused or Connecting near transport |
+| Show/Archive modal dock | Compact station-red `Live` chip beside show identity | Tiny equalizer or soft glow; orange Pause | Static dot + Paused, or spinner + Connecting |
+| Bottom page player | Inline station-red `Live` chip inside the always-visible identity block | Tiny equalizer or soft glow; orange Pause | Static dot + Paused, or spinner + Connecting |
+
+The current full player already has an **On Air · WBAI 99.5 FM** badge and the bottom bar has a live status marker, so this should refine and unify existing language rather than add a large new banner.
+
+Recommended behavior:
+
+- A small saturated dot and the word **Live** do the semantic work.
+- A slow, soft halo or three tiny equalizer lines may animate only while audio is actually playing.
+- When paused, retain **Live** because the source type has not changed, but stop the motion and say **Paused**.
+- While connecting, retain **Live**, show the existing spinner, and say **Connecting**.
+- Do not rely on color or animation alone; the word **Live** must remain visible.
+- Do not hide the only live label at mobile breakpoints. Place it inside the title/identity region rather than the optional right-side status slot.
+- When song metadata is present, it may occupy the descriptive sub-line but must never replace the Live source chip.
+- Respect `prefers-reduced-motion`: use a static saturated dot and text with no loss of meaning.
+
+This should feel like a quiet pilot light, not an alarm: one marker per visible player surface, low-radius/low-opacity glow, no flashing, and no large filled red container.
 
 ## Data and routing contract
 
@@ -190,15 +234,16 @@ When the schedule advances while the Live Player is visible:
 When the user is already browsing a Show profile or Past episodes:
 
 - Do **not** replace or yank that browsing context to the newly current live show.
-- The persistent live bar may update its live title/art as usual.
-- Tapping the bar identity is the deliberate way back to the newly current Live Player.
+- The visible live transport—page bar or modal dock—may update its title/art as usual.
+- Tapping that transport's identity is the deliberate way back to the newly current Live Player.
 
 ## Visual hierarchy
 
 1. **Primary audio action:** orange live Play/Pause or archive Play/Resume.
-2. **Current audio state:** teal equalizer/status/progress and modest active-row tint.
-3. **Navigation:** muted compact pills with adjacent labels and chevrons.
-4. **Secondary facts/links:** quiet text and outline controls.
+2. **Live source identity:** a compact station-red Live chip and restrained playing motion.
+3. **Archive/current audio state:** teal equalizer/status/progress and modest active-row tint.
+4. **Navigation:** muted compact pills with adjacent labels and chevrons.
+5. **Secondary facts/links:** quiet text and outline controls.
 
 The new controls should consume as little vertical space as possible. On phones, they must not push the live transport or current identity below the useful viewport. Avoid full-width containers unless the touch-target requirement truly needs them; a content-width pill can still have a minimum 44px hit height.
 
@@ -211,6 +256,8 @@ Any intentionally clipped description or scrollable region must retain the appli
 - The label, chevron, and count should be one hit target—not separate tiny controls.
 - Update accessible names whenever current/up-next metadata rolls over.
 - Disabled/no-match states must not stay in the Tab order or advertise a destination.
+- Every live transport must expose its source and state in its accessible name/status, for example **Live stream playing**, **Live stream paused**, or **Live stream connecting**.
+- The live indicator cannot depend on red, glow, or equalizer motion alone; persistent text is required.
 - Opening a destination should use the existing modal focus/inert/history lifecycle.
 - Back and close must restore focus to a sensible surviving control; rollover may remove the original trigger, so use the same defensive focus approach as the live-info overlay.
 - Respect reduced motion.
@@ -218,6 +265,7 @@ Any intentionally clipped description or scrollable region must retain the appli
 ## Edge cases to test
 
 - Live is playing; open current Past episodes; browse rows; close; live never stops.
+- While that archive is open, its modal dock visibly and accessibly says that the global source is Live and controls that same live stream.
 - Live is paused but loaded; follow the same route; it remains paused and recoverable.
 - Archive is playing; open Live Player without pressing live Play; archive continues until an explicit live start.
 - Live is playing; archive primary action reads `… instead`; press it; exactly one source plays and the UI/Media Session switches to archive.
@@ -229,6 +277,8 @@ Any intentionally clipped description or scrollable region must retain the appli
 - Current show rolls over while Show profile/Past episodes is open.
 - Archive retention/count changes between polls/page loads.
 - Long show/host names, missing host, missing artwork, and four common viewport classes: small phone, large phone, tablet, desktop.
+- Song metadata is present on a phone; the bottom player still visibly says Live.
+- Playing, paused, connecting, errored, and reduced-motion states retain correct live-source identity without misleading animation.
 - Keyboard-only navigation, VoiceOver/TalkBack naming, focus return, reduced motion, and 200% zoom.
 - Browser Back from Show/Past episodes returns predictably without stopping audio.
 
@@ -249,7 +299,8 @@ Add cross-surface coverage for:
 4. unchanged live playback during every navigation-only action;
 5. explicit `instead` copy and source takeover;
 6. rollover retargeting without hijacking an open archive;
-7. global player identity returning to Live Player.
+7. global player identity returning to Live Player;
+8. the same visible/accessibly named Live state in the full player, modal dock, and page bar at every responsive breakpoint.
 
 Do not start the real WBAI stream in automated or production smoke tests. Use the fake live-stream harness with muted browser audio. Human device testing should verify actual sound separately.
 
@@ -282,7 +333,9 @@ Do not start the real WBAI stream in automated or production smoke tests. Use th
 - A user can open the up-next show's profile from its existing compact row.
 - Artwork still opens only About this show.
 - Live audio continues through Show profile and Past episodes navigation.
-- The persistent bar provides a clear route back to Live Player.
+- The page bar and the modal's projection of it provide a clear route back to Live Player.
+- Full Live Player, Show/Archive modal dock, and bottom page player all show a restrained but unmistakable text-based Live identity whenever live owns the transport.
+- Playing may use a soft glow/equalizer; paused and reduced-motion states remain equally understandable without animation.
 - Archive playback warns with `instead` when it will replace live audio.
 - No navigation action starts, pauses, or replaces audio.
 - Current/up-next rollover updates Live Player links but never hijacks a modal being browsed.
@@ -295,10 +348,11 @@ Do not start the real WBAI stream in automated or production smoke tests. Use th
 1. Confirm current UI and transport baselines locally; record screenshots at phone/tablet/desktop sizes.
 2. Add `next.altid` to the API contract and exact-ID archive-row lookup helpers with unit/UI tests.
 3. Add the compact current **Past episodes** pill and interactive **Up next** row without changing audio.
-4. Generalize `instead` source-conflict copy to include live ownership.
-5. Exercise rollover, modal history, focus, persistent-bar return, and all source transitions.
-6. Run the full relevant local suites and a production-safe smoke audit only when deployment is requested.
-7. Update the relevant feature/development docs with the final behavior and verified counts.
+4. Unify the station-red Live marker across the full player and page bar, then extend the existing modal dock to project that same live transport while the page bar is covered.
+5. Generalize `instead` source-conflict copy to include live ownership.
+6. Exercise rollover, modal history, focus, visible-transport return, and all source transitions.
+7. Run the full relevant local suites and a production-safe smoke audit only when deployment is requested.
+8. Update the relevant feature/development docs with the final behavior and verified counts.
 
 ## Decision summary
 
@@ -307,7 +361,8 @@ The cleanest solution is not a larger navigation system. It is two small, semant
 - artwork = **Show info**;
 - current-show pill = **Past episodes**;
 - Up next row = **next show's profile**;
-- persistent live bar = **return to live controls**;
+- visible page bar or modal dock = **the same live transport and return to full live controls**;
+- compact station-red **Live** marker = **source identity on every player surface**;
 - orange archive action with **instead** = **the only source switch**.
 
 That division keeps the interface calm while making every destination and every playback consequence explicit.
