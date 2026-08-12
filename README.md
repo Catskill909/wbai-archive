@@ -30,7 +30,9 @@ an archived broadcast.
   standalone listening experience.
 - **Show details and past episodes** — artwork, host, show description, the
   selected broadcast date and links open first; Past episodes is a separate
-  view inside the same compact modal, with playback kept reachable below it.
+  view inside the same compact modal. The persistent player below includes the
+  loaded show's artwork and date, so browsing never obscures what is playing;
+  short phone screens get an explicit guide whenever more content is below.
 - **List or gallery view** — browse as a simple list or a visual gallery of
   show art, whichever you prefer.
 - **On-air now, and what's next** — a full now-playing screen with artwork,

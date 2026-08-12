@@ -8,6 +8,12 @@ repository remains on `main`; nothing has been pushed.
 The prototype implements Path A below: one modal, an internal Past episodes
 route, and a persistent modal-level archive player dock.
 
+The routed modal was subsequently deployed and audited on a real phone on
+2026-08-12. A second local refinement now implements the findings from that
+audit: orange is the permanent transport color, teal is playback/listening
+state, the dock includes the loaded show's artwork, replacement actions say
+`instead`, and clipped short-phone content gets a measured, explicit guide.
+
 - Rollback baseline: local `main` commit `84237ae`.
 - No feature branch was retained, no commit was created, and nothing was pushed.
 - The brainstorm document was untracked before implementation and is not part of
@@ -175,7 +181,7 @@ focus trap, and responsive behavior stay stable while the content route changes.
 | --- | --- | --- |
 | Modal view | Am I learning about the show or browsing its archive? | “Show” or “Past episodes” internal route |
 | Context episode | Which broadcast did I open or choose? | Date beside the primary action |
-| Playing episode | What audio is in the player right now? | Persistent teal now-playing dock |
+| Playing episode | What audio is in the player right now? | Persistent dock with loaded artwork, title and date |
 | Playback state | Is the loaded audio loading, playing, paused, or errored? | Persistent dock glyph, wording, and scrubber |
 | Listening memory | What have I heard before, and how far did I get? | Quiet per-episode progress or completion status |
 
@@ -205,7 +211,7 @@ small, explicit action block.
 │  6 played · 1 in progress                   │
 │  Website · RSS · Share                      │
 ├─────────────────────────────────────────────┤
-│  [Pause] Playing · Aug 5        0:12 / 1:00 │
+│  [art] Playing now · Show · Aug 5  [Pause]  │
 │          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
 └─────────────────────────────────────────────┘
 ```
@@ -277,10 +283,12 @@ episodes; show-level wording is only an aggregate.
 
 ### Color must not carry history alone
 
-Orange continues to mean a pending action or current selection. Teal continues
-to mean audio/listening state. Every teal state also gets text, an icon, a bar,
-or a combination, so a listener does not need to remember a color legend. The
-same mark should mean the same thing in the modal, archive list, and page cards.
+Orange means an action that controls audio: play, pause, resume, or replace the
+loaded episode. Teal means playback/listening state. Every teal state also gets
+text, an equalizer, a check, a bar, or a combination, so a listener does not
+need to remember a color legend. An animated equalizer is reserved for actual
+playback; loading and paused states are static. The same mark should mean the
+same thing in the modal, archive list, and page cards.
 
 ### Current playback temporarily outranks saved history
 
@@ -327,9 +335,9 @@ Recommended interaction rules:
 - Starting an episode from the list leaves the archive view open. The row and
   persistent dock update in place; the interface does not yank the listener
   back to the profile.
-- The playing row uses teal and plain language (`Playing` or `Paused`). The
-  context/selected row, if one is needed before returning to Show view, can use
-  the orange edge treatment. Do not fill an entire row in either color.
+- The playing row uses a teal edge/status and plain language (`Playing` or
+  `Paused`), while its transport glyph stays orange. Do not fill an entire row
+  in either color.
 - Progress and completion should be written as well as drawn. A thin progress
   bar can remain, but `20% listened` and `Played` remove the need to learn a
   hidden legend. Untouched rows get no extra label.
@@ -350,6 +358,11 @@ This is the structural fix for the player being covered.
 - Show it for any loaded archive episode, even if the open modal belongs to a
   different show. Its label must then include enough identity, for example
   `Playing · Shenu Living · Aug 5`.
+- Include the loaded show's artwork beside that identity. The thumbnail is a
+  fast cross-show discriminator and must follow the player rather than the
+  profile currently being browsed.
+- Keep the dock's main transport orange. Use teal for written state and a small
+  equalizer that appears only while the audio is truly playing.
 - Give it pause/resume and a scrubber. Keep skip and volume in the global player
   unless user testing shows they are essential here; the dock should remain
   compact.
@@ -453,12 +466,14 @@ screen-reader isolation, and player ownership. If explored, it should be an
 internal animated route inside one dialog element, not a second `aria-modal`
 dialog.
 
-## Suggested state rules for an implementation later
+## Implemented state rules
 
 These invariants would prevent the current ambiguity from returning:
 
 1. Exactly one modal body view is visible: Show or Past episodes.
-2. Exactly one orange primary playback offer is visible in Show view.
+2. With no loaded audio, Show view has one solid-orange primary playback offer.
+   With different audio loaded it has one quieter orange `instead` offer. With
+   the selected episode loaded, the dock is the only transport.
 3. Exactly one persistent dock represents the audio element when a track is
    loaded.
 4. Selecting context never changes audio; pressing a play control always does.
@@ -484,10 +499,10 @@ These invariants would prevent the current ambiguity from returning:
 - Should the dock include the full scrubber on the smallest phones, or show
   time/progress with a tap to expand? Start with the scrubber; hiding seek behind
   another state may recreate the original transport problem.
-- When the selected episode is already playing, should the primary button say
-  `Pause Aug 12` or should playback be controlled only by the dock? Showing both
-  is redundant; using the dock as the single transport and changing the primary
-  button to `Now playing` may be clearer.
+- **Resolved in the second refinement:** when the selected episode is already
+  loaded, the primary action is removed and the dock is the single transport.
+  The selected-broadcast status says `Playing now` or `Paused`. When a different
+  episode is loaded, the browsed action remains available as `Play … instead`.
 - Should Escape leave Past episodes first or close the modal immediately? Test
   this with keyboard users while keeping on-screen Back and Close unambiguous.
 - How much program identity is needed in the archive header: art + title, or

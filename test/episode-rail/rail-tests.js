@@ -49,20 +49,29 @@ const READ_PROFILE = `
   var date = sheet.querySelector('.sheet-selected-date');
   var archive = sheet.querySelector('.sheet-archive-open');
   var dock = document.getElementById('sheetPlayerDock');
+  var cue = document.getElementById('sheetScrollCue');
   var sr = sheet.getBoundingClientRect();
   var pr = play && play.getBoundingClientRect();
+  var sel = sheet.querySelector('.sheet-selected');
+  var selr = sel && sel.getBoundingClientRect();
   return {
     open: sheet.classList.contains('show'),
     profile: !sheet.classList.contains('archive-view'),
     title: (document.getElementById('sheetTitle') || {}).textContent || '',
     date: date ? date.textContent : '',
     playLabel: (sheet.querySelector('.play-label') || {}).textContent || '',
+    playAria: play ? play.getAttribute('aria-label') : '',
+    playHidden: play ? play.hidden : true,
+    playAlternate: play ? play.classList.contains('is-alternate') : false,
+    playInset: pr && selr ? Math.round(pr.left - selr.left) : -1,
     archive: !!archive,
     count: archive ? +(archive.querySelector('.sheet-archive-count') || {}).textContent : 0,
     dockHidden: dock.hidden,
     playVisible: !!pr && pr.top >= sr.top && pr.bottom <= sr.bottom,
     selectedStatus: (document.getElementById('sheetSelectedListenText') || {}).textContent || '',
     selectedStatusHidden: (document.getElementById('sheetSelectedListen') || {}).hidden,
+    cueVisible: !!cue && !cue.hidden,
+    cueLabel: cue ? cue.textContent.trim().replace(/\\s+/g, ' ') : '',
     sideways: document.documentElement.scrollWidth > document.documentElement.clientWidth
   };
 `;
@@ -73,6 +82,11 @@ const READ_ARCHIVE = `
   var dock = document.getElementById('sheetPlayerDock');
   var br = body.getBoundingClientRect(), dr = dock.getBoundingClientRect();
   var rows = Array.from(sheet.querySelectorAll('.sheet-episode'));
+  var accentProbe = document.createElement('i');
+  accentProbe.style.color = 'var(--accent)'; document.body.appendChild(accentProbe);
+  var accent = getComputedStyle(accentProbe).color; accentProbe.remove();
+  var firstPlay = sheet.querySelector('.sheet-episode-play');
+  var toggle = document.getElementById('sheetPlayerToggle');
   return {
     archive: sheet.classList.contains('archive-view'),
     routebar: !document.getElementById('sheetRoutebar').hidden,
@@ -90,6 +104,13 @@ const READ_ARCHIVE = `
     bodyClearsDock: dock.hidden || br.bottom <= dr.top + 1,
     audio: document.getElementById('mainAudio').getAttribute('src') || '',
     playerId: document.getElementById('sheetPlayerOpen').dataset.id || '',
+    playerArt: (document.getElementById('sheetPlayerArt') || {}).getAttribute('src') || '',
+    playerState: (document.getElementById('sheetPlayerState') || {}).textContent || '',
+    dockPlaying: dock.classList.contains('is-playing'),
+    toggleOrange: getComputedStyle(toggle).backgroundColor === accent,
+    rowActionOrange: firstPlay ? getComputedStyle(firstPlay).color === accent : false,
+    colors: [accent, getComputedStyle(toggle).backgroundColor,
+      firstPlay ? getComputedStyle(firstPlay).color : 'none'],
     backTarget: (function(){
       var r = document.getElementById('sheetRouteBack').getBoundingClientRect();
       return [Math.round(r.width), Math.round(r.height)];
@@ -128,7 +149,12 @@ const READ_ARCHIVE = `
     check(s.archive && s.count === fx.many.length,
       'one Past episodes row reports the whole archive', [s.count, fx.many.length]);
     check(s.dockHidden, 'the player dock is absent before audio is loaded');
+    check(!s.playAlternate, 'without loaded audio the selected broadcast keeps the primary treatment');
+    check(s.playAria.includes(s.playLabel.replace(' · ', ' ')),
+      'the primary action accessible name includes the episode date', s.playAria);
     check(s.playVisible, 'the dated primary action is inside the visible modal');
+    if (view.mobile) check(s.playInset >= 0 && s.playInset <= 2,
+      'the selected broadcast action aligns to the left on phones', s.playInset);
     check(!s.sideways, 'the profile does not create horizontal page scroll');
 
     await p.clickInPlace('.sheet-archive-open');
@@ -166,6 +192,11 @@ const READ_ARCHIVE = `
       check(!s.dockHidden, 'playback reveals the persistent in-modal dock');
       check(s.audio === fx.many[0].mp3, 'the explicit icon loads that episode', s.audio);
       check(s.playerId === String(fx.many[0].id), 'the dock identifies the audio, not browsing context');
+      check(!!s.playerArt, 'the dock includes artwork for the audio actually loaded', s.playerArt);
+      check(s.toggleOrange && s.rowActionOrange,
+        'transport actions use the one persistent orange playback color', s.colors);
+      check(s.dockPlaying === /^Playing/.test(s.playerState),
+        'the teal equalizer state is active only while audio is playing', s.playerState);
       check(s.bodyClearsDock, 'the archive still ends above the visible player dock');
       check(/playing|loading/.test(s.openLabels[0]),
         'a changing playback state reaches the row accessible name', s.openLabels[0]);
@@ -183,15 +214,54 @@ const READ_ARCHIVE = `
       await p.send('Emulation.setDeviceMetricsOverride', {
         width: view.width, height: view.height, deviceScaleFactor: 2, mobile: view.mobile
       });
+      // Let the compositor settle after the phone target-size probe. A trusted
+      // click dispatched in the same frame as the desktop reflow can land at
+      // the old mobile coordinates even though the DOM hit-test has updated.
+      await sleep(180);
 
-      await p.clickInPlace('.sheet-episode:nth-child(2) .sheet-episode-open');
-      await sleep(100);
+      await p.clickInPlace('.sheet-episode[data-id="'+fx.many[1].id+'"] .sheet-episode-open');
+      await sleep(180);
       s = await p.eval(READ_PROFILE);
+      check(s.profile, 'browsing a different loaded-show date returns to its profile');
       check(!s.dockHidden, 'browsing another date cannot hide the active transport');
       check((await p.eval(`return document.getElementById('sheetPlayerOpen').dataset.id;`)) === String(fx.many[0].id),
         'the dock keeps naming the episode actually loaded');
+      check(s.playAlternate && / instead$/.test(s.playLabel),
+        'a browsed episode becomes a quieter replacement action while other audio is loaded', s.playLabel);
+
+      await p.clickInPlace('.sheet-player-open');
+      await sleep(100);
+      s = await p.eval(READ_PROFILE);
+      check(s.playHidden, 'when the selected episode is already loaded, the dock owns its transport');
     }
   }
+
+  console.log('\n#### short phone overflow guide');
+  await p.send('Emulation.setDeviceMetricsOverride', {
+    width: 320, height: 568, deviceScaleFactor: 2, mobile: true
+  });
+  await open(p, fx.many[0].id);
+  let short = await p.eval(READ_PROFILE);
+  const overflow = await p.eval(`
+    var b=document.getElementById('sheetBody');
+    var art=document.querySelector('.sheet-art').getBoundingClientRect();
+    var cue=document.getElementById('sheetScrollCue').getBoundingClientRect();
+    return {slack:b.scrollHeight-b.clientHeight, top:b.scrollTop,
+      art:Math.round(art.height), cue:[Math.round(cue.width),Math.round(cue.height)]};
+  `);
+  check(overflow.slack > 4 && short.cueVisible && /More show information/.test(short.cueLabel),
+    'a clipped short-phone profile has an explicit, truthful content guide', [overflow, short.cueLabel]);
+  check(overflow.art <= Math.ceil(568 * .22) + 1,
+    'short-phone artwork yields height to useful content', overflow.art);
+  check(overflow.cue[0] >= 44 && overflow.cue[1] >= 44,
+    'the short-phone content guide is a full touch target', overflow.cue);
+  await p.eval(`
+    var b=document.getElementById('sheetBody');
+    b.scrollTop=b.scrollHeight; b.dispatchEvent(new Event('scroll')); return true;
+  `);
+  await sleep(50);
+  short = await p.eval(READ_PROFILE);
+  check(!short.cueVisible, 'the content guide leaves once there is nothing below the fold');
 
   console.log('\n#### listening memory');
   await p.send('Emulation.setDeviceMetricsOverride', {

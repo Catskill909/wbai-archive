@@ -32,7 +32,8 @@ The show sheet is one dialog with two mutually exclusive body views:
 
 A separate player dock sits below either view whenever archive audio is loaded.
 It controls the global archive audio element, even if the listener is browsing a
-different episode or show.
+different episode or show. Its thumbnail, title and date always identify that
+loaded audio rather than the browsing context.
 
 ## Grouping
 
@@ -65,6 +66,9 @@ lazy `/api/showinfo/<altid>` lookup and repaints when richer show data arrives.
 - Tapping a row's explicit play icon starts that episode and leaves the archive
   browser in place.
 - Selecting or browsing never hides, replaces, or moves the modal player dock.
+- With no audio loaded, the selected action is solid orange. While a different
+  episode is loaded it becomes a quieter orange outline and adds `instead`.
+  When the selected episode is already loaded, the dock is its only transport.
 - A show with one episode gets no dead Past episodes control.
 
 ## Listening memory
@@ -82,8 +86,10 @@ disclosure:
 - Live playback temporarily outranks saved history on that row instead of
   stacking an equalizer, progress bar, completion check, and selection ring.
 
-Orange remains an action color. Teal remains listening/playback state, but color
-is never the only cue.
+Orange remains the transport/action color, including play and pause glyphs in
+archive rows and the dock's main toggle. Teal remains listening/playback state,
+but color is never the only cue. The dock equalizer appears only while audio is
+actually playing and stops moving when reduced motion is requested.
 
 ## Layout contracts
 
@@ -95,6 +101,9 @@ is never the only cue.
 - The archive list is the only growing/scrolling content in Past episodes.
 - Starting audio does not resize the desktop modal.
 - The player dock is outside the changing body/footer and reserves its own space.
+- At short phone heights, profile artwork yields space through a viewport-height
+  cap. A measured `More show information` or `More episodes` control appears
+  only when the scroll body has undisclosed content below it.
 
 ## History and accessibility
 
@@ -126,8 +135,11 @@ states. It covers:
 - complete episode counts and one-episode shows;
 - selection without playback and explicit direct playback;
 - persistent dock ownership while another episode is browsed;
+- dock artwork and the primary/alternate/dock-owned action hierarchy;
+- constant orange transport and truthful teal playing state;
 - body/dock non-overlap and horizontal overflow;
 - elapsed/remaining status, percentage status, Played status, and progress bars;
-- phone target sizing and changing playback state in row accessible names.
+- phone target sizing, left-aligned selected action, short-phone artwork, an
+  explicit overflow guide, and changing playback state in row accessible names.
 
-The suite currently contains 50 checks.
+The suite currently contains 65 checks.

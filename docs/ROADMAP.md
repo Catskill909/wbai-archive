@@ -9,8 +9,9 @@ documents only what is built and working.
 
 Ordered most valuable first. Each is independent; none blocks another.
 
-The Show/Past episodes modal is not a roadmap proposal: it exists as a local,
-uncommitted prototype and is documented in [DEVELOPMENT.md](DEVELOPMENT.md),
+The Show/Past episodes modal is not a roadmap proposal: its routed redesign is
+live. The artwork/color/short-phone refinements from the 2026-08-12 live audit
+exist locally and are not yet deployed. The feature is documented in [DEVELOPMENT.md](DEVELOPMENT.md),
 [show-modal-archive.md](show-modal-archive.md), and
 [episode-rail.md](episode-rail.md). Its remaining device/user-feedback checks are
 recorded there rather than being misrepresented here as an unbuilt feature.

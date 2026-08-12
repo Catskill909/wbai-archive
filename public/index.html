@@ -508,21 +508,35 @@
     <!-- Exactly one body owns scrolling. The profile controls stay in sheetFoot;
        the archive browser replaces both body and footer rather than growing them. -->
     <div class="sheet-body" id="sheetBody"></div>
+    <button class="sheet-scroll-cue" id="sheetScrollCue" type="button" hidden
+      aria-label="Show more information">
+      <span id="sheetScrollCueLabel">More show information</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    </button>
     <div class="sheet-foot" id="sheetFoot"></div>
     <!-- The sheet covers the page player, so it provides one stable transport of
        its own. It represents the global archive audio even while another show or
        episode is being browsed and never lives inside the changing footer. -->
     <div class="sheet-player-dock" id="sheetPlayerDock" hidden>
       <div class="sheet-player-row">
-        <button class="sheet-player-toggle" id="sheetPlayerToggle" type="button" aria-label="Pause">
-          <span id="sheetPlayerGlyph" aria-hidden="true"></span>
-        </button>
+        <span class="sheet-player-art" aria-hidden="true">
+          <img id="sheetPlayerArt" alt="">
+        </span>
         <button class="sheet-player-open" id="sheetPlayerOpen" type="button" aria-label="Show the episode in the player">
-          <span class="sheet-player-state" id="sheetPlayerState">Playing</span>
+          <span class="sheet-player-state">
+            <span class="sheet-player-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span id="sheetPlayerState">Playing now</span>
+          </span>
           <span class="sheet-player-copy">
             <span class="sheet-player-title" id="sheetPlayerTitle"></span>
             <span class="sheet-player-episode" id="sheetPlayerEpisode"></span>
           </span>
+        </button>
+        <button class="sheet-player-toggle" id="sheetPlayerToggle" type="button" aria-label="Pause">
+          <span id="sheetPlayerGlyph" aria-hidden="true"></span>
         </button>
       </div>
       <div class="player-scrub sheet-player-scrub">

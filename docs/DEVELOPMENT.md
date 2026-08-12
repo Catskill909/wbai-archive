@@ -215,6 +215,10 @@ These rules are load-bearing:
    preserves that row. Date, time, length and retention sit under **Selected
    broadcast**, and every primary label names its short date: `Play · Aug 12`,
    `Resume · Aug 12`, `Pause · Aug 12`, or `Loading · Aug 12`.
+   On phones the action aligns with the left edge of the broadcast facts. With
+   no loaded audio it is solid orange. If another episode is loaded it becomes
+   an orange outline and says `Play · Aug 12 instead`; if this broadcast is
+   already loaded, the primary action is hidden and the dock owns transport.
 3. **Selection and playback stay independent.** Tapping an archive row selects
    it, returns to Show view, updates the URL with `replaceState`, and does not
    load audio. Only the row's separate Play button starts playback; it leaves
@@ -222,15 +226,19 @@ These rules are load-bearing:
 4. **The modal player owns a stable third region.** `#sheetPlayerDock` is outside
    `.sheet-body` and `.sheet-foot` and mirrors the global archive `<audio>` for
    any loaded episode—even one from another show. Browsing cannot hide it,
-   replace it, or move it. Its title jumps to the playing episode and performs
+   replace it, or move it. It shows the loaded show's artwork, title and date—not
+   the profile currently being browsed. Its title jumps to the playing episode and performs
    the same lazy show-detail lookup as a front-card open. Closing/minimizing
    hands transport back to the page player without stopping audio.
 5. **Listening history uses progressive disclosure.** Show view reports only
    the selected episode's elapsed/remaining time or `Played`. Past episodes
    summarizes completed/in-progress counts and writes `N% listened`, `Played`,
    `Playing`, `Paused`, or `Loading` per row, with a thin progress bar for a
-   partial episode. Untouched episodes remain quiet. Orange is action; teal is
-   playback/history, always paired with text, a glyph, or a bar.
+   partial episode. Untouched episodes remain quiet. Orange is transport/action
+   everywhere, including archive play/pause icons and the dock toggle. Teal is
+   playback/history state, always paired with text, an equalizer, a check, or a
+   bar. The equalizer animates only while audio is actually playing and becomes
+   static under reduced motion.
 6. **Descriptions remain program-level.** Priority is showinfo by `sho` slug,
    then the title-matched program directory, then `shortdesc`. Switching dates
    inside one slug intentionally keeps the program description. The feed's
@@ -248,6 +256,9 @@ These rules are load-bearing:
    at 800px/88dvh. Phones use a compact intrinsic-height bottom sheet with the
    same routes, scroll body and optional dock. Internal Back and dock controls
    keep the project's 44px coarse-pointer floor.
+   On short phones artwork is also capped by viewport height. A measured
+   `More show information`/`More episodes` control appears only while content
+   really remains below the scroll body, and disappears at the bottom.
 10. **Buttons cannot nest.** Archive row details and Play are sibling buttons,
     just as list-row title and Play are. Gallery artwork is the Play button, so
     its title overlay and More link remain sibling controls in `.card-wrap`.

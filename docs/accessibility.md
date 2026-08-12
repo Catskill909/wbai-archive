@@ -64,9 +64,17 @@ navigation and transport inside the existing dialog:
 - partial and completed listening state is written in words as well as drawn;
 - `Playing`, `Paused`, and `Loading` changes update the row's accessible name;
 - internal Back and in-modal player controls meet the 44px coarse-pointer floor;
-- the modal player dock retains transport while profile/archive content changes.
+- the modal player dock retains transport while profile/archive content changes;
+- the primary action's accessible name includes its date and `instead` when it
+  would replace different loaded audio;
+- dock artwork is decorative while the adjacent text supplies show/date identity;
+- the teal equalizer has written `Playing now` state, appears only during actual
+  playback, and becomes static under reduced motion;
+- short viewports receive a real `More show information`/`More episodes` button
+  only while content remains below the scroll body, instead of relying on a
+  visual fade alone.
 
-The browser regression is `test/episode-rail/run.sh` (50 checks after the
+The browser regression is `test/episode-rail/run.sh` (65 checks after the
 secondary audit). This is automated evidence, not a replacement for the manual
 screen-reader, zoom/reflow, and forced-colors passes below.
 

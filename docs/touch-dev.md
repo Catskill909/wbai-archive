@@ -841,7 +841,7 @@ opposite of the bug being fixed.
 ```sh
 node server.js &          # app must be on :8080
 ./test/touch/run.sh       # 49 assertions, coarse-pointer emulated
-./test/episode-rail/run.sh # 50 modal/archive assertions, including new targets
+./test/episode-rail/run.sh # 65 modal/archive assertions, including short phones
 ```
 
 It runs both ways on purpose: pass 1 asserts the hover guards **do** match on a

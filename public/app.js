@@ -687,13 +687,20 @@
   // its front-card context got lost. Only the sheet renders .play-label, so card
   // buttons keep their compact icon treatment.
   var sheetEpAlt = '';
+  function sheetPlayerOwns(mp3){
+    return !!mp3 && barMode === 'archive' && !playerBar.hidden && nowPlaying.mp3 === mp3;
+  }
+  function sheetHasDifferentPlayer(mp3){
+    return !!mp3 && barMode === 'archive' && !playerBar.hidden && !!nowPlaying.mp3 && nowPlaying.mp3 !== mp3;
+  }
   function playLabelFor(mp3, isLoading, isPlaying){
     var alt = (mp3 && mp3 === sheetMp3) ? sheetEpAlt : '';
     if(isLoading) return alt ? 'Loading · ' + alt : 'Loading…';
     if(isPlaying) return alt ? 'Pause · ' + alt : 'Pause';
     var t = resumeFor(mp3);
-    if(t) return alt ? 'Resume · ' + alt : 'Resume ' + formatTime(t);
-    return alt ? 'Play · ' + alt : 'Play episode';
+    var instead = alt && sheetHasDifferentPlayer(mp3) ? ' instead' : '';
+    if(t) return alt ? 'Resume · ' + alt + instead : 'Resume ' + formatTime(t);
+    return alt ? 'Play · ' + alt + instead : 'Play episode';
   }
 
   // Every scrubber wired to the same <audio>: the docked player bar always, plus
@@ -799,14 +806,22 @@
       var mp3 = btn.dataset.mp3;
       var loading = (mp3 === loadingMp3);
       var playing = (mp3 === nowPlaying.mp3) && !audio.paused && !audio.ended && !loading;
+      var sheetAction = btn.classList.contains('sheet-play');
+      var loadedInDock = sheetAction && sheetPlayerOwns(mp3);
+      var alternate = sheetAction && sheetHasDifferentPlayer(mp3);
       btn.classList.toggle('playing', playing);
       btn.classList.toggle('loading', loading);
+      btn.classList.toggle('is-alternate', alternate);
+      if(sheetAction) btn.hidden = loadedInDock;
       var g = btn.querySelector('.play-glyph');
       if(g) g.innerHTML = loading ? svgSpin() : (playing ? svgPause() : svgPlay());
       // the info sheet's button is the only one that spells its state out in words
       var lbl = btn.querySelector('.play-label');
-      if(lbl) lbl.textContent = playLabelFor(mp3, loading, playing);
-      btn.setAttribute('aria-label', (loading?'Loading ':(playing?'Pause ':'Play ')) + btn.dataset.title);
+      var action = playLabelFor(mp3, loading, playing);
+      if(lbl) lbl.textContent = action;
+      btn.setAttribute('aria-label', sheetAction
+        ? action.replace(' · ', ' ')+' — '+btn.dataset.title
+        : (loading?'Loading ':(playing?'Pause ':'Play ')) + btn.dataset.title);
     });
     refreshToggleIcon();
     syncSheetPlayer();
@@ -2578,9 +2593,12 @@
   var sheetFoot = document.getElementById('sheetFoot');
   var sheetRoutebar = document.getElementById('sheetRoutebar');
   var sheetRouteBack = document.getElementById('sheetRouteBack');
+  var sheetScrollCue = document.getElementById('sheetScrollCue');
+  var sheetScrollCueLabel = document.getElementById('sheetScrollCueLabel');
   var sheetPlayerDock = document.getElementById('sheetPlayerDock');
   var sheetPlayerToggle = document.getElementById('sheetPlayerToggle');
   var sheetPlayerOpen = document.getElementById('sheetPlayerOpen');
+  var sheetPlayerArt = document.getElementById('sheetPlayerArt');
   var sheetReturnFocus = null;
   var sheetRowId = null;        // which archive row the sheet is currently showing
   var sheetMp3 = null;
@@ -3807,11 +3825,27 @@
     if(!sheetBody) return;
     var slack = sheetBody.scrollHeight - sheetBody.clientHeight;
     var top = sheetBody.scrollTop;
+    var below = slack > 4 && top < slack - 4;
     sheetBody.classList.toggle('fade-top', slack > 4 && top > 4);
-    sheetBody.classList.toggle('fade-bottom', slack > 4 && top < slack - 4);
+    sheetBody.classList.toggle('fade-bottom', below);
+    if(sheetScrollCue){
+      sheetScrollCue.hidden = !below;
+      if(below){
+        var label = sheetView === 'archive' ? 'More episodes' : 'More show information';
+        sheetScrollCueLabel.textContent = label;
+        sheetScrollCue.setAttribute('aria-label', label);
+        // The footer and player have variable heights. Anchor the cue to the
+        // visible bottom of the scrolling body rather than guessing either one.
+        var sr = sheet.getBoundingClientRect();
+        var br = sheetBody.getBoundingClientRect();
+        sheet.style.setProperty('--sheet-cue-bottom', Math.max(8, sr.bottom - br.bottom + 8)+'px');
+      }
+    }
   }
   if(sheetBody) sheetBody.addEventListener('scroll', syncSheetFade, { passive: true });
   window.addEventListener('resize', syncSheetFade);
+  if(window.visualViewport) window.visualViewport.addEventListener('resize', syncSheetFade);
+  if(window.ResizeObserver && sheetBody) new ResizeObserver(syncSheetFade).observe(sheetBody);
 
   // Long descriptions (Democracy Now!'s runs to a dozen paragraphs) are clamped
   // to a few lines with a toggle, so the sheet opens compact either way.
@@ -3844,14 +3878,30 @@
     var active = !!row && !playerBar.hidden;
     sheetPlayerDock.hidden = !active;
     sheet.classList.toggle('has-sheet-player', active);
-    if(!active){ syncSelectedListening(); return; }
+    if(!active){
+      sheetPlayerDock.classList.remove('is-playing');
+      syncSelectedListening();
+      syncSheetFade();
+      return;
+    }
     var loading = row.mp3 === loadingMp3;
     var playing = !loading && !audio.paused && !audio.ended;
-    var word = loading ? 'Loading' : (playing ? 'Playing' : (audio.ended ? 'Finished' : 'Paused'));
+    var word = loading ? 'Loading' : (playing ? 'Playing now' : (audio.ended ? 'Finished' : 'Paused'));
     var date = epLabel(row).date;
+    sheetPlayerDock.classList.toggle('is-playing', playing);
     document.getElementById('sheetPlayerState').textContent = word;
     document.getElementById('sheetPlayerTitle').textContent = row.title || nowPlaying.title;
     document.getElementById('sheetPlayerEpisode').textContent = date;
+    var art = row.photo || ((showInfo[row.sho] || {}).photo) || nowPlaying.photo || '';
+    if(sheetPlayerArt){
+      if(art && sheetPlayerArt.getAttribute('src') !== art){
+        sheetPlayerArt.classList.remove('failed');
+        sheetPlayerArt.src = art;
+      } else if(!art){
+        sheetPlayerArt.classList.remove('failed');
+        sheetPlayerArt.removeAttribute('src');
+      }
+    }
     document.getElementById('sheetPlayerGlyph').innerHTML = loading ? svgSpin() : (playing ? svgPause() : svgPlay());
     sheetPlayerToggle.disabled = loading;
     sheetPlayerToggle.setAttribute('aria-label', (loading ? 'Loading ' : (playing ? 'Pause ' : 'Resume '))+(row.title || 'episode')+' '+date);
@@ -3861,6 +3911,7 @@
     if(range) range.setAttribute('aria-label', 'Seek within '+(row.title || 'the episode')+' '+date);
     if(!seeking){ applyDuration(); paintScrubTime(); }
     syncSelectedListening();
+    syncSheetFade();
   }
 
   // "Start over" is only an offer when there is somewhere to start over *from*.
@@ -3939,11 +3990,8 @@
     }
     sheetBody.scrollTop = top;
     if(sheetView === 'show') setupDescClamp();
-    syncSheetPlayer();
-    syncSheetRestart();
-    syncEpMarks();
+    updatePlayButtons();
     syncSheetFade();        // new content, so what is hidden above/below changed
-    paintSheetCloseBtn();   // sheetMp3 just changed, so the promise may have too
   }
 
   function setSheetView(view, focusTarget){
@@ -4041,6 +4089,7 @@
     sheetRowId = null;
     sheetMp3 = null;
     sheetView = 'show';
+    if(sheetScrollCue) sheetScrollCue.hidden = true;
     syncUrl();
   }
 
@@ -4086,6 +4135,12 @@
   sheetScrim.addEventListener('click', closeSheet);
   // Bound on the dialog, so it covers profile, archive route and fixed player.
   sheet.addEventListener('click', function(e){
+    if(e.target.closest('.sheet-scroll-cue')){
+      var remaining = sheetBody.scrollHeight - sheetBody.clientHeight - sheetBody.scrollTop;
+      var motion = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+      sheetBody.scrollBy({ top:Math.min(remaining, Math.max(120, sheetBody.clientHeight*.7)), behavior:motion });
+      return;
+    }
     if(e.target.closest('.sheet-route-back')){ setSheetView('show', 'archive'); return; }
     if(e.target.closest('.sheet-archive-open')){ setSheetView('archive', 'back'); return; }
     var art = e.target.closest('.sheet-art-zoom');
@@ -4118,6 +4173,9 @@
   sheetBody.addEventListener('error', function(e){
     if(e.target && e.target.tagName === 'IMG') e.target.classList.add('failed');
   }, true);
+  if(sheetPlayerArt) sheetPlayerArt.addEventListener('error', function(){
+    sheetPlayerArt.classList.add('failed');
+  });
 
   fetchShowInfo();
   // slow poll: the harvest only gains an entry when the schedule rolls over

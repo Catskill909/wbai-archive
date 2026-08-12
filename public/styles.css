@@ -1726,6 +1726,21 @@
     -webkit-mask-image:linear-gradient(transparent, #000 26px, #000 calc(100% - 34px), transparent);
     mask-image:linear-gradient(transparent, #000 26px, #000 calc(100% - 34px), transparent);
   }
+  /* A fade can still look like decoration. This measured cue is shown only
+     while the scroll box has content below the fold, and follows its real edge
+     above whatever footer/player happens to be present. */
+  .sheet-scroll-cue{
+    position:absolute; z-index:8; left:50%; bottom:var(--sheet-cue-bottom, 8px);
+    transform:translateX(-50%); min-height:44px;
+    display:inline-flex; align-items:center; gap:.35rem;
+    padding:.45rem .7rem; border:1px solid var(--outline-strong); border-radius:999px;
+    background:color-mix(in srgb, var(--surface-3) 92%, transparent); color:var(--ink-dim);
+    box-shadow:var(--elev-1); font:700 .68rem/1 var(--font-body); white-space:nowrap;
+    cursor:pointer; -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  }
+  .sheet-scroll-cue[hidden]{ display:none; }
+  .sheet-scroll-cue svg{ width:15px; height:15px; color:var(--accent-2); }
+  .sheet-scroll-cue:focus-visible{ outline:2px solid var(--accent-2); outline-offset:2px; }
   /* Controls live outside the scroll area: however long the description runs,
      Play, the links and the scrubber stay put at the bottom of the card. */
   .sheet-foot{
@@ -1743,26 +1758,49 @@
   }
   .sheet-player-dock[hidden]{ display:none; }
   .sheet-player-row{ display:flex; align-items:center; gap:.65rem; min-width:0; }
+  .sheet-player-art{
+    position:relative; flex:none; width:44px; height:44px; overflow:hidden; border-radius:9px;
+    background:url("/assets/icon-256.png") center/cover no-repeat, var(--surface-3);
+    box-shadow:inset 0 0 0 1px var(--outline);
+  }
+  .sheet-player-art img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .sheet-player-art img.failed, .sheet-player-art img:not([src]){ display:none; }
   .sheet-player-toggle{
     flex:none; width:44px; height:44px; padding:0; border-radius:50%;
     display:inline-flex; align-items:center; justify-content:center;
-    border:1px solid var(--accent-2); background:transparent; color:var(--accent-2);
-    cursor:pointer; transition:background .15s ease, transform .12s ease;
+    border:1px solid var(--accent); background:var(--accent); color:var(--accent-ink);
+    box-shadow:var(--shadow); cursor:pointer;
+    transition:background .15s ease, transform .12s ease;
   }
   .sheet-player-toggle:active{ transform:scale(.95); }
   .sheet-player-toggle:disabled{ cursor:default; opacity:.72; }
   .sheet-player-toggle svg{ width:16px; height:16px; }
   @media (hover:hover) and (pointer:fine){
-    .sheet-player-toggle:hover{ background:color-mix(in srgb, var(--accent-2) 14%, transparent); }
+    .sheet-player-toggle:hover{ background:color-mix(in srgb, var(--accent) 88%, black); }
   }
   .sheet-player-open{
-    flex:1 1 auto; min-width:0; display:flex; align-items:baseline; gap:.55rem;
+    flex:1 1 auto; min-width:0; display:flex; flex-direction:column;
+    align-items:flex-start; justify-content:center; gap:.15rem;
     min-height:44px; padding:.35rem .4rem; border:0; border-radius:8px; background:transparent;
     color:var(--ink); font-family:inherit; text-align:left; cursor:pointer;
   }
   .sheet-player-state{
-    flex:none; font-family:var(--font-display); text-transform:uppercase;
-    letter-spacing:.08em; font-size:.62rem; font-weight:800; color:var(--accent-2);
+    flex:none; display:inline-flex; align-items:center; gap:.35rem;
+    font-family:var(--font-display); text-transform:uppercase;
+    letter-spacing:.08em; font-size:.65rem; font-weight:800; color:var(--accent-2);
+  }
+  .sheet-player-eq{ display:none; align-items:flex-end; gap:2px; width:12px; height:11px; }
+  .sheet-player-eq i{
+    width:2.5px; height:45%; border-radius:1px; background:var(--accent-2);
+    animation:eqbar .85s ease-in-out infinite;
+  }
+  .sheet-player-eq i:nth-child(2){ animation-delay:.16s; }
+  .sheet-player-eq i:nth-child(3){ animation-delay:.32s; }
+  .sheet-player-dock.is-playing .sheet-player-eq{ display:inline-flex; }
+  @media (prefers-reduced-motion:reduce){
+    .sheet-player-eq i{ animation:none; height:70%; }
+    .sheet-player-eq i:nth-child(2){ height:100%; }
+    .sheet-player-eq i:nth-child(3){ height:45%; }
   }
   .sheet-player-copy{ display:flex; gap:.4rem; min-width:0; align-items:baseline; }
   .sheet-player-title{
@@ -2275,13 +2313,13 @@
   }
   .sheet-profile-links{ margin:0; padding-top:.8rem; border-top:1px solid var(--outline); }
   .sheet-archive-open{
-    width:100%; min-height:48px; display:flex; align-items:center; gap:.7rem;
-    padding:.7rem .85rem; border:1px solid var(--outline-strong); border-radius:12px;
-    background:var(--surface-2); color:var(--ink); font-family:inherit; text-align:left;
-    cursor:pointer; transition:background .15s ease, border-color .15s ease;
+    width:100%; min-height:44px; display:flex; align-items:center; gap:.65rem;
+    padding:.5rem .15rem; border:0; border-radius:8px;
+    background:transparent; color:var(--ink-dim); font-family:inherit; text-align:left;
+    cursor:pointer; transition:background .15s ease, color .15s ease;
   }
   @media (hover:hover) and (pointer:fine){
-    .sheet-archive-open:hover{ background:var(--surface-3); border-color:var(--accent-2); }
+    .sheet-archive-open:hover{ background:var(--surface-hover); color:var(--ink); }
   }
   .sheet-archive-label{ font-size:.83rem; font-weight:750; }
   .sheet-archive-count{
@@ -2343,7 +2381,13 @@
     display:flex; align-items:center; justify-content:center;
     transition:background .15s ease, color .15s ease;
   }
-  .sheet-episode-play.playing{ color:var(--accent-2); }
+  /* These are always icon transports. Global .play-btn states use a filled
+     treatment for card buttons, so outrank that rule here and keep the archive
+     glyph orange whether it means play, pause or loading. */
+  .sheet-episode-play.play-btn.playing,
+  .sheet-episode-play.play-btn.loading{
+    background:transparent; color:var(--accent); border-color:var(--outline);
+  }
   .sheet-episode-play .play-glyph{ display:inline-flex; align-items:center; justify-content:center; }
   .sheet-episode-play svg{ width:18px; height:18px; }
   @media (hover:hover) and (pointer:fine){
@@ -2463,6 +2507,18 @@
   }
   .sheet-play:active{ transform:scale(.97); }
   .sheet-play svg{ width:15px; height:15px; }
+  .sheet-play[hidden]{ display:none; }
+  /* Browsing while another episode remains loaded is a replacement choice, not
+     the current transport. Keep orange semantics but lower its visual weight. */
+  .sheet-play.is-alternate{
+    background:transparent; color:var(--accent); border-color:var(--accent);
+    box-shadow:none;
+  }
+  @media (hover:hover) and (pointer:fine){
+    .sheet-play.is-alternate:hover{
+      background:color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+  }
   .sheet-link{
     display:inline-flex; align-items:center; gap:.35rem;
     border:1px solid var(--outline-strong); border-radius:999px; padding:.32rem .7rem;
@@ -2544,13 +2600,13 @@
       padding:.72rem 1rem calc(.8rem + env(safe-area-inset-bottom,0px));
       border-radius:0;
     }
-    .sheet-player-copy{ flex-direction:column; align-items:flex-start; gap:.05rem; }
-    .sheet-player-title{ max-width:52vw; }
+    .sheet-player-copy{ flex-direction:column; align-items:flex-start; gap:.05rem; width:100%; }
+    .sheet-player-title{ max-width:100%; }
     .sheet-player-scrub{ margin-top:.4rem; }
     .sheet-head{ flex-direction:column; align-items:center; text-align:center; padding-right:0; gap:1rem; }
-    .sheet-art{ width:min(184px, 48vw); height:min(184px, 48vw); }
+    .sheet-art{ width:min(184px, 48vw, 22dvh); height:min(184px, 48vw, 22dvh); }
     .sheet-titles{ align-items:center; }
-    .sheet-actions{ justify-content:center; }
+    .sheet-actions{ justify-content:flex-start; }
     .sheet-links{ justify-content:center; }
     /* .sheet-titles is shrink-to-fit inside a centred column, so flex-start
        parks the eyebrow against the title's left edge — visibly off-centre
@@ -3386,7 +3442,7 @@
 
     /* pills and text buttons — give them a real vertical target */
     .on-air-btn, .appbar-actions .btn-donate, .refresh-pill, .lp-alert-btn,
-    .sheet-play, .sheet-link, .sheet-restart, .sheet-route-back,
+    .sheet-play, .sheet-link, .sheet-restart, .sheet-route-back, .sheet-scroll-cue,
     /* the on-air chooser's answers are the whole point of the dialog */
     .live-choice-btn, .live-choice-cancel{ min-height: 44px; }
     .sheet-player-toggle{ width:44px; height:44px; }
