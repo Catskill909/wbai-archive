@@ -84,8 +84,8 @@
   // to the full Live Player. History still owns the close; this callback runs
   // only after that sheet entry has actually been consumed.
   var sheetAfterDismiss = null;
-  // Filters never add a history entry — only the sheet does, so that one press
-  // of Back means "close the sheet", not "undo six keystrokes of searching".
+  // Filters never add a history entry — only modal destinations do, so Back
+  // closes the active surface instead of undoing six keystrokes of searching.
   function syncUrl(){
     if(!canHistory) return;
     var open = sheetRowId || null;
@@ -95,6 +95,10 @@
     // runs from dismissSheet mid-popstate — wiping {sched:1} here made Back
     // from a schedule-opened sheet close both layers at once.
     if(history.state && history.state.sched){ st = st || {}; st.sched = 1; }
+    // A Live-originated sheet closes back onto the Live Player. dismissSheet()
+    // runs during that popstate, so keep the destination's claim intact rather
+    // than replacing it with a plain listing entry mid-transition.
+    if(history.state && history.state.live){ st = st || {}; st.live = 1; }
     try { history.replaceState(st, '', urlFor(open)); } catch(e){}
   }
 
@@ -2046,13 +2050,26 @@
 
   // ---- Modal open / close, mirroring the info sheet's lifecycle.
   var livePlayerReturnFocus = null;
-  function openLivePlayer(){
+  function openLivePlayer(fromHistory){
     if(livePlayer.classList.contains('show')) return;
     if(typeof closeSheet === 'function' && sheet && sheet.classList.contains('show')){
-      sheetAfterDismiss = openLivePlayer;
-      closeSheet();
-      return;
+      // Live -> show/archive owns a real two-entry trail. Its dock identity is
+      // therefore ordinary Back, not a fresh Live entry; popstate performs the
+      // visual handoff. An unrelated sheet still closes first and then opens a
+      // new Live destination through the callback below.
+      if(fromHistory !== true && canHistory && history.state && history.state.liveOrigin){
+        history.back();
+        return;
+      }
+      if(fromHistory === true){
+        dismissSheet();
+      } else {
+        sheetAfterDismiss = openLivePlayer;
+        closeSheet();
+        return;
+      }
     }
+    if(typeof dismissSchedule === 'function') dismissSchedule();
     paintLivePlayer();
     // reflect whatever the stream is currently doing
     if(!lpAlert.hidden) setLiveNote('');          // the alert says it all
@@ -2075,6 +2092,9 @@
     lpToggle.focus();
     document.addEventListener('keydown', onLivePlayerKey);
     paintLiveAlert();      // a failure that happened while this was closed
+    if(canHistory && fromHistory !== true){
+      try { history.pushState({live:1}, '', urlFor(null)); } catch(e){}
+    }
   }
   // ---- Collapse the card toward the player bar on close-while-playing, so the
   // handoff is something the listener watches happen instead of something they
@@ -2144,7 +2164,7 @@
     }, MINIMIZE_MS);
   }
 
-  function closeLivePlayer(){
+  function dismissLivePlayer(){
     if(!livePlayer.classList.contains('show')) return;
     closeLiveInfo();       // the description belongs to the card it was opened from
     // The card can only collapse toward a bar that is on screen to be measured;
@@ -2160,6 +2180,13 @@
     refreshOverlayState();
     if(livePlayerReturnFocus && livePlayerReturnFocus.focus) livePlayerReturnFocus.focus();
     livePlayerReturnFocus = null;
+  }
+  // Close/minimize consumes Live's history entry. popstate owns the visual
+  // dismissal so browser/device Back and every on-screen exit stay identical.
+  function closeLivePlayer(){
+    if(!livePlayer.classList.contains('show')) return;
+    if(canHistory && history.state && history.state.live){ history.back(); return; }
+    dismissLivePlayer();
   }
   function onLivePlayerKey(e){
     if(!lpAlert.hidden) return;          // the alert dialog owns the keyboard
@@ -3324,17 +3351,15 @@
   });
   liveChoiceLive.addEventListener('click', function(){
     closeLiveChoice();
-    // Same handover the Listen Live pill used to do. openSchedule() pushed a
-    // {sched:1} entry, and leaving without going through history strands it
-    // still claiming the schedule is open — open the schedule again and Back
-    // lands on that stale entry and RE-OPENS it, so Back looks dead (measured
-    // 2026-08-06). replaceState clears the claim in place: synchronous, fires
-    // no popstate, leaves focus handling alone.
-    if(canHistory && history.state && history.state.sched){
-      try { history.replaceState(null, '', location.href); } catch(e2){}
+    // Transfer the schedule's one modal history entry to Live in place. That
+    // keeps Back one press from the page, avoids a stale {sched} claim, and
+    // avoids leaving two visually identical page entries beneath Live.
+    var transferred = !!(canHistory && history.state && history.state.sched);
+    if(transferred){
+      try { history.replaceState({live:1}, '', urlFor(null)); } catch(e2){}
     }
     dismissSchedule();
-    openLivePlayer();
+    openLivePlayer(transferred);
   });
 
   var SCHED_LIVE_PEEK = 56;   // px of the previous slot left visible above — the "you can scroll up" hint
@@ -3434,17 +3459,8 @@
   });
   // a tapped show opens the ordinary info sheet, which stacks above this dialog
   schedBody.addEventListener('click', function(e){
-    // Listen (only present on the live slot) swaps the schedule for the live
-    // player outright — dismissSchedule() rather than closeSchedule(), so it
-    // doesn't try to walk history back a step first; the live player carries
-    // no history entry of its own to stack on top of.
-    //
-    // But openSchedule() pushed a {sched:1} entry, and closing without going
-    // through history leaves it behind still claiming the schedule is open.
-    // Open the schedule a second time and Back then lands on that stale entry
-    // and RE-OPENS it instead of closing — Back appears dead and the listener
-    // is stuck (measured 2026-08-06). replaceState clears the claim in place:
-    // synchronous, fires no popstate, and leaves focus handling alone.
+    // The on-air choice can transfer this schedule entry to the Live Player;
+    // see liveChoiceLive above. It never constructs or touches audio here.
     var btn = e.target.closest('.sched-show');
     if(!btn) return;
     // The on-air row is the only one with two possible destinations, and it used
@@ -4123,10 +4139,16 @@
   function openLiveShowRoute(altid, view){
     var r = latestArchiveRowForShow(altid);
     if(!r) return;
-    // This is navigation only. Closing the Live Player deliberately leaves its
-    // source and connection untouched; openSheetById owns history/focus as usual.
-    closeLivePlayer();
+    // This is navigation only. Visually dismiss Live without consuming its
+    // history entry, then stack the chosen show above it. Back can therefore
+    // retrace the exact path while the audio source remains untouched.
+    dismissLivePlayer();
     openSheetById(r.id, onAirBtn);
+    if(canHistory){
+      var routeState = {sheetId:r.id, liveOrigin:1};
+      if(view === 'archive') routeState.sheetView = 'archive';
+      try { history.replaceState(routeState, '', urlFor(r.id)); } catch(e){}
+    }
     if(view === 'archive') setSheetView('archive', 'back');
   }
   function openLiveShowArchive(altid){ openLiveShowRoute(altid, 'archive'); }
@@ -4163,6 +4185,10 @@
     if(!r) return;
     sheetView = view;
     paintSheet(r);
+    var backToLive = !!(canHistory && history.state && history.state.liveOrigin);
+    sheetRouteBack.setAttribute('aria-label', backToLive ? 'Back to live player' : 'Back to show info');
+    var backText = sheetRouteBack.querySelector('span');
+    if(backText) backText.textContent = backToLive ? 'Live player' : 'Show info';
     if(focusTarget === 'back') sheetRouteBack.focus();
     else if(focusTarget === 'close') sheetClose.focus();
     else if(focusTarget === 'archive'){
@@ -4179,7 +4205,12 @@
     sheetView = 'show';
     paintSheet(r);
     if(canHistory){
-      try { history.replaceState({sheetId:r.id}, '', urlFor(r.id)); } catch(e){}
+      var selectedState = {sheetId:r.id};
+      // The profile is a branch within the same Live-originated modal journey.
+      // Keep that origin so Back can retrace it and Close can dismiss the whole
+      // journey instead of revealing a surprise Live overlay.
+      if(history.state && history.state.liveOrigin) selectedState.liveOrigin = 1;
+      try { history.replaceState(selectedState, '', urlFor(r.id)); } catch(e){}
     }
     // Usually this is another date from the same show. The modal player can also
     // point at a different show, though, and following it must perform the same
@@ -4232,6 +4263,12 @@
   // this, closing by button would leave a dead entry that Back would replay.
   function closeSheet(){
     if(!sheet.classList.contains('show')) return;
+    // Close/minimize means leave the modal journey, not go Back within it. A
+    // show opened from Live has two owned entries, so consume both at once.
+    if(canHistory && history.state && history.state.sheetId && history.state.liveOrigin){
+      history.go(-2);
+      return;
+    }
     if(canHistory && history.state && history.state.sheetId){ history.back(); return; }
     dismissSheet();
   }
@@ -4268,10 +4305,19 @@
     // the thing it was asking about — never leave it floating over a dialog
     // that has already gone.
     closeLiveChoice();
-    var id = (history.state && history.state.sheetId) || param('show');
+    var route = history.state || {};
+    if(route.live){
+      dismissSheet();
+      dismissSchedule();
+      openLivePlayer(true);
+      return;
+    }
+    dismissLivePlayer();
+    var id = route.sheetId || param('show');
     if(id && rowById(id)) openSheetById(id, null, true);
     else dismissSheet();
-    if(history.state && history.state.sched) openSchedule(true);
+    if(id && route.sheetView === 'archive') setSheetView('archive');
+    if(route.sched) openSchedule(true);
     else dismissSchedule();
   });
 
@@ -4284,7 +4330,11 @@
       return;
     }
     if(e.key === 'Escape'){
-      if(sheetView === 'archive'){ e.preventDefault(); setSheetView('show', 'archive'); }
+      if(sheetView === 'archive'){
+        e.preventDefault();
+        if(canHistory && history.state && history.state.liveOrigin) history.back();
+        else setSheetView('show', 'archive');
+      }
       else closeSheet();
       return;
     }
@@ -4307,7 +4357,11 @@
       sheetBody.scrollBy({ top:Math.min(remaining, Math.max(120, sheetBody.clientHeight*.7)), behavior:motion });
       return;
     }
-    if(e.target.closest('.sheet-route-back')){ setSheetView('show', 'archive'); return; }
+    if(e.target.closest('.sheet-route-back')){
+      if(canHistory && history.state && history.state.liveOrigin) history.back();
+      else setSheetView('show', 'archive');
+      return;
+    }
     if(e.target.closest('.sheet-archive-open')){ setSheetView('archive', 'back'); return; }
     var art = e.target.closest('.sheet-art-zoom');
     if(art){ openLightbox(art.dataset.photo, art); return; }

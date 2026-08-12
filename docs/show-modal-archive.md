@@ -450,9 +450,11 @@ These actions need separate promises:
 - **Close / minimize** means “leave the modal.” An `×` is correct with no active
   handoff; a downward chevron can continue to signal that audio remains in the
   player below.
-- **Browser/device Back** should first move Past episodes → Show view. From Show
-  view it closes the modal. Episode-row exploration should not create a long
-  history trail.
+- **Browser/device Back** normally closes this single modal entry; internal
+  profile/archive movement does not create a long episode trail. The deliberate
+  exception is a sheet opened from the Live Player: Back retraces to Live and
+  Forward restores the exact archive route, while Close skips the whole modal
+  journey and returns to the page.
 - **Escape** should follow the same hierarchy: leave the internal archive view
   first, then close the modal on the next press, unless testing shows users
   strongly expect Escape to dismiss the entire modal immediately. This is one

@@ -262,8 +262,9 @@ Follow the `.sheet` lifecycle exactly:
   modal. Trade-off, accepted: you can't reopen the modal while it's playing — pause
   first, then reopen to see now-playing. The button, when open, sits under the
   scrim, so its click only ever fires with the modal closed.
-- **History:** optionally push a history entry on open so Android Back closes the
-  modal (matches how the info sheet handles Back). Open question below.
+- **History:** opening pushes `{live:1}`, so browser/device Back, Escape, the
+  scrim, and Close all consume the same route before visually dismissing it.
+  Modal history never starts or stops the stream.
 
 **No auto-streaming.** Opening the modal never starts audio. Playback only begins
 when the user taps Play inside the modal — a deliberate, separate gesture from
@@ -432,3 +433,17 @@ player. The source changes only when that explicit orange action is pressed.
 `test/ui/live-archive-tests.js` covers exact/no-match routing and rollover;
 `test/live-stream/run-tests.js` covers live continuation through browsing, the
 modal projection, explicit replacement copy, and socket teardown on takeover.
+
+## Symmetric modal history — 2026-08-12
+
+Live is now a first-class modal history destination. Following **Past episodes**
+or **Up next** stacks a `liveOrigin` sheet above it, producing the reversible
+path Page → Live → show/archive. The archive's visible Back control and
+browser/device Back both restore Live, while Forward restores the exact archive
+view rather than the generic show profile.
+
+Close/minimize has a deliberately different promise: from a Live-originated
+sheet it consumes both modal entries and returns to the page, preventing Live
+from appearing as a leftover overlay. Selecting an episode preserves the origin
+for this close behavior. Playback remains independent throughout; a playing
+stream stays in the global bar even after its modal journey is dismissed.

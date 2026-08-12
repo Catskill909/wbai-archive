@@ -410,15 +410,21 @@ Search, category, and the open sheet live in the query string; the list/grid
 view deliberately does not, because it is a per-device preference in
 `localStorage` and a shared link should not impose the sharer's layout.
 
-- **Filters replace, the sheet pushes.** `syncUrl()` uses `replaceState` for
+- **Filters replace; modal destinations push.** `syncUrl()` uses `replaceState` for
   category and search, so one press of Back means "close the sheet", not "undo
-  six keystrokes of searching". Only `openSheetById()` pushes — and only when the
-  sheet wasn't already open, so switching shows from the player bar replaces
+  six keystrokes of searching". `openSheetById()` and `openLivePlayer()` push
+  their destinations. A show switch inside an already-open sheet still replaces
   rather than stacking entries.
 - **Closing always goes through history.** `closeSheet()` calls `history.back()`
   and lets `popstate` run `dismissSheet()`, which does the real work. Closing by
   button without that would leave a live entry for Back to replay. Escape, the
   close button, and the scrim all route through `closeSheet()`.
+- **Live → show/archive is a real two-step path.** The chosen sheet is pushed on
+  top of `{live:1}`, and its state carries `liveOrigin`. Visible Back and
+  browser/device Back therefore restore Live; Forward restores the exact archive
+  view. Close/minimize is different from Back: it consumes both owned entries
+  with `history.go(-2)` so it cannot reveal a stray Live modal. None of these
+  view transitions touches live playback, which remains available in the dock.
 - **This is the whole back story in standalone mode.** Installed, there is no
   browser chrome, so Android's system Back is the only back affordance. Before
   this, it exited the app while the sheet was open.
@@ -611,10 +617,10 @@ the stragglers are 6–14 min late recorder starts).
   `bottom:var(--player-h)`). This is the one overlay you browse *while
   listening*; burying the transport strands the listener. Both breakpoints
   were broken here once, for two different reasons — schedule-dev.md §7.3.
-- **Closing it outside of history must clear its history flag.** The Listen
-  Live path closes the modal directly, so it `replaceState`s the `{sched:1}`
-  claim away; without that, a later Back re-opens the schedule instead of
-  closing it. §7.2.
+- **A cross-modal handoff must transfer its history flag.** Listen Live replaces
+  the schedule's `{sched:1}` entry with `{live:1}` before swapping surfaces;
+  without that, a later Back either re-opens the schedule or lands on a duplicate
+  page entry. §7.2.
 - **It never touches an `<audio>` element.** Listen Live calls
   `openLivePlayer()` and nothing else. Keep it that way — see
   [live-audio-pattern.md](live-audio-pattern.md).

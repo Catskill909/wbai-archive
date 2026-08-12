@@ -106,8 +106,37 @@ function groupArchive(rows) {
   check('current Past episodes lands directly in the archive route',
     s.open && s.archive && s.title === a[0].title && s.rows === a.length, s);
   check('current archive navigation leaves both audio sources untouched', !s.archiveSrc && s.liveElements === 0, s);
-  await p.click('#sheetClose');
+
+  await p.click('#sheetRouteBack');
   await sleep(650);
+  s = await sheetState();
+  let hist = await p.eval(`return history.state || {};`);
+  check('the visible archive Back control retraces to the Live Player',
+    !s.open && s.liveOpen && hist.live === 1, [s, hist]);
+
+  await p.eval(`history.forward(); return 1;`);
+  await sleep(650);
+  s = await sheetState();
+  hist = await p.eval(`return history.state || {};`);
+  check('Forward restores the exact Past episodes destination',
+    s.open && s.archive && !s.liveOpen && hist.sheetView === 'archive' && hist.liveOrigin === 1, [s, hist]);
+
+  await p.eval(`history.back(); return 1;`);
+  await sleep(650);
+  s = await sheetState();
+  hist = await p.eval(`return history.state || {};`);
+  check('browser/device Back follows the same archive-to-Live path',
+    !s.open && s.liveOpen && hist.live === 1, [s, hist]);
+
+  await p.click('#lpArchive');
+  await sleep(500);
+  await p.click('#sheetClose');
+  await sleep(800);
+  s = await sheetState();
+  hist = await p.eval(`return history.state || {};`);
+  check('Close exits the whole Live-originated modal journey without a stray player',
+    !s.open && !s.liveOpen && !hist.live && !hist.sheetId, [s, hist]);
+
   await openLive();
   await p.click('#lpUpNext');
   await sleep(500);

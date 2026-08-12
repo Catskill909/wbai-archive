@@ -296,16 +296,17 @@ Two things this must not break, both easy to get wrong:
 
 ### 7.2 The Back button could strand you
 
-`openSchedule()` pushes a `{sched:1}` history entry. Listen Live closed the
+`openSchedule()` pushes a `{sched:1}` history entry. Listen Live once closed the
 modal with `dismissSchedule()` — the *visual* close — which left that entry
 behind still claiming the schedule was open. Open the schedule a second time
 and there were two such entries stacked: **Back landed on the stale one and
 re-opened the schedule instead of closing it.** Back looked dead.
 
-Fixed by clearing the claim in place with `replaceState` at the moment of the
-non-history close. Chosen over `closeSchedule()` (which does `history.back()`)
-because that fires an async popstate whose `dismissSchedule()` would then steal
-focus from the live player that had just taken it.
+The current handoff transfers that entry in place from `{sched:1}` to `{live:1}`
+before swapping surfaces. Back remains exactly one press from Live to the page,
+there is no stale schedule claim, and no duplicate plain-page entry is left
+under Live. This is still chosen over `closeSchedule()` because its asynchronous
+popstate would interfere with the focus handoff.
 
 **The general rule, worth applying to any future overlay here:** if you close a
 modal *without* going through history, clear its history flag in the same
@@ -370,8 +371,9 @@ Three things to keep if you touch this:
   Back still belongs to the schedule. That means it must close itself on
   `popstate` and in `dismissSchedule()`, or it is left floating over a dialog
   that has gone.
-- **The Live answer still clears the stale `{sched:1}` flag** on its way out
-  (§7.2). That bug is one `replaceState` away from returning.
+- **The Live answer transfers `{sched:1}` to `{live:1}`** on its way out
+  (§7.2). Clearing without transferring would leave Live without its Back route;
+  failing to replace would revive the original stale-schedule bug.
 
 `test/schedule/` holds all of it — 32 checks, including that a tap anywhere on
 the card opens the chooser and that nothing in this dialog ever starts audio.
