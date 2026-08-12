@@ -2134,12 +2134,15 @@
   }
   .sched-empty{ padding:2rem 0; text-align:center; color:var(--ink-dim); }
   .sched-slot{
-    display:flex; gap:.9rem;
+    /* The day tabs are their own navigation row; the daily show list does not
+       need to inherit the width of the first (Today) tab. Keep only a small
+       gutter after the widest time label so the cards use the available row. */
+    display:flex; gap:.5rem;
     padding:.55rem 0;
   }
   .sched-slot + .sched-slot{ border-top:1px solid var(--outline); }
   .sched-time{
-    flex:none; width:4.6rem; padding-top:.45rem;
+    flex:none; width:2.9rem; padding-top:.45rem;
     display:flex; flex-direction:column; gap:.15rem;
     font-family:var(--font-display); font-weight:700; font-size:.85rem;
     font-variant-numeric:tabular-nums;
@@ -2275,12 +2278,9 @@
     body.has-player .sched-modal{ height:auto; }
     .sched-close{ width:42px; height:42px; }
     .sched-close svg{ width:17px; height:17px; }
-    /* The time column was 4.6rem plus a .9rem gap — comfortable widths for a
-       680px desktop modal, dead space once the phone sheet goes edge to edge.
-       "12 PM" is the widest label it ever holds and wants ~2.9rem, so this is
-       sized to that rather than left round. Give the rest to the cards. */
+    /* Tighten the small gutter a little further on phones. The time column is
+       already sized to "12 PM", its widest possible label, at every width. */
     .sched-slot{ gap:.35rem; }
-    .sched-time{ width:2.9rem; }
     /* The live row can't fit thumb + title + pill on one line at phone widths
        — the title had nothing left and collapsed to a single letter. Drop the
        pill to its own line below, sized to its own content and aligned left,

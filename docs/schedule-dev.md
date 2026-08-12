@@ -386,9 +386,11 @@ the card opens the chooser and that nothing in this dialog ever starts audio.
   reason a user could see. The widest label ("Today") needs 32px and a tab has
   41px of room at 402px: it fits comfortably. Cut moved to 344px, with slightly
   tighter tab padding below 430px for margin.
-- **Time column** was 4.6rem + 0.9rem gap — right for a 680px desktop modal,
-  dead space on an edge-to-edge phone sheet. Now sized to "12 PM", the widest
-  label it can hold.
+- **Time column** was 4.6rem + 0.9rem gap on desktop, which made the cards look
+  as though they were aligned to the first day tab even though the selected day
+  is rendered as one daily list. It is now sized to "12 PM", the widest label
+  it can hold, at every width, with a 0.5rem gutter (0.35rem on phones). The
+  tabs and daily timeline are deliberately independent rows.
 - **The live card no longer has to stack on phones.** Thumb + title + pill never
   fit one line, so the pill used to drop to its own. The pill is a small badge
   now (§7.4b) and shares the line, which is most of why the chooser was the

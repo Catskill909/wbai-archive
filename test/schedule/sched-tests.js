@@ -237,6 +237,21 @@ const STATE = `
   check('Escape closes the chooser', s.chooser === false);
   check('and NOT the schedule underneath it', s.sched === true);
 
+  console.log('\n6. the daily list is independent of the day-tab columns');
+  await p.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false });
+  await openSchedule(p);
+  const layout = await p.eval(`
+    var time = document.querySelector('.sched-time').getBoundingClientRect();
+    var shows = document.querySelector('.sched-shows').getBoundingClientRect();
+    return {
+      timeWidth: Math.round(time.width),
+      gutter: Math.round(shows.left - time.right)
+    };`);
+  check('desktop time column is only as wide as its widest label',
+        layout.timeWidth <= 48, layout.timeWidth);
+  check('show cards follow the time labels without a tab-sized spacer',
+        layout.gutter <= 10, layout.gutter);
+
   console.log(`\n${fail ? 'FAILED' : 'OK'} — ${pass} passed, ${fail} failed\n`);
   p.close();
   process.exit(fail ? 1 : 0);
