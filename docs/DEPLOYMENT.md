@@ -347,28 +347,36 @@ and your laptop's accumulated `feeds.json` with it.
 
 ## Troubleshooting
 
-### Descriptions missing from the info sheet
+### Descriptions missing from the show modal
 
-A show's description comes from `/api/showinfo`, harvested from the on-air feed —
-and that feed only exposes rich records for the show **on air** and the one **up
-next**. A server therefore learns a show's description only while that show is
-broadcasting. wbai.org's program directory (`/api/programs`) covers some shows
-but not all; "WBAI Sports", for instance, isn't listed there at all, so the
-harvest is its only possible source.
+The Show view first reads `/api/showinfo`, whose warm cache is harvested from the
+on-air/up-next feed and seeded by `seed/showinfo.json`. It then falls back to the
+title-matched `/api/programs` directory. If neither already describes the show,
+opening its profile asks `/api/showinfo/<altid>` for that show on demand and
+repaints when the result lands. A slow or failed upstream request can therefore
+leave one opening sparse without blocking the modal.
 
-This is why the image ships `seed/showinfo.json` — see
-[ARCHITECTURE.md](ARCHITECTURE.md#get-apishowinfo). If descriptions are missing
-in production but present locally, compare the two counts:
+These are program descriptions, not episode notes. Changing dates within one
+show should keep the same description; changing shows should resolve the new
+show. The podcast XML often repeats its main channel blurb on every item and is
+not treated as unique episode copy.
+
+If descriptions are broadly missing in production but present locally, compare
+the warm-cache counts:
 
 ```bash
 curl -s http://localhost:8080/api/showinfo | head -c 40
 curl -s https://YOUR-DOMAIN/api/showinfo  | head -c 40
 ```
 
-A production count far below the seed's means the seed didn't ship — check that
+A production count far below the seed's means the warm start may not have
+shipped — check that
 `COPY seed ./seed` is still in the `Dockerfile` and that `seed/` isn't excluded by
 `.dockerignore` (note `data/` *is* gitignored; `seed/` deliberately is not).
 Refresh the seed from a long-running instance with `npm run seed`, then commit.
+For one specific show, also inspect
+`/api/showinfo/<url-encoded-altid>`; see
+[ARCHITECTURE.md](ARCHITECTURE.md#get-apishowinfoaltid--the-gap-filler).
 
 ### Coolify ignores the compose `volumes:` block
 

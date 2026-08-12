@@ -51,6 +51,25 @@ The codebase is in good shape. Confirmed present:
 This is already above the median web app. The plan below is about closing
 specific, known gaps — not a rebuild.
 
+### Show modal follow-up (local prototype, 2026-08-12)
+
+The routed Show/Past episodes prototype was checked separately because it adds
+navigation and transport inside the existing dialog:
+
+- the dialog's `aria-labelledby` follows the visible Show or Past episodes route;
+- visible Back returns to Show view, while Close/minimize leaves the dialog;
+- Escape follows that same hierarchy and Tab remains trapped in the one dialog;
+- archive row details and Play are sibling buttons with distinct accessible
+  names—selection never masquerades as playback;
+- partial and completed listening state is written in words as well as drawn;
+- `Playing`, `Paused`, and `Loading` changes update the row's accessible name;
+- internal Back and in-modal player controls meet the 44px coarse-pointer floor;
+- the modal player dock retains transport while profile/archive content changes.
+
+The browser regression is `test/episode-rail/run.sh` (50 checks after the
+secondary audit). This is automated evidence, not a replacement for the manual
+screen-reader, zoom/reflow, and forced-colors passes below.
+
 **The studio** (`/studio`, added 2026-07-30) is held to the same bar and audited
 separately, because it is a different document with its own markup:
 
@@ -142,8 +161,9 @@ riskiest a11y surface. Needs a dedicated screen-reader pass, not just static ARI
   "Loading" states in a way SR users hear? (labels are set in `app.js:619`,
   `:309` — verify they re-announce.)
 - Is playback progress perceivable non-visually? A `<input type=range>` scrubber
-  exists (`index.html:303`); confirm its `aria-valuetext` reads a human time
-  ("3 minutes 12 seconds"), not raw seconds.
+  exists in both the page bar and show-modal dock; confirm its value is announced
+  as usable time rather than an unexplained raw second count. The current UI
+  supplies a track/date-specific label but does not set `aria-valuetext`.
 - Media Session metadata is wired (`clearMediaSession`, `app.js:778`) — good for
   lock-screen/AT integration; confirm title/artwork populate.
 - Keyboard: Space = play/pause, ←/→ = ±15s are documented in `title=`

@@ -208,6 +208,13 @@ The two ranges are the sharpest: a 12px thumb inside a 16px-tall hit box is
 roughly a quarter of the minimum, and seeking is a *drag*, which is
 less forgiving than a tap.
 
+**2026-08-12 show-modal follow-up.** The routed modal added three controls after
+this original inventory. A secondary audit found `.sheet-route-back` at 40px
+high and `.sheet-player-toggle` at 38px. Back, the dock toggle, and the dock title
+now use real 44px minimum boxes at every pointer type; adjacent controls do not
+use overlapping pseudo-targets. `test/episode-rail/run.sh` measures those boxes
+in the actual phone layout.
+
 **Fix — expand the hit area, not the ink.** The visual design is deliberate and
 should not change. Use a pseudo-element to grow the target invisibly:
 
@@ -833,7 +840,8 @@ opposite of the bug being fixed.
 
 ```sh
 node server.js &          # app must be on :8080
-./test/touch/run.sh       # 51 assertions, coarse-pointer emulated
+./test/touch/run.sh       # 49 assertions, coarse-pointer emulated
+./test/episode-rail/run.sh # 50 modal/archive assertions, including new targets
 ```
 
 It runs both ways on purpose: pass 1 asserts the hover guards **do** match on a

@@ -102,8 +102,8 @@ episode moves `latest`, one aging out of retention moves `count`.
 
 ### `GET /api/programs`
 
-The archive rows carry no description and no reliable host, so the info sheet's
-prose comes from wbai.org's own program pages.
+The archive rows carry no show description and no reliable host, so the show
+modal's profile prose comes from wbai.org's own program pages.
 
 1. Scrape `wbai.org/programlist/` for every `program.php?program=<id>` link, with
    the title and "Hosted by …" line beside it (~149 programs).
@@ -139,9 +139,10 @@ coming round again.
 archive2 exposes a per-show endpoint that answers for **any** show at any time
 (`_pa_get_show_info.php` — POST-only, base64'd HTML, see
 [UPSTREAM.md](UPSTREAM.md)). This route wraps it. The front end calls it when
-someone opens a sheet nothing else describes; the sheet paints immediately from
-what is already held and repaints if the lookup lands, so a slow or failed
-request costs nothing.
+someone opens a modal profile nothing else describes, including when the
+listener follows the in-modal player to a different show. The profile paints
+immediately from what is already held and repaints if the lookup lands, so a
+slow or failed request costs nothing.
 
 - **Lazy, never a sweep.** One request, for a show a real person just opened.
   Fetching all ~150 programmes up front would be a rude thing to send a small
@@ -183,7 +184,7 @@ data, and is treated as sensitive: never read, never forwarded, never logged.
 
 ### `GET /` — Open Graph tags for shared links
 
-The info sheet's Share button hands the OS a bare `?show=<id>` link. Everything
+The show modal's Share button hands the OS a bare `?show=<id>` link. Everything
 the share sheet, iMessage, Slack or Mail then displays — thumbnail, title,
 blurb — is built by *their* crawler fetching that URL and reading `<head>`. No
 JavaScript runs in a preview fetch, so the front end cannot contribute to it.
@@ -196,7 +197,7 @@ So `sendFile()` rewrites the block between the `<!-- og:start -->` /
   A host that isn't hostname-shaped is dropped rather than interpolated.
 - With `?show=<id>`, the episode is looked up in the archive cache and the card
   becomes that show's title, its `/pix` artwork, and its description from the
-  show-info cache — the same precedence the info sheet uses, so the card matches
+  show-info cache — the same precedence the Show view uses, so the card matches
   the page the recipient lands on. Unknown ids fall back to the station card.
 - The request handler awaits `getArchive()` before serving a `?show=` URL. A
   crawler fetches once and caches the result, so a cold cache on a fresh deploy
@@ -253,7 +254,7 @@ survive, so every check passes by construction. See admin-page.md §5.1.
 
 ## Front-end data merge
 
-The info sheet reads three sources, most specific first:
+The Show view reads three sources, most specific first:
 
 | Field | Archive row | `/api/showinfo` | `/api/programs` |
 | --- | --- | --- | --- |
@@ -268,6 +269,16 @@ what keeps the sheet from showing labelled blanks for shows WBAI documents
 thinly. `/api/programs` is fetched lazily on the first sheet open (it's the
 largest payload in the app), and the open sheet repaints itself when it lands.
 
+Descriptions in this table are **show-level**, not episode-level. Podcast XML
+items do carry a `description`, but WBAI commonly repeats the channel/show blurb
+on every item. `applyFeeds()` keeps `episodeDesc` only when it differs from the
+channel description; the modal deliberately does not substitute that field for
+the show profile. Moving between dates of one show therefore keeps the same
+program description, while moving to another show resolves that show's own
+slug/title-backed description. If WBAI begins publishing reliable episode notes,
+they need an explicitly labelled episode-detail treatment rather than silently
+replacing the program description.
+
 ## Front-end
 
 `public/app.js` is plain ES5-style browser JavaScript, no build step. On load it
@@ -275,6 +286,13 @@ fetches `/api/archive`, renders the table, and wires up search/filter/sort. It
 polls `/api/nowplaying` every 15 seconds for the header live strip. Two `<audio>`
 elements are used: one for the live stream (header) and one for archived shows
 (bottom player); starting one pauses the other.
+
+The show modal is one dialog with two mutually exclusive body routes. Show view
+owns program identity and one selected broadcast; Past episodes replaces that
+body with the slug-grouped episode list. A third, stable flex region below both
+routes mirrors the global archive `<audio>` whenever it is loaded, so browsing
+state cannot cover or displace transport. Resume/completion memory remains
+client-only in `localStorage`, keyed by MP3 URL.
 
 ## Security posture
 

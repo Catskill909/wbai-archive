@@ -1,168 +1,133 @@
-# The episode rail
+# Past episodes in the show modal
 
-The row of date chips in the show sheet, under the facts line. Added 2026-08-06.
+The original episode rail was replaced by the internal **Past episodes** view on
+2026-08-12. The test directory retains the name `test/episode-rail/` so existing
+local commands continue to work.
 
-## Why it exists
+The design rationale and broader exploration live in
+[`show-modal-archive.md`](show-modal-archive.md).
 
-The archive listing is **episode-level** — one card per broadcast — so tapping a
-card opens the sheet on *that* broadcast and nothing in the UI acknowledged that
-the show had others. The weekly schedule is worse: a slot can only hand over its
-most recent row, so before the rail there was no path at all from "Frontline
-Voices airs Wednesdays at noon" to last Wednesday's episode.
+## Why the rail was retired
 
-## The shape of the problem
+The rail solved an important discovery problem: the archive listing is
+episode-level, but a listener opening one broadcast had no way to find the other
+episodes of that show. It also preserved listening progress and completion.
 
-Measured against a representative listing (536 rows / 125 shows, 2026-08-06),
-grouped the way the app groups them:
+Its position in the pinned modal footer created a larger problem. A show profile,
+date chips, expanded `All N` grid, primary Play action, alternate-selection
+transport, and scrubber all competed vertically. With 20+ episodes or playback
+active, the show information could be pushed out of view and the transport could
+change shape as the listener browsed.
 
-| episodes | shows |
-| --- | --- |
-| 1 | 13 |
-| 2–3 | 39 |
-| 4–5 | 52 |
-| 6–9 | 15 |
-| 11–26 | 5 |
+The functionality remains; the expanding layout does not.
 
-So the range is 1 → 26, not "music has 2 and talk has 5". Both ends have to look
-deliberate: nothing at all for the 13 singletons, and something browsable for
-Democracy Now!'s 26.
+## Current model
 
-## Decisions, and what they are protecting
+The show sheet is one dialog with two mutually exclusive body views:
 
-**A show is a slug, not a title.** `episodesFor()` groups by lowercased `sho`.
-`showInfo` and the artwork are keyed by `sho`, so every row in a group renders a
-byte-identical header — switching episodes visibly changes only the facts row and
-what Play will play, which is what makes the swap feel like a selection rather
-than a navigation. Grouping by title instead would fold *What's Going On!*'s
-Monday, Tuesday and Wednesday editions — three slugs, three descriptions — into
-one wrong list. Lowercased because *Talk Out of School* ships under two slugs
-differing only in capitalisation.
+1. **Show view** — artwork, title, host, description, links, and one dated
+   selected-broadcast action.
+2. **Past episodes view** — compact show identity followed by a scrolling list
+   of every episode.
 
-**Choosing is not playing.** A chip calls `paintSheet(row, true)` and stops.
-Play remains one deliberate tap on the control that has always meant play, and
-the default (newest, or whatever card you came from) is still reachable in one
-tap from a cold open. This is the rule most likely to be "simplified" away by
-someone adding autoplay-on-select; the suite asserts it in capitals.
+A separate player dock sits below either view whenever archive audio is loaded.
+It controls the global archive audio element, even if the listener is browsing a
+different episode or show.
 
-**Choosing is not playing — so the sheet owes a transport for what already is.**
-This is the other half of the rule above, and it was missing until 2026-08-08.
-The sheet sits at `z-index:180` and the docked player bar at `80`, so the sheet
-*covers* the transport; the sheet's own scrubber was the only replacement, and
-`syncSheetScrub()` hid it unless the selected episode was the one loaded. Tap a
-second date while listening and the scrubber disappeared, Pause became
-`Play · Jul 31`, and the episode still playing had no control anywhere on screen
-— and no mark on its chip either, so it was not even findable. Three fixes, all
-of which must stay:
+## Grouping
 
-- **The rail says which chip is the sound in the room.** `.ep.playing` draws an
-  equaliser (teal, `--accent-2`), taking precedence over the progress bar and the
-  tick — while an episode is playing, that is the only thing about it worth a
-  mark. Selection stays orange. Two questions, two colours, never the same ink:
-  teal is *what you hear*, orange is *what Play would play*.
-- **The scrubber tracks the audio element, not the selection.** `sheetShowRow()`
-  keeps it alive for any episode **of this show** (and only this show — a sheet
-  open on show A while show B plays is the case the ✕ already describes).
-- **A stand-in strip** appears only when the loaded episode is not the selected
-  one: pause/resume, `Playing · Aug 7`, and the label is a button back to that
-  episode, so a wrong chip tap costs one tap. It is outlined and teal on purpose.
-  **There is exactly one filled orange button on screen at any time** — the strip
-  reports a fact, the button makes the only offer. The suite counts them in
-  painted colour.
+A show is still grouped by its lowercased `sho` slug, not title. This avoids
+folding distinct editions with similar titles into one archive. Episodes remain
+newest first.
 
-Two things that were considered and rejected: a confirmation dialog (a fourth
-stacked layer guarding an action that is one tap to undo and loses no position —
-`playTrack()` calls `resumeRemember()` first), and autoplay-on-select, which
-breaks the rule directly above and fires a multi-megabyte fetch from a tap that
-reads as browsing.
+## Description ownership
 
-**`replaceState`, never `pushState`.** Same reason the filters don't push (see
-`urlFor`/`syncUrl` in `app.js`): Back must keep meaning "close the sheet", not
-"undo six chip taps". The URL still follows the selection, so a shared link names
-the exact episode.
+The modal profile describes the program, not the individual feed item. It reads
+`showInfo[r.sho].desc`, then the title-matched program-directory description,
+then `showInfo[r.sho].shortdesc`. WBAI's XML commonly repeats one channel blurb
+on every episode; the server retains a genuinely different `episodeDesc` when
+one exists, but this modal does not silently present it as the program profile.
 
-**The rail is pinned in the footer, between the links and Play.** It shipped in
-the scrolling body, under the facts, on the reasoning that the footer's height
-should not vary with a show's episode count. On a real iPhone that was simply
-wrong: the sheet opens with the rail **below the fold**, so the feature is
-invisible unless you already know to scroll for it — which defeats the entire
-point of adding it. Corrected the same day it shipped.
+Switching dates within one slug therefore keeps the same description. Moving to
+another show—including by tapping the in-modal player title—runs that show's
+lazy `/api/showinfo/<altid>` lookup and repaints when richer show data arrives.
 
-The original worry doesn't survive contact either: the rail is *one row of
-chips* whether a show has 2 or 26, so it adds a fixed ~78px, not a variable
-amount. The one case that does vary is "All N" expanded, and that is capped
-(`min(30dvh, 190px)`) precisely because growing the footer now shrinks the body
-above it.
+## Interaction rules
 
-Order within the footer is deliberate: links (least important, furthest from the
-thumb), then the choice, then the action the choice feeds.
+- Opening a front card or deep link always lands in Show view on that exact
+  broadcast.
+- The primary action always names the short date: `Play · Aug 12`, `Resume · Aug
+  12`, `Pause · Aug 12`, or `Loading · Aug 12`.
+- `Past episodes N` replaces the profile with the archive list. It never expands
+  the profile footer.
+- The visible Back control returns to Show view; Close/minimize leaves the modal.
+- Tapping an episode row selects it and returns to Show view without playing.
+- Tapping a row's explicit play icon starts that episode and leaves the archive
+  browser in place.
+- Selecting or browsing never hides, replaces, or moves the modal player dock.
+- A show with one episode gets no dead Past episodes control.
 
-**Play carries the chosen date, but only when it isn't the default.** Once the
-rail has scrolled out of view behind a long description, the pinned Play button
-is the only place the choice can be read, so it says `Play · Jul 28`. On the
-newest episode it stays `Play episode`: a date there would put a label on 125
-shows to serve the few where it means anything. `sheetEpAlt` drives this, and
-only the sheet renders a `.play-label`, so no card button can pick it up.
+## Listening memory
 
-**One layout at every width.** A single horizontally scrolling row: with four
-chips on a desktop it simply reads as a row of chips and never scrolls; with
-twenty-six it swipes. Above six it also offers "All N", which wraps *the same
-chips* into a grid — one unit to learn, no second markup mode. Two behaviours
-behind a breakpoint would be a second thing to reason about for no gain.
+Resume storage remains keyed by MP3 URL. The interface uses progressive
+disclosure:
 
-**What you have already heard** is the reason this is a rail and not a dropdown.
-A teal bar shows how far into an episode you got; a tick means you finished it.
-A closed `<select>` can show neither.
+- Show view reports only the selected broadcast: elapsed and remaining time,
+  `Played`, or nothing for untouched audio.
+- The Past episodes header summarizes completed and in-progress episodes.
+- Each archive row writes `N% listened`, `Played`, `Playing`, `Paused`, or
+  `Loading` when applicable.
+- Partial progress also gets a thin teal bar. Completed episodes get written
+  status. Untouched episodes remain visually quiet.
+- Live playback temporarily outranks saved history on that row instead of
+  stacking an equalizer, progress bar, completion check, and selection ring.
 
-## The `done` marker
+Orange remains an action color. Teal remains listening/playback state, but color
+is never the only cue.
 
-Finishing an episode used to call `resumeForget()`, which made a show you had
-heard indistinguishable from one you had never opened. It now writes
-`{t:0, d, at, done:1}` instead (`resumeDone()`). `resumeFor()` still reads 0 for
-it — `t` is below `RESUME_MIN` — so nothing about resuming changed. "Start over"
-clears it via `resumeForget()`, because starting over is a claim to be listening
-again. Entries count toward `RESUME_MAX` like any other.
+## Layout contracts
 
-## Two traps that were live in this code
+- Desktop sheet: up to 800px wide and 88dvh tall.
+- Phone sheet: a compact bottom sheet capped below the safe top gap; it grows
+  only as much as its content needs until reaching that cap.
+- The route header, scroll body, profile footer, and player dock are separate flex
+  regions.
+- The archive list is the only growing/scrolling content in Past episodes.
+- Starting audio does not resize the desktop modal.
+- The player dock is outside the changing body/footer and reserves its own space.
 
-**`offsetTop`/`offsetLeft` are measured from the nearest *positioned* ancestor.**
-`scrollEpIntoView()` reads them, and without `position:relative` on `.eps-rail`
-they resolve against `.sheet` — which scrolled the expanded grid to the wrong
-row. The first version of this suite checked visibility with `offsetLeft` too and
-therefore passed while the bug was on screen. It now measures with
-`getBoundingClientRect()`, which is an independent instrument. (CLAUDE.md §3a.)
+## History and accessibility
 
-**The CSP voids inline `style=""` attributes**, not just injected `<style>` tags.
-The app is served `style-src 'self'` with no `unsafe-inline`, so the percentage
-on each progress bar goes through CSSOM (`el.style.setProperty`). Verified in the
-browser on 2026-08-06: a `style` attribute setting `color` computes to the
-inherited value, i.e. it is discarded silently. The same check found that the
-weekly schedule's `style="--cat:…"` had *never* applied — its category hover edge
-was rendering the fallback colour since the feature shipped. Fixed in the same
-commit (`schedApplyCatColour()`).
+- Episode selection uses `replaceState`, so selecting several dates does not
+  turn browser Back into an undo stack.
+- The dialog's accessible label follows the visible route title.
+- Tab remains trapped inside the one dialog.
+- Escape from Past episodes returns to Show view; Escape from Show view closes.
+- Back, Close/minimize, row details, and row Play are distinct controls with
+  distinct accessible names.
+- Progress and completion always have a non-color cue.
+- Dynamic `Playing`, `Paused`, and `Loading` state is reflected in an episode
+  row's accessible name as it changes.
+- Internal Back and player controls retain the 44px coarse-pointer target floor.
 
-## The scroll hint
+## Regression suite
 
-Pinning the rail made the body shorter, which made an old problem visible: on a
-phone the facts row and the retention badge sit just under the fold, and a
-silently clipped line reads as *missing* rather than as scrolled-away. So
-`syncSheetFade()` fades whichever edge still has content past it, and only that
-edge — `.fade-top` / `.fade-bottom` on `.sheet-body`.
+Run:
 
-The mask goes on the **scroll box**, not on the content, so it stays at the
-box's edges while the content moves under it. It is recomputed on scroll, on
-resize, on every paint, when the description clamp is toggled, and when "All N"
-expands — all five change what is hidden. Through classes, never a `style`
-attribute, which this app's CSP discards (see below).
+```sh
+test/episode-rail/run.sh
+```
 
-## Tests
+The suite derives fixtures from the current archive and checks desktop and phone
+states. It covers:
 
-`test/episode-rail/run.sh` — headless Chrome against the running app, 82 checks
-at desktop and phone widths. The transport section streams a real episode with a
-synthesized click (a programmatic one would be refused by the autoplay policy)
-and asserts what reaches the viewport: rendered box heights, the audio element's
-own `paused`/`currentSrc`, and the count of buttons *painted* `--accent`. Fixtures are **derived** from whatever the listing
-currently holds (`pickFixtures()`), never hardcoded: every episode id rotates out
-within its retention window, so a written-down id is a test that fails for the
-wrong reason in two months. Includes a self-test that strips the mark classes and
-requires the probe to notice, because a suite full of "this mark is absent"
-assertions passes perfectly once the probe goes blind.
+- profile-first opening and dated Play labels;
+- archive replacement rather than footer growth;
+- complete episode counts and one-episode shows;
+- selection without playback and explicit direct playback;
+- persistent dock ownership while another episode is browsed;
+- body/dock non-overlap and horizontal overflow;
+- elapsed/remaining status, percentage status, Played status, and progress bars;
+- phone target sizing and changing playback state in row accessible names.
+
+The suite currently contains 50 checks.

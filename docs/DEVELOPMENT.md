@@ -15,8 +15,9 @@ for why the server exists, [DEPLOYMENT.md](DEPLOYMENT.md) for shipping it, and
   a list or gallery layout.
 - Plays archived shows in a persistent bottom player, and the 99.5 FM live
   stream from the header.
-- Opens a show info sheet with artwork, host, description, air date, retention,
-  and the show's own links.
+- Opens a routed show modal: Show view restores artwork, host, show description,
+  the selected broadcast and links; Past episodes replaces it with a listening-
+  aware episode browser and a persistent in-modal archive player.
 - Publishes to the OS media session — lock screen, macOS Now Playing, car
   displays — with working transport controls.
 - Offers ±15s skip in the player bar, and Space / ←/→ keyboard shortcuts.
@@ -75,7 +76,8 @@ zero-toolchain property is a feature of this project, not an accident.
 7. **Header live stream + on-air metadata** — the appbar player
 8. **Media Session** — lock screen, hardware keys, car displays
 9. Now-playing poll, archive fetch
-10. **Show info sheet** — the modal, its data merge, and title matching
+10. **Show modal + Past episodes** — profile/archive routes, listening memory,
+    persistent player dock, data merge, and title matching
 11. Slide-out menu
 12. **Back to top** — the direction-aware show/hide rule, and the observers that
     publish `--player-h` / `--resume-h` so the button can anchor to the bar
@@ -195,67 +197,60 @@ to their infrastructure, not to this front end.
 
 ## How each feature works
 
-### Show info sheet
+### Show modal and Past episodes
 
-**What it does:** clicking a show's title, its category line, or **More** opens
-a modal with artwork, host, description, air date, retention, the show's links,
-and its own play button and scrubber.
+**What it does:** clicking a show's title, category line, or **More** opens the
+exact dated broadcast in Show view. Past episodes is an internal route in that
+same dialog, not content appended below the profile. See
+[show-modal-archive.md](show-modal-archive.md) for the UX audit and
+[episode-rail.md](episode-rail.md) for the concise interaction contract.
 
-The modal that opens from a show's title, its category line, or the **More**
-link. Seven things about it are load-bearing:
+These rules are load-bearing:
 
-1. **Empty fields are not rendered.** Every block — host, description, each
-   fact, each link — is emitted only when its value is non-empty. WBAI documents
-   its shows very unevenly; that one filter is why a thinly documented show gets
-   a compact sheet instead of labelled blanks. Don't add a block that renders a
-   placeholder or an em dash.
-2. **The footer is two rows, links above transport.** Secondary links sit in
-   `.sheet-links` (small pills) *above* `.sheet-actions` (Play/Resume and Start
-   over), so the primary control keeps a fixed position however many links a
-   show happens to have. Before the split, a well-documented show pushed Play
-   onto a second line while a thin one left it first.
-3. **Facts are one wrapping row, not stacked pairs.** `.sheet-facts` renders
-   Aired, Length and the retention pill inline. As three labelled rows they
-   pushed availability under the pinned footer on a long title, where it read as
-   missing rather than scrolled-away. The retention pill says "59 days left" on
-   its own, so it carries no label, and `shortDateText()` abbreviates the
-   weekday and month that upstream spells out in full.
-4. **Controls live outside the scroll area.** `.sheet-body` scrolls; `.sheet-foot`
-   (Play/Pause, links, scrubber) is pinned. Democracy Now!'s description runs to
-   a dozen paragraphs — before the split it pushed the Play button below the
-   fold. The description itself is CSS line-clamped, and `setupDescClamp()` adds
-   the *Show more* toggle only when the text actually overflows (measured after
-   paint, not guessed from length).
-5. **The sheet's scrubber is the player bar's scrubber.** `scrubs()` returns
-   every scrubber currently in the DOM, and `applyDuration()` / `paintScrubTime()`
-   / `resetScrubber()` / `bindRange()` all operate over that list. Adding a third
-   one anywhere means adding it to `scrubs()`, nothing else. The sheet's copy
-   follows the `<audio>` element, not the selection — see 6.
-6. **The sheet covers the docked player bar, so it owes a transport for
-   everything it hides.** It sits at `z-index:180`, the bar at `80` (unlike the
-   weekly schedule, which stops at `bottom:var(--player-h)` and leaves the bar
-   reachable). Until 2026-08-08 the sheet's scrubber was shown only when the
-   *selected* episode was the loaded one, so picking a second date from the
-   episode rail mid-listen hid the scrubber, turned Pause into `Play · Jul 31`,
-   and left the episode still playing with no control anywhere on screen and no
-   mark on its chip. Three things fix it and must stay together:
-   `sheetShowRow()` keeps the scrubber alive for any episode **of this show**;
-   `.ep.playing` puts a teal equaliser on the chip that is actually sounding
-   (orange stays "what Play will play" — two questions, two colours); and
-   `.sheet-now` is a quiet outlined strip, shown only when those two diverge,
-   carrying pause/resume, `Playing · Aug 7`, and a label that is a button back to
-   that episode. **Exactly one filled `--accent` button is on screen at any
-   time** — the strip reports a fact, the orange button makes the only offer.
-   Rejected on the way: a confirmation dialog (a fourth stacked layer guarding
-   something one tap undoes, and `playTrack()` calls `resumeRemember()` first, so
-   nothing is lost) and autoplay-on-select (breaks the rail's rule that choosing
-   is not playing, and fires a multi-megabyte download from a browsing tap).
-   `docs/episode-rail.md` has the full reasoning.
-7. **Buttons can't nest.** In list rows the title block is a `<button>` and the
-   play control is its sibling. In gallery cards the artwork *is* the play button,
-   so the title overlay and More link are siblings positioned on top of it inside
-   `.card-wrap` — which is also why the card's hover states key off
-   `.card-wrap:hover` rather than the card button's own `:hover`.
+1. **One route owns the body.** `sheetView` is `show` or `archive`. Show view
+   renders artwork, title, host, category and the clamped program description;
+   Past episodes replaces both profile body and footer with a slug-grouped list.
+   It never expands the modal underneath the profile.
+2. **The selected broadcast is explicit.** Opening a front card or deep link
+   preserves that row. Date, time, length and retention sit under **Selected
+   broadcast**, and every primary label names its short date: `Play · Aug 12`,
+   `Resume · Aug 12`, `Pause · Aug 12`, or `Loading · Aug 12`.
+3. **Selection and playback stay independent.** Tapping an archive row selects
+   it, returns to Show view, updates the URL with `replaceState`, and does not
+   load audio. Only the row's separate Play button starts playback; it leaves
+   the archive route and scroll position in place.
+4. **The modal player owns a stable third region.** `#sheetPlayerDock` is outside
+   `.sheet-body` and `.sheet-foot` and mirrors the global archive `<audio>` for
+   any loaded episode—even one from another show. Browsing cannot hide it,
+   replace it, or move it. Its title jumps to the playing episode and performs
+   the same lazy show-detail lookup as a front-card open. Closing/minimizing
+   hands transport back to the page player without stopping audio.
+5. **Listening history uses progressive disclosure.** Show view reports only
+   the selected episode's elapsed/remaining time or `Played`. Past episodes
+   summarizes completed/in-progress counts and writes `N% listened`, `Played`,
+   `Playing`, `Paused`, or `Loading` per row, with a thin progress bar for a
+   partial episode. Untouched episodes remain quiet. Orange is action; teal is
+   playback/history, always paired with text, a glyph, or a bar.
+6. **Descriptions remain program-level.** Priority is showinfo by `sho` slug,
+   then the title-matched program directory, then `shortdesc`. Switching dates
+   inside one slug intentionally keeps the program description. The feed's
+   `episodeDesc` is not rendered as program prose because WBAI usually repeats
+   one channel description across its items. Do not manufacture episode notes.
+7. **Empty fields are omitted.** WBAI documents programs unevenly; a thin record
+   stays compact rather than acquiring placeholders. `/api/programs` and
+   `/api/showinfo/<altid>` repaint the currently open profile when their lazy
+   lookups land.
+8. **Back and Close have different promises.** Visible Back and the first Escape
+   return Past episodes to Show view. Close/minimize leaves the modal; a second
+   Escape from Show view follows that path. The dialog label follows the active
+   route and focus remains trapped in the one dialog.
+9. **The responsive information architecture does not fork.** Desktop is capped
+   at 800px/88dvh. Phones use a compact intrinsic-height bottom sheet with the
+   same routes, scroll body and optional dock. Internal Back and dock controls
+   keep the project's 44px coarse-pointer floor.
+10. **Buttons cannot nest.** Archive row details and Play are sibling buttons,
+    just as list-row title and Play are. Gallery artwork is the Play button, so
+    its title overlay and More link remain sibling controls in `.card-wrap`.
 
 #### Title matching
 
@@ -286,8 +281,9 @@ the player remembers, so positions survive reloads in `localStorage` under
    pruned to the `RESUME_MAX` most recently touched entries as it grows.
 2. **Two thresholds decide what counts as a place.** Under `RESUME_MIN` (30s) is
    not yet a place worth returning to; within `RESUME_TAIL` (60s) of the end is
-   finished, not paused. Both cases *delete* the entry rather than storing it, so
-   an episode heard to the end offers Play, not Resume, next time.
+   finished, not paused. The early case deletes the entry. The tail stores a
+   compact `{done:1}` record: there is no resume offset, but Show/Past episodes
+   can honestly mark it `Played`.
 3. **The restore is spent in `loadedmetadata`, not `playTrack()`.** `playTrack()`
    parks the offset in `pendingResume`; the handler applies it once a duration
    exists to sanity-check it against. Seeking before metadata lands is silently
@@ -298,14 +294,15 @@ the player remembers, so positions survive reloads in `localStorage` under
    `audio.pause()`, because the `pause` event is async and by the time it fires
    `nowPlaying` is cleared and `load()` has reset `currentTime` to 0.
 
-The affordance is in two places. The player bar floats a **resume toast** for
+The affordance is in three places. The player bar floats a **resume toast** for
 nine seconds after a restore — anchored to the bar's top edge, not added to its
 flex row, so restoring a position never changes the bar's height. The info sheet
-turns its Play button into *Resume 42:15* (via `playLabelFor()`, which
+turns its Play button into a dated *Resume · Aug 12* (via `playLabelFor()`, which
 `updatePlayButtons()` calls on every state change) and reveals a **Start over**
 button beside it. That button is always rendered and toggled by
 `syncSheetRestart()`, so pausing with the sheet open makes it appear in place
-rather than on the next repaint.
+rather than on the next repaint. Show view also writes elapsed and remaining
+time, while Past episodes exposes compact percentage/completion history.
 
 ### PWA
 
@@ -353,7 +350,7 @@ launch, and mobile browser chrome tinted to match the appbar in both themes.
 ### URL state and deep links
 
 **What it does:** any view can be linked or shared, manifest shortcuts land on a
-category, and the system Back button closes the info sheet instead of leaving
+category, and the system Back button closes the show modal instead of leaving
 the app.
 
 Search, category, and the open sheet live in the query string; the list/grid
@@ -498,9 +495,9 @@ bar — which keeps playing after the script exits, after the server is stopped
 you've forgotten the window exists. This happened during development and was not
 obvious to diagnose from the outside.
 
-Verify player UI by asserting on state instead: that `.sheet-scrub` exists and
-un-hides, that `data-mp3` is on the button, that `updatePlayButtons()` swapped
-the glyph. Launch with `--mute-audio`, and kill the browser by its
+Verify player UI by asserting on state instead: that `#sheetPlayerDock` appears,
+that its scrubber follows the archive element, that `data-mp3` is on the action,
+and that `updatePlayButtons()` swapped the glyph. Launch with `--mute-audio`, and kill the browser by its
 `--user-data-dir` when you're done.
 
 **The one sanctioned exception, and what it costs to earn.**

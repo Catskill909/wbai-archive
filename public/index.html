@@ -493,9 +493,45 @@
         <path d="M6 9l6 6 6-6" />
       </svg>
     </button>
-    <!-- head/description/meta scroll; the controls stay pinned in the footer -->
+    <!-- Past episodes is an internal view of this one dialog, not another modal.
+       Its Back control has a different promise from Close/minimize. -->
+    <div class="sheet-routebar" id="sheetRoutebar" hidden>
+      <button class="sheet-route-back" id="sheetRouteBack" type="button" aria-label="Back to show info">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 12H5M11 18l-6-6 6-6" />
+        </svg>
+        <span>Show info</span>
+      </button>
+      <strong id="sheetRouteTitle">Past episodes</strong>
+    </div>
+    <!-- Exactly one body owns scrolling. The profile controls stay in sheetFoot;
+       the archive browser replaces both body and footer rather than growing them. -->
     <div class="sheet-body" id="sheetBody"></div>
     <div class="sheet-foot" id="sheetFoot"></div>
+    <!-- The sheet covers the page player, so it provides one stable transport of
+       its own. It represents the global archive audio even while another show or
+       episode is being browsed and never lives inside the changing footer. -->
+    <div class="sheet-player-dock" id="sheetPlayerDock" hidden>
+      <div class="sheet-player-row">
+        <button class="sheet-player-toggle" id="sheetPlayerToggle" type="button" aria-label="Pause">
+          <span id="sheetPlayerGlyph" aria-hidden="true"></span>
+        </button>
+        <button class="sheet-player-open" id="sheetPlayerOpen" type="button" aria-label="Show the episode in the player">
+          <span class="sheet-player-state" id="sheetPlayerState">Playing</span>
+          <span class="sheet-player-copy">
+            <span class="sheet-player-title" id="sheetPlayerTitle"></span>
+            <span class="sheet-player-episode" id="sheetPlayerEpisode"></span>
+          </span>
+        </button>
+      </div>
+      <div class="player-scrub sheet-player-scrub">
+        <span class="player-time" id="sheetCurrent">0:00</span>
+        <input class="player-range" id="sheetRange" type="range" min="0" max="0" value="0" step="1"
+          aria-label="Seek within the episode in the player" disabled>
+        <span class="player-time" id="sheetDuration">0:00</span>
+      </div>
+    </div>
   </div>
 
   <!-- Artwork lightbox: opened by tapping the show art in the sheet, so a listener

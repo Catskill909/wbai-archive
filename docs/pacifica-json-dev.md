@@ -280,9 +280,9 @@ adapter's output is the app's existing row shape. Make that the contract.
 ### The seam
 
 `getArchive()` returns `{rows, ...}`, and *everything* downstream —
-`deriveSchedule`, the episode rail, search, the studio, usage counting — consumes
-those rows and nothing else. So the row is the interface, and a JSON station
-swaps only what produces it.
+`deriveSchedule`, the routed Show/Past episodes modal, search, the studio, and
+usage counting — consumes those rows and nothing else. So the row is the
+interface, and a JSON station swaps only what produces it.
 
 Target mapping, field by field:
 

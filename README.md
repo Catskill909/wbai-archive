@@ -24,11 +24,13 @@ an archived broadcast.
 - **Built-in player** — listen to any archived show or the live 99.5 FM stream
   right in the app.
 - **Picks up where you left off** — for long talk shows, playback resumes
-  exactly where you stopped, with the option to start over.
+  exactly where you stopped. The show modal and Past episodes browser also mark
+  partial and completed broadcasts without requiring an account.
 - **Installable app** — add it to your phone or desktop home screen for a full,
   standalone listening experience.
-- **Show details at a glance** — artwork, host, description, air date and
-  links, one tap away for every show.
+- **Show details and past episodes** — artwork, host, show description, the
+  selected broadcast date and links open first; Past episodes is a separate
+  view inside the same compact modal, with playback kept reachable below it.
 - **List or gallery view** — browse as a simple list or a visual gallery of
   show art, whichever you prefer.
 - **On-air now, and what's next** — a full now-playing screen with artwork,
@@ -202,12 +204,17 @@ reload the page. `npm start` serves them directly.
   (one connection, never reused). Written to be portable to any project with a
   browser-based live player. Read before touching live audio; the regression
   suite that guards it is [test/live-stream/](test/live-stream/).
+- **[docs/show-modal-archive.md](docs/show-modal-archive.md)** — the UX audit,
+  state model, implemented modal direction, and local secondary-audit findings.
+- **[docs/episode-rail.md](docs/episode-rail.md)** — the current Show/Past
+  episodes interaction contract; the filename records the rail it replaced.
 
 Regression suites are zero-dependency too — headless Chrome over the DevTools
 protocol, driving the unmodified app. Each needs the server running on :8080:
 
 ```sh
 ./test/live-stream/run.sh            # live audio; also run with --strict
+./test/episode-rail/run.sh            # Show/Past episodes modal, listening memory, dock
 ./test/touch/run.sh                  # coarse-pointer affordances, overlay scroll locks
 ./test/to-top/run.sh                 # back-to-top: show/hide rule, geometry, hit tests
 ./test/ui/run.sh                     # listing, rows, reload, clock
@@ -254,6 +261,7 @@ can't be verified in a desktop devtools viewport.
 ├── .github/workflows/            # Windows desktop build
 ├── test/                         # zero-dependency suites (headless Chrome over CDP)
 │   ├── live-stream/              # live audio + fake station; cdp.js lives here
+│   ├── episode-rail/             # routed show modal + listening-history regression
 │   ├── touch/                    # coarse-pointer affordances, overlay scroll locks
 │   ├── to-top/                   # back-to-top show/hide, geometry, hit tests
 │   ├── ui/                       # listing, rows, reload, clock
