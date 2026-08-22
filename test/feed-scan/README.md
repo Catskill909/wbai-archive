@@ -77,7 +77,7 @@ what decides whether the scheduled workflow fails and mails you.
 | --- | --- |
 | `CAP_CHANGED` | **max episodes-per-feed moved — the migration plan is now out of date** |
 | `CLAIM_MISMATCH` | the listing advertises a feed that isn't there — the 2026-07-29 regression |
-| `FEED_DELISTED` | a live feed is no longer claimed by the current archive listing — often a retired show after a lineup update |
+| `FEED_DELISTED` | a live feed is no longer claimed by the current archive listing — **alarms only at 3+ in one scan** (a single retirement is routine lineup turnover; many at once is the broken-listing signature) |
 | `FEED_LOST` | was serving, now isn't — including `200`-with-zero-bytes |
 | `SLUG_GONE` | a remembered slug is no longer offered anywhere |
 

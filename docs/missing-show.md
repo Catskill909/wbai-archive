@@ -30,6 +30,13 @@ episodes should be removed. One retired show is normal context after an update.
 Many disappearing at once still deserve investigation because they can indicate a
 broken upstream listing or parser rather than a real programming change.
 
+Since 2026-08-22 the scanner encodes that sentence: a scan with one or two
+`FEED_DELISTED` changes reports them as routine (no failure mail), and three or
+more in the same scan alarm as notable (`DELIST_ALARM_AT` in
+`test/feed-scan/scan.js`). The change ended a run of single-retirement failure
+mails — the tail of the late-July hand cleanup aging out of archive2's listing —
+of which `demnoweve` on 08-22 was at least the third.
+
 The default is inferred and should be confirmed: the Wednesday 3 am rebroadcast
 recorded under `soundreb` on Jul 29 (old) and `ftsb` on Aug 5 (new), and `ftsb`
 has no Tuesday Jul 28 recording though retention would still be showing one.

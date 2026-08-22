@@ -63,10 +63,40 @@ const CONCURRENCY = 5; // a small station's Apache. Do not raise this.
 const NOTABLE = new Set([
   'CAP_CHANGED',      // the cap moved; the migration arithmetic is stale
   'CLAIM_MISMATCH',   // the 2026-07-29 regression, caught while it is still a claim
-  'FEED_DELISTED',    // a live feed no longer claimed by the current archive listing
+  'FEED_DELISTED',    // a live feed no longer claimed — but see the threshold below
   'FEED_LOST',        // including 200-with-zero-bytes, the July failure mode
   'SLUG_GONE',        // a show we remember is no longer offered anywhere
 ]);
+
+/**
+ * FEED_DELISTED is notable by *count*, not by kind alone (added 2026-08-22).
+ *
+ * One show retiring is lineup turnover, and docs/missing-show.md already said
+ * so: WBAI's scheduling records were corrected by hand after the late-July
+ * cutover, and shows recorded under the old configuration keep aging out of
+ * the current listing one at a time — each firing a single FEED_DELISTED. The
+ * app handles every one of them by design (episodes stay as feed-only
+ * history), so each mail was asking a human to confirm something no one had
+ * to act on: demnoweve on 08-22 was at least the third such mail.
+ *
+ * Many delisting in the SAME scan is a different event — the signature of a
+ * broken upstream listing or parser rather than a programming change, and the
+ * doc's own line ("many disappearing at once still deserve investigation") is
+ * the rule encoded here. Singles and pairs are still printed, under routine.
+ */
+const DELIST_ALARM_AT = 3;
+
+// The one classification the exit status and the report both use. A kind in
+// NOTABLE alarms as itself, except FEED_DELISTED, which alarms only in bulk.
+function splitNotable(changes) {
+  const delists = changes.filter((c) => c.kind === 'FEED_DELISTED').length;
+  const isNotable = (c) =>
+    NOTABLE.has(c.kind) && (c.kind !== 'FEED_DELISTED' || delists >= DELIST_ALARM_AT);
+  return {
+    notable: changes.filter(isNotable),
+    routine: changes.filter((c) => !isNotable(c)),
+  };
+}
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
@@ -332,7 +362,7 @@ function diff(prevState, now) {
 // always-saying-"no changes". selftest.js drives it offline; see §3a of
 // CLAUDE.md on why an assertion of absence has to prove it can still see the
 // thing it claims is absent.
-module.exports = { diff, parseFeed, slugsFromDropdown, slugsFromRows, slugsFromSchedule, NOTABLE };
+module.exports = { diff, parseFeed, slugsFromDropdown, slugsFromRows, slugsFromSchedule, NOTABLE, splitNotable, DELIST_ALARM_AT };
 
 if (require.main !== module) return;
 
@@ -399,8 +429,7 @@ if (require.main !== module) return;
   };
 
   const changes = diff(prevState, now);
-  const notable = changes.filter((c) => NOTABLE.has(c.kind));
-  const routine = changes.filter((c) => !NOTABLE.has(c.kind));
+  const { notable, routine } = splitNotable(changes);
 
   if (asJson) {
     console.log(JSON.stringify({ ...now, changes, notable, firstRun: !prevState }, null, 2));

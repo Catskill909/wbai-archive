@@ -77,11 +77,15 @@ jobs:
           # The lines worth surfacing as annotations, so a failure is diagnosable
           # from the Annotations column / failure email without opening the job
           # summary. Exit 1: the NOTABLE change lines themselves (4-space indented,
-          # named per scan.js's NOTABLE set). Exit 2+: the scanner's own error line.
+          # named per scan.js's NOTABLE set). The sed range stops at the routine
+          # section: FEED_DELISTED below the alarm threshold is printed there,
+          # and must not be annotated as the thing that failed the job.
+          # Exit 2+: the scanner's own error line.
           {
             echo 'detail<<SCAN_DETAIL_EOF'
             if [ $CODE -eq 1 ]; then
               printf '%s\n' "$OUT" \
+                | sed -n '/NOTABLE change/,/routine change/p' \
                 | grep -E '^ {4}(CAP_CHANGED|CLAIM_MISMATCH|FEED_DELISTED|FEED_LOST|SLUG_GONE)\b' \
                 | sed 's/^ *//'
             elif [ $CODE -ge 2 ]; then

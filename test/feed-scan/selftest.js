@@ -18,7 +18,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { diff, parseFeed, slugsFromDropdown, slugsFromRows, NOTABLE } = require('./scan.js');
+const { diff, parseFeed, slugsFromDropdown, slugsFromRows, NOTABLE, splitNotable, DELIST_ALARM_AT } = require('./scan.js');
 
 let pass = 0;
 const failures = [];
@@ -280,6 +280,55 @@ check('a claim appearing without a feed IS notable', () => {
     state({ manrat: { slug: 'manrat', status: 404, claimed: false } }, 5),
     { maxItems: 5, feeds: { manrat: { slug: 'manrat', status: 404, claimed: true } } });
   assert.ok(c.filter((x) => NOTABLE.has(x.kind)).some((x) => x.kind === 'CLAIM_MISMATCH'), kinds(c));
+});
+
+// Retirements alarm by COUNT, not kind (2026-08-22). The late-July hand
+// cleanup of WBAI's scheduling records left old-configuration shows aging out
+// of the listing one at a time, each a lineup fact the app already handles —
+// demnoweve was at least the third single-delist failure mail. One is
+// turnover; many in the same scan is a broken listing or parser. These
+// fixtures exercise the class: below the threshold, at it, and riding along
+// with a real alarm.
+const delistPrev = (slug) => [slug, liveFeed({ slug, claimed: true, listed: true, scheduled: true })];
+const delistNow = (slug) => [slug, liveFeed({ slug, claimed: false, listed: false, scheduled: false })];
+check('one retired show is reported but NOT notable', () => {
+  const c = diff(
+    state(Object.fromEntries([delistPrev('demnoweve')]), 5),
+    { maxItems: 5, feeds: Object.fromEntries([delistNow('demnoweve')]) });
+  assert.deepStrictEqual(kinds(c), ['FEED_DELISTED'], 'the delist must still be SEEN');
+  assert.deepStrictEqual(splitNotable(c).notable, [], 'a single retirement must not mail anyone');
+  assert.ok(splitNotable(c).routine.some((x) => x.kind === 'FEED_DELISTED'), 'and must be printed as routine');
+});
+
+check('two retired shows are still routine; the threshold is ' + DELIST_ALARM_AT, () => {
+  const slugs = ['demnoweve', 'soundreb'];
+  const c = diff(
+    state(Object.fromEntries(slugs.map(delistPrev)), 5),
+    { maxItems: 5, feeds: Object.fromEntries(slugs.map(delistNow)) });
+  assert.strictEqual(c.filter((x) => x.kind === 'FEED_DELISTED').length, 2);
+  assert.deepStrictEqual(splitNotable(c).notable, []);
+});
+
+check('a mass delisting IS notable — the broken-listing signature', () => {
+  const slugs = ['demnoweve', 'soundreb', 'manrat'];
+  assert.strictEqual(slugs.length, DELIST_ALARM_AT, 'fixture must sit exactly at the threshold');
+  const c = diff(
+    state(Object.fromEntries(slugs.map(delistPrev)), 5),
+    { maxItems: 5, feeds: Object.fromEntries(slugs.map(delistNow)) });
+  const { notable } = splitNotable(c);
+  assert.strictEqual(notable.filter((x) => x.kind === 'FEED_DELISTED').length, DELIST_ALARM_AT,
+    'at the threshold every delist alarms, not just the ones past it');
+});
+
+check('a single delist must not mute a real alarm beside it', () => {
+  const prev = Object.fromEntries([delistPrev('demnoweve'), ['dn', liveFeed({ slug: 'dn' })]]);
+  const now = {
+    ...Object.fromEntries([delistNow('demnoweve')]),
+    dn: { slug: 'dn', status: 200, bytes: 0, items: 0, empty: true },   // the July failure mode
+  };
+  const { notable, routine } = splitNotable(diff(state(prev, 5), { maxItems: 5, feeds: now }));
+  assert.deepStrictEqual(kinds(notable), ['FEED_LOST'], 'FEED_LOST must still get through');
+  assert.ok(routine.some((x) => x.kind === 'FEED_DELISTED'), 'the delist stays visible as routine');
 });
 
 check('a moved episode cap IS notable', () => {
