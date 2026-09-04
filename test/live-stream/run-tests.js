@@ -180,8 +180,16 @@ const RETURN_TO_TAB = `document.dispatchEvent(new Event('visibilitychange'));
     liveDock.visible && liveDock.live && liveDock.chip === 'Live', JSON.stringify(liveDock));
   check('the live dock names both source and state accessibly',
     /live stream playing/i.test(liveDock.openAria) && /^Playing$/.test(liveDock.state), JSON.stringify(liveDock));
-  check('the selected archive action warns that it will replace live',
-    / instead$/.test(liveDock.playLabel), liveDock.playLabel);
+  // Changed 2026-09-04 with the button itself. It used to require " instead"
+  // here. The dock immediately below already names the live stream and reports
+  // its state — the two checks directly above assert exactly that — so the
+  // suffix restated visible information on the one control the sheet exists to
+  // offer. What must still hold is that the label NAMES its broadcast, so a
+  // press is never ambiguous about which audio it starts while live is playing.
+  // The compact archive rows still warn; they are icon-only, have no label to
+  // carry a date, and the next check covers them.
+  check('the selected archive action names its broadcast rather than hedging',
+    /^Play · /.test(liveDock.playLabel) && !/ instead$/.test(liveDock.playLabel), liveDock.playLabel);
   await p.eval(`document.querySelector('.sheet-archive-open').click(); return 1;`);
   await sleep(250);
   const archiveWarnings = await p.eval(`return {

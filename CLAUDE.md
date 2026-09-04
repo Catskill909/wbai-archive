@@ -262,7 +262,7 @@ replace the volume, take a copy (`docker cp`); see
   element rather than the selection, the playing chip carries an equaliser, and a
   quiet teal strip appears when the two diverge. Exactly one filled orange button
   is on screen at any time. Its
-  suite is `test/episode-rail/run.sh` (headless Chrome, 82 checks, fixtures
+  suite is `test/episode-rail/run.sh` (headless Chrome, fixtures
   derived from the live listing rather than hardcoded ids that rotate out).
 - **Usage counters** live in `public/track.js` (loaded separately from `app.js`
   so counting can never affect playback) and `POST /api/ev`. They carry **no

@@ -224,7 +224,10 @@ Play/Resume action can do that.
 - Starting live still follows the one-connection/never-reuse contract in
   [live-audio-pattern.md](live-audio-pattern.md). Starting an archive episode is
   the only archive takeover path; when live or another episode owns the player,
-  profile and compact archive actions visibly/accessibly say `instead`.
+  the compact archive-row actions visibly/accessibly say `instead`. The
+  profile's primary action does not: it stays solid orange and names its
+  broadcast (`Play · Aug 12`), because the dock below it already shows what is
+  loaded. Changed 2026-09-04 — see docs/episode-rail.md.
 
 Regression coverage lives in `test/ui/live-archive-tests.js` (exact/no-match
 routing, navigation/audio separation, and rollover), `test/ui/live-info-tests.js`
@@ -251,8 +254,7 @@ These rules are load-bearing:
    broadcast**, and every primary label names its short date: `Play · Aug 12`,
    `Resume · Aug 12`, `Pause · Aug 12`, or `Loading · Aug 12`.
    On phones the action aligns with the left edge of the broadcast facts. With
-   no loaded audio it is solid orange. If another episode is loaded it becomes
-   an orange outline and says `Play · Aug 12 instead`; if this broadcast is
+   It is solid orange whether or not other audio is loaded; if this broadcast is
    already loaded, the primary action is hidden and the dock owns transport.
 3. **Selection and playback stay independent.** Tapping an archive row selects
    it, returns to Show view, updates the URL with `replaceState`, and does not

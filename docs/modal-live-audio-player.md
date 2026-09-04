@@ -428,8 +428,11 @@ lifecycle. The full player, modal dock, and phone-visible page identity all keep
 the Live text when paused or connecting; motion is reserved for actual playback
 and removed under reduced motion.
 
-Archive actions say `instead` whenever live or a different episode owns the
-player. The source changes only when that explicit orange action is pressed.
+Compact archive-row actions say `instead` whenever live or a different episode
+owns the player. The profile's primary action does not — it stays solid orange
+and names its broadcast, because this dock is directly below it and already
+reports what is loaded (changed 2026-09-04). The source changes only when an
+explicit orange action is pressed.
 `test/ui/live-archive-tests.js` covers exact/no-match routing and rollover;
 `test/live-stream/run-tests.js` covers live continuation through browsing, the
 modal projection, explicit replacement copy, and socket teardown on takeover.

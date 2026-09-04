@@ -65,8 +65,10 @@ navigation and transport inside the existing dialog:
 - `Playing`, `Paused`, and `Loading` changes update the row's accessible name;
 - internal Back and in-modal player controls meet the 44px coarse-pointer floor;
 - the modal player dock retains transport while profile/archive content changes;
-- the primary action's accessible name includes its date and `instead` when it
-  would replace different loaded audio;
+- the primary action's accessible name includes its date, so a press is never
+  ambiguous about which broadcast it starts; the compact archive-row actions,
+  which are icon-only and carry no date, append `instead` when they would
+  replace different loaded audio;
 - dock artwork is decorative while the adjacent text supplies show/date identity;
 - the teal equalizer has written `Playing now` state, appears only during actual
   playback, and becomes static under reduced motion;

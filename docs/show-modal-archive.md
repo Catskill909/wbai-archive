@@ -11,8 +11,9 @@ episodes route, and a persistent modal-level archive player dock.
 
 The deployed refinement makes orange the permanent transport color and teal the
 playback/listening state color. The dock includes the loaded show's artwork;
-replacement actions say `instead`; clipped short-phone content gets a measured,
-explicit guide.
+compact archive-row replacement actions say `instead` (the profile's primary
+action stays solid orange and names its broadcast); clipped short-phone content
+gets a measured, explicit guide.
 
 - Deployed release audited here: `6222c7f` on `main`/`origin/main`.
 - Production `/app.js` and `/styles.css` SHA-256 values matched the files in that
@@ -539,9 +540,9 @@ dialog.
 These invariants would prevent the current ambiguity from returning:
 
 1. Exactly one modal body view is visible: Show or Past episodes.
-2. With no loaded audio, Show view has one solid-orange primary playback offer.
-   With different audio loaded it has one quieter orange `instead` offer. With
-   the selected episode loaded, the dock is the only transport.
+2. Show view has one solid-orange primary playback offer, naming its broadcast,
+   whether or not different audio is loaded. With the selected episode loaded,
+   the dock is the only transport.
 3. Exactly one persistent dock represents the audio element when a track is
    loaded.
 4. Selecting context never changes audio; pressing a play control always does.
@@ -570,7 +571,7 @@ These invariants would prevent the current ambiguity from returning:
 - **Resolved in the second refinement:** when the selected episode is already
   loaded, the primary action is removed and the dock is the single transport.
   The selected-broadcast status says `Playing now` or `Paused`. When a different
-  episode is loaded, the browsed action remains available as `Play … instead`.
+  episode is loaded, the browsed action remains available as `Play · <date>`.
 - Should Escape leave Past episodes first or close the modal immediately? Test
   this with keyboard users while keeping on-screen Back and Close unambiguous.
 - How much program identity is needed in the archive header: art + title, or
