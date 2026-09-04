@@ -74,6 +74,10 @@ const READ_PROFILE = `
     playAria: play ? play.getAttribute('aria-label') : '',
     playHidden: play ? play.hidden : true,
     playAlternate: play ? play.classList.contains('is-alternate') : false,
+    // Measured, not declared: "is it still the filled primary button" is the
+    // computed background, not the presence of a class name.
+    playBg: play ? getComputedStyle(play).backgroundColor : '',
+    playOutlined: play ? /^rgba\(0, 0, 0, 0\)$|^transparent$/.test(getComputedStyle(play).backgroundColor) : false,
     playInset: pr && selr ? Math.round(pr.left - selr.left) : -1,
     archive: !!archive,
     archiveCompact: !!archivePrimary,
@@ -260,8 +264,17 @@ const READ_ARCHIVE = `
       check(!s.dockHidden, 'browsing another date cannot hide the active transport');
       check((await p.eval(`return document.getElementById('sheetPlayerOpen').dataset.id;`)) === String(fx.many[0].id),
         'the dock keeps naming the episode actually loaded');
-      check(s.playAlternate && / instead$/.test(s.playLabel),
-        'a browsed episode becomes a quieter replacement action while other audio is loaded', s.playLabel);
+      // Changed 2026-09-04. This used to require the outline + " instead"
+      // treatment. The button now stays solid orange and names the broadcast
+      // in every state: the dock below already says what is loaded, so the
+      // warning restated visible information on the sheet's primary control.
+      // Still asserted, because the label must stay dated and unambiguous —
+      // "Play" alone beside a dock playing something else does not say which
+      // episode starts.
+      check(/^Play · /.test(s.playLabel) && !/ instead$/.test(s.playLabel),
+        'a browsed episode keeps a dated, unhedged play action while other audio is loaded', s.playLabel);
+      check(!s.playOutlined,
+        'and it stays the solid orange primary action, not an outline', JSON.stringify(s.playBg));
 
       await p.clickInPlace('.sheet-player-open');
       await sleep(100);

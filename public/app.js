@@ -704,14 +704,20 @@
     if(barMode === 'live') return true;
     return barMode === 'archive' && !!nowPlaying.mp3 && nowPlaying.mp3 !== mp3;
   }
+  // The label names the action and the broadcast, and nothing else. It used to
+  // append " instead" whenever other audio was loaded, warning that pressing it
+  // would replace what was playing — but the dock sits directly below this
+  // button, already showing that episode by name with its own pause control.
+  // The warning restated something visible two inches away, on the one control
+  // the sheet exists to offer. The date stays in every state, so the label keeps
+  // its shape as it cycles Play -> Pause -> Resume.
   function playLabelFor(mp3, isLoading, isPlaying){
     var alt = (mp3 && mp3 === sheetMp3) ? sheetEpAlt : '';
     if(isLoading) return alt ? 'Loading · ' + alt : 'Loading…';
     if(isPlaying) return alt ? 'Pause · ' + alt : 'Pause';
     var t = resumeFor(mp3);
-    var instead = alt && sheetHasDifferentPlayer(mp3) ? ' instead' : '';
-    if(t) return alt ? 'Resume · ' + alt + instead : 'Resume ' + formatTime(t);
-    return alt ? 'Play · ' + alt + instead : 'Play episode';
+    if(t) return alt ? 'Resume · ' + alt : 'Resume ' + formatTime(t);
+    return alt ? 'Play · ' + alt : 'Play episode';
   }
 
   // Every scrubber wired to the same <audio>: the docked player bar always, plus

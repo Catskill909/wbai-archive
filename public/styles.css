@@ -611,9 +611,28 @@
   @media (prefers-reduced-motion:reduce){
     .lp-art-hint{transition-duration:.01s; transform:translate(-50%, 0);}
   }
+  /* The column that holds everything except the badge and the artwork. At this
+     width it is a pass-through: a centred flex column carrying the parent's own
+     1rem rhythm, so the phone sheet renders exactly the stack it always did.
+     The two-column card at 561px up is what it exists for. */
+  .lp-main{
+    display:flex; flex-direction:column; align-items:center; gap:1rem;
+    width:100%; min-width:0;
+  }
   .lp-meta{text-align:center; min-width:0; width:100%;}
-  .lp-title{font-family:var(--font-display); font-weight:800; font-size:1.5rem; line-height:1.15; margin:0;}
-  .lp-host{margin:.3rem 0 0; font-size:.9rem; color:var(--ink-dim);}
+  /* Show names, hosts and track titles are written by other people and some of
+     them are long — "with Ken Gale, Donna Stein, Sally Gellert" is a real one.
+     Each of these wraps to a stated number of lines and then ellipsises, rather
+     than either truncating at one line or growing the card without limit. */
+  .lp-title{
+    font-family:var(--font-display); font-weight:800; font-size:1.5rem; line-height:1.15; margin:0;
+    overflow-wrap:break-word;
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden;
+  }
+  .lp-host{
+    margin:.3rem 0 0; font-size:.9rem; color:var(--ink-dim); overflow-wrap:break-word;
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
+  }
   .lp-times{margin:.25rem 0 0; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:.78rem; color:var(--ink-faint); letter-spacing:.02em;}
   .lp-host[hidden], .lp-times[hidden], .lp-archive[hidden], .lp-upnext[hidden]{display:none;}
   .lp-archive{
@@ -696,7 +715,8 @@
   }
   .lp-upnext:not(:disabled){ cursor:pointer; }
   .lp-upnext:disabled{ opacity:1; cursor:default; }
-  .lp-upnext-label{font-family:var(--font-display); text-transform:uppercase; letter-spacing:.08em; font-size:.66rem; font-weight:800; color:var(--accent-2);}
+  .lp-upnext-label{font-family:var(--font-display); text-transform:uppercase; letter-spacing:.08em; font-size:.66rem; font-weight:800; color:var(--accent-2); flex:none;}
+  .lp-upnext-text{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
   .lp-upnext-arrow{ width:14px; height:14px; color:var(--accent-2); }
   .lp-upnext:disabled .lp-upnext-arrow{ display:none; }
   @media (hover:hover) and (pointer:fine){
@@ -705,11 +725,23 @@
 
   /* now-playing track: a plain line under Up next, present only while the feed
      carries a song/artist */
-  .lp-song{margin:0; font-size:.86rem; color:var(--ink); text-align:center; line-height:1.3;}
+  /* A flex line, not inline text: the clamped title below needs to be a block
+     to clamp at all, and as plain inline content that would drop the NOW PLAYING
+     label onto a line of its own. `[hidden]` still wins — class+attribute
+     outranks the class alone — so hiding it keeps working. */
+  .lp-song{
+    margin:0; font-size:.86rem; color:var(--ink); line-height:1.3; min-width:0;
+    display:flex; align-items:baseline; justify-content:center; gap:.4rem;
+  }
   .lp-song[hidden]{display:none;}
+  /* Track titles run long more often than show names do. Two lines, then stop. */
+  .lp-song-text{
+    min-width:0; overflow-wrap:break-word;
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
+  }
   .lp-song-label{
     font-family:var(--font-display); text-transform:uppercase; letter-spacing:.08em;
-    font-size:.64rem; font-weight:800; color:var(--accent); margin-right:.4rem;
+    font-size:.64rem; font-weight:800; color:var(--accent); flex:none;
   }
 
   .lp-note{margin:0; font-size:.8rem; color:var(--ink-faint); text-align:center; min-height:1.1em;}
@@ -914,16 +946,49 @@
        against the viewport height as well as its width. */
     .lp-art{ width:min(300px, 64vw, 34dvh); }
   }
-  /* Short / landscape: art beside the metadata so the controls stay above the fold. */
-  @media (max-height:560px) and (min-width:561px){
+  /* ---- the card, from 561px up: artwork beside the content, not above it ----
+     Everything wider than the phone sheet gets one layout. It used to be a
+     460px single column with a 300px square in it, which stacked the art, the
+     metadata, the transport and two status lines nose-to-tail; the natural
+     height ran past the card's own max-height and it quietly turned into a
+     scroller, so on a laptop the transport and the now-playing line sat below
+     the fold with nothing to say they were there.
+
+     Two columns fixes the cause rather than the symptom: the square stops being
+     a full-width block, so the card is about 400px tall instead of 720px and
+     the extra width goes to the text, which is the part that actually varies in
+     length. `minmax(0,1fr)` on the text column is what lets the clamped titles
+     above shrink instead of forcing the grid wider.
+
+     This supersedes a former `max-height:560px` landscape-only grid. Two
+     definitions of the same two-column card is exactly how they drift apart —
+     short screens now just tighten this one. */
+  @media (min-width:561px){
     .live-player{
-      display:grid; grid-template-columns:auto 1fr; align-items:center;
-      gap:.5rem 1.4rem; width:min(640px, 94vw); padding:1.6rem;
+      display:grid; grid-template-columns:auto minmax(0, 1fr);
+      align-content:start; justify-items:stretch;
+      gap:1.15rem 1.9rem;
+      width:min(760px, 94vw);
+      padding:1.9rem 2.1rem 1.7rem;
     }
-    .lp-badge{grid-column:1 / -1;}
-    .lp-art{width:min(180px, 30vh); grid-row:2 / span 4;}
-    .lp-meta{text-align:left;}
-    .lp-transport{max-width:none; justify-content:flex-start; margin-left:0;}
+    .lp-badge{ grid-column:1 / -1; }
+    /* align-self:start so the art sits under the badge rather than floating in
+       the middle of a taller text column. */
+    .lp-art{ grid-column:1; align-self:start; width:min(232px, 26vw); }
+    .lp-main{ grid-column:2; align-items:flex-start; gap:.9rem; }
+    .lp-meta{ text-align:left; }
+    .lp-archive{ margin:.6rem auto 0 0; }
+    .lp-transport{ max-width:none; justify-content:flex-start; }
+    .lp-upnext{ max-width:100%; }
+    .lp-song{ justify-content:flex-start; }
+    .lp-note{ text-align:left; }
+  }
+  /* Short / landscape: the same card, tightened. The art is capped against the
+     viewport height as well as its width so the controls stay above the fold. */
+  @media (max-height:560px) and (min-width:561px){
+    .live-player{ gap:.75rem 1.5rem; padding:1.4rem 1.6rem; }
+    .lp-art{ width:min(168px, 30vh); }
+    .lp-main{ gap:.7rem; }
   }
   /* compact donate button in the appbar */
   .appbar-actions .btn{padding:.36rem .8rem; font-size:.76rem;}
@@ -2559,17 +2624,17 @@
   .sheet-play:active{ transform:scale(.97); }
   .sheet-play svg{ width:15px; height:15px; }
   .sheet-play[hidden]{ display:none; }
-  /* Browsing while another episode remains loaded is a replacement choice, not
-     the current transport. Keep orange semantics but lower its visual weight. */
-  .sheet-play.is-alternate{
-    background:transparent; color:var(--accent); border-color:var(--accent);
-    box-shadow:none;
-  }
-  @media (hover:hover) and (pointer:fine){
-    .sheet-play.is-alternate:hover{
-      background:color-mix(in srgb, var(--accent) 10%, transparent);
-    }
-  }
+  /* The primary action stays solid orange whether or not other audio is loaded.
+     It was an outline in that case, to mark it as a replacement choice rather
+     than the current transport. Two problems with that, both found by looking
+     at it: an outlined pill on a dark ground reads as secondary-or-destructive
+     — it was reported as a "danger red" button, though the colour was always
+     --accent — and it de-emphasised the one control the sheet is there to
+     offer. The distinction it was drawing is carried better by the dock below,
+     which names the loaded episode and shows a pause glyph, and by this
+     button's own dated label. `.is-alternate` is still applied (the archive
+     rows' own `instead` badge keys off the same state); it just no longer
+     restyles this button. */
   .sheet-link{
     display:inline-flex; align-items:center; gap:.35rem;
     border:1px solid var(--outline-strong); border-radius:999px; padding:.32rem .7rem;

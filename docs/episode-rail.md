@@ -70,9 +70,18 @@ lazy `/api/showinfo/<altid>` lookup and repaints when richer show data arrives.
 - Tapping a row's explicit play icon starts that episode and leaves the archive
   browser in place.
 - Selecting or browsing never hides, replaces, or moves the modal player dock.
-- With no audio loaded, the selected action is solid orange. While a different
-  episode is loaded it becomes a quieter orange outline and adds `instead`.
+- The selected action is solid orange in every state, and always names the
+  broadcast: `Play · Sep 4`, `Resume · Sep 4`, `Pause · Sep 4`, `Loading · Sep 4`.
   When the selected episode is already loaded, the dock is its only transport.
+  Until 2026-09-04 it dropped to an orange outline and added `instead` whenever
+  other audio was loaded. That was removed for two reasons found by looking at
+  it: an outlined pill on a dark ground reads as secondary-or-destructive — it
+  was reported as a "danger red" button, though the colour was always `--accent`
+  — and `instead` restated, on the sheet's primary control, something the dock
+  directly below it already shows by name. The replacement-choice distinction is
+  carried by the dock and by this button's dated label. The archive rows keep
+  their own small `instead` badge, which is a different surface: those buttons
+  are icon-only and have no label to carry the date.
 - A show with one episode gets no dead Past episodes control.
 
 ## Listening memory

@@ -672,6 +672,14 @@
       </span>
     </button>
 
+    <!-- Everything that is not the badge or the artwork lives in one column.
+       On a phone .lp-main is a centred flex column and renders the identical
+       stack it always did; from 561px up it is the right-hand column of a
+       two-column card, so the square artwork stops being a 300px-tall block in
+       a 460px-wide box. That was what pushed the transport and the status line
+       off the bottom of a laptop screen — the card's natural height ran past
+       its own max-height and it silently became a scroller. -->
+    <div class="lp-main">
     <div class="lp-meta">
       <h2 class="lp-title" id="lpTitle">WBAI 99.5 FM</h2>
       <p class="lp-host" id="lpHost" hidden></p>
@@ -702,15 +710,16 @@
 
     <button class="lp-upnext" id="lpUpNext" type="button" hidden disabled>
       <span class="lp-upnext-label">Up next</span>
-      <span id="lpUpNextText"></span>
+      <span class="lp-upnext-text" id="lpUpNextText"></span>
       <svg class="lp-upnext-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
     </button>
 
-    <p class="lp-song" id="lpSong" hidden><span class="lp-song-label">Now playing</span> <span id="lpSongText"></span>
+    <p class="lp-song" id="lpSong" hidden><span class="lp-song-label">Now playing</span> <span class="lp-song-text" id="lpSongText"></span>
     </p>
 
     <p class="lp-note" id="lpNote" role="status" aria-live="polite">Tap play to tune in</p>
+    </div><!-- /.lp-main -->
 
   </div>
 
