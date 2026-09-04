@@ -16,6 +16,7 @@
  *   node scan.js --no-save    do not update state.json (dry run)
  *   node scan.js --full       ignore stored Last-Modified, re-fetch every feed
  *   node scan.js --any-change exit 1 on routine churn too
+ *   node scan.js --no-recheck skip the confirm-before-alarming second pass
  *
  * Exit status:  0 = nothing notable   1 = something notable changed   2 = scan failed
  * So it is cron-able: non-zero means "a human should look."
@@ -39,6 +40,11 @@ const UA = 'wbai-archive/1.0 (+https://github.com/Catskill909/wbai-archive)';
 
 const STATE_PATH = path.join(__dirname, 'state.json');
 const CONCURRENCY = 5; // a small station's Apache. Do not raise this.
+// How long to wait before re-reading a feed that looks dead. Long enough for a
+// transient to have passed, short enough to stay well inside the workflow's
+// 10-minute timeout even when every suspect has to be re-fetched. Overridable
+// so the run can be sped up by hand; --no-recheck skips the second pass.
+const RECHECK_PAUSE_MS = Number(process.env.SCAN_RECHECK_MS || 45000);
 
 /**
  * The kinds that mean a human should look now.
@@ -86,6 +92,55 @@ const NOTABLE = new Set([
  */
 const DELIST_ALARM_AT = 3;
 
+/**
+ * The one definition of "this feed is usable". It was written three times —
+ * `live` inside diff(), `isLive` in main(), and a third copy inlined into the
+ * `liveFeeds` filter — which is how the report and the exit status became able
+ * to disagree about what they were counting. One copy now; do not add a fourth.
+ */
+const live = (r) => r.status === 200 && !r.empty && r.items > 0;
+
+/**
+ * CLAIM_MISMATCH is about a feed that ISN'T THERE, not one that is there and
+ * empty (narrowed 2026-09-04).
+ *
+ * It was `claimed && !live(r)`, which quietly swept up every claimed feed that
+ * answered 200 with nothing in it — so a feed going dark fired FEED_LOST *and*
+ * CLAIM_MISMATCH for one event, and the second one printed a sentence that
+ * contradicted itself: "advertises a podcast XML button but /xml/x.xml is
+ * HTTP 200". On 2026-09-04 that turned 49 dark feeds into 98 alarm lines.
+ *
+ * The regression this kind exists for (2026-07-29) was a 404: the listing
+ * advertised feeds that did not exist, the server published off that claim,
+ * and invented episodes appeared on the site. A feed that answers 200 with
+ * zero items cannot do that — there is nothing in it to invent from, and the
+ * app gates on the fetch. That case is FEED_LOST, which already reports it.
+ */
+const claimMismatch = (r) => !!r.claimed && r.status !== 200;
+
+/**
+ * Which feeds get a second look before we alarm about them (added 2026-09-04).
+ *
+ * archive2 serves feeds that read as HTTP 200 with zero bytes — or with a
+ * short item list — for a while, and then recover on their own with nobody
+ * touching anything. Measured on 2026-09-04: one scan reported 49 feeds LOST
+ * and 25 more truncated to as little as 1 item; every single one was intact
+ * when re-checked, back at the item count it had before, and no episode had
+ * gone anywhere. A single GET cannot tell that from the July outage, which
+ * looked identical and lasted days. Only a second reading separates them.
+ *
+ * Only feeds whose non-liveness would actually raise an alarm are re-probed,
+ * so the cost scales with the size of the alarm: nothing on an ordinary day,
+ * one extra sweep on a day that would otherwise have mailed 98 lines of noise.
+ * A long-dead unclaimed 404 is left alone — we already know about it.
+ */
+function suspectSlugs(results, prevState, claims) {
+  const prev = (prevState && prevState.feeds) || {};
+  return results
+    .filter((r) => !live(r) && (live(prev[r.slug] || {}) || claims.get(r.slug) === true))
+    .map((r) => r.slug);
+}
+
 // The one classification the exit status and the report both use. A kind in
 // NOTABLE alarms as itself, except FEED_DELISTED, which alarms only in bulk.
 function splitNotable(changes) {
@@ -103,6 +158,7 @@ const asJson = args.includes('--json');
 const noSave = args.includes('--no-save');
 const full = args.includes('--full');
 const anyChange = args.includes('--any-change');
+const noRecheck = args.includes('--no-recheck');
 
 // ------------------------------------------------------------------ plumbing
 
@@ -254,13 +310,12 @@ async function probe(slug, prev) {
 function diff(prevState, now) {
   const prev = (prevState && prevState.feeds) || {};
   const changes = [];
-  const live = (r) => r.status === 200 && !r.empty && r.items > 0;
 
   // The listing advertises a feed that isn't there. This is what shipped a
   // regression on 2026-07-29 and it is the highest-value signal here: it fires
   // while upstream is still only *claiming*, before anything downstream that
   // trusts the claim can act on it.
-  const mismatch = (r) => !!r.claimed && !live(r);
+  const mismatch = claimMismatch;
   // The mirror case: a working feed on a show the listing does not advertise.
   // Confirmed 2026-08-04 (`heavywaits` — gone from the dropdown, rows AND
   // schedule, feed still live). The server now discovers and slow-probes these
@@ -281,7 +336,7 @@ function diff(prevState, now) {
       // A brand-new slug can arrive already mismatched; say so rather than
       // waiting for a second run to notice.
       if (mismatch(r)) {
-        changes.push({ kind: 'CLAIM_MISMATCH', slug, detail: `new slug already advertises a feed that 404s` });
+        changes.push({ kind: 'CLAIM_MISMATCH', slug, detail: `new slug already advertises a feed that is HTTP ${r.status}` });
       }
       continue;
     }
@@ -292,10 +347,10 @@ function diff(prevState, now) {
       changes.push({
         kind: 'CLAIM_MISMATCH', slug,
         detail: `listing now advertises a podcast XML button but /xml/${slug}.xml is HTTP ${r.status}` +
-          ' — anything gating on hasRSS will publish this show',
+          ' (no feed there at all) — anything gating on hasRSS will publish this show',
       });
     } else if (!mismatch(r) && mismatch(p)) {
-      changes.push({ kind: 'CLAIM_RESOLVED', slug, detail: live(r) ? 'feed now exists' : 'listing stopped advertising it' });
+      changes.push({ kind: 'CLAIM_RESOLVED', slug, detail: r.status === 200 ? 'feed now exists' : 'listing stopped advertising it' });
     }
     if (delisted(r) && !delisted(p)) {
       const placement = r.listed === false
@@ -362,7 +417,8 @@ function diff(prevState, now) {
 // always-saying-"no changes". selftest.js drives it offline; see §3a of
 // CLAUDE.md on why an assertion of absence has to prove it can still see the
 // thing it claims is absent.
-module.exports = { diff, parseFeed, slugsFromDropdown, slugsFromRows, slugsFromSchedule, NOTABLE, splitNotable, DELIST_ALARM_AT };
+module.exports = { diff, parseFeed, slugsFromDropdown, slugsFromRows, slugsFromSchedule,
+  NOTABLE, splitNotable, DELIST_ALARM_AT, live, claimMismatch, suspectSlugs };
 
 if (require.main !== module) return;
 
@@ -392,6 +448,25 @@ if (require.main !== module) return;
   const results = await pool(candidates, CONCURRENCY, (slug) =>
     probe(slug, prevState && prevState.feeds ? prevState.feeds[slug] : null));
 
+  // Confirm before alarming. See suspectSlugs() for why a single reading is not
+  // evidence that a feed has died. The second read is unconditional — passing
+  // prev would send If-Modified-Since and a 304 would just echo the very record
+  // we are trying to re-measure.
+  let recheck = null;
+  const suspects = noRecheck ? [] : suspectSlugs(results, prevState, claims);
+  if (suspects.length) {
+    await new Promise((r) => setTimeout(r, RECHECK_PAUSE_MS));
+    const again = await pool(suspects, CONCURRENCY, (slug) => probe(slug, null));
+    const bySlug = new Map(again.map((r) => [r.slug, r]));
+    // The later reading wins outright, recovered or not: it is simply the more
+    // recent measurement of the same thing.
+    for (let i = 0; i < results.length; i++) {
+      const r2 = bySlug.get(results[i].slug);
+      if (r2) results[i] = r2;
+    }
+    recheck = { probed: suspects.length, recovered: again.filter(live).length };
+  }
+
   const feeds = {};
   // The claim is recorded after probing, so a 304 (which carries the previous
   // record forward wholesale) still gets today's claim rather than yesterday's.
@@ -405,10 +480,9 @@ if (require.main !== module) return;
     });
   }
 
-  const liveFeeds = results.filter((r) => r.status === 200 && !r.empty && r.items > 0);
-  const isLive = (r) => r.status === 200 && !r.empty && r.items > 0;
-  const mismatched = Object.values(feeds).filter((r) => r.claimed && !isLive(r));
-  const delisted = Object.values(feeds).filter((r) => !r.claimed && isLive(r));
+  const liveFeeds = results.filter(live);
+  const mismatched = Object.values(feeds).filter(claimMismatch);
+  const delisted = Object.values(feeds).filter((r) => !r.claimed && live(r));
   const now = {
     scannedAt: new Date().toISOString(),
     sources: {
@@ -425,6 +499,7 @@ if (require.main !== module) return;
     delisted: delisted.length,
     maxItems: liveFeeds.reduce((m, r) => Math.max(m, r.items), 0),
     notModified: results.filter((r) => r.notModified).length,
+    recheck,
     feeds,
   };
 
@@ -443,6 +518,11 @@ if (require.main !== module) return;
     }
     console.log(`  feeds live: ${now.withFeed}   no feed: ${now.withoutFeed}   ` +
       `max items/feed: ${now.maxItems}   304s: ${now.notModified}`);
+    if (now.recheck) {
+      console.log(`  re-read ${now.recheck.probed} feed(s) that looked dead after ` +
+        `${Math.round(RECHECK_PAUSE_MS / 1000)}s — ${now.recheck.recovered} were fine on the second read` +
+        (now.recheck.recovered ? ' (upstream wobble, not a loss)' : ''));
+    }
     console.log(`  listing claims a feed: ${now.claimed}   ` +
       `claim without a feed: ${now.mismatched}   live feed not currently claimed: ${now.delisted}`);
     if (now.mismatched) {

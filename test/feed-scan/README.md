@@ -76,7 +76,7 @@ what decides whether the scheduled workflow fails and mails you.
 | Notable | Meaning |
 | --- | --- |
 | `CAP_CHANGED` | **max episodes-per-feed moved — the migration plan is now out of date** |
-| `CLAIM_MISMATCH` | the listing advertises a feed that isn't there — the 2026-07-29 regression |
+| `CLAIM_MISMATCH` | the listing advertises a feed that **isn't there at all** (non-`200`) — the 2026-07-29 regression |
 | `FEED_DELISTED` | a live feed is no longer claimed by the current archive listing — **alarms only at 3+ in one scan** (a single retirement is routine lineup turnover; many at once is the broken-listing signature) |
 | `FEED_LOST` | was serving, now isn't — including `200`-with-zero-bytes |
 | `SLUG_GONE` | a remembered slug is no longer offered anywhere |
@@ -111,6 +111,43 @@ therefore should not have identical slug sets: the weekly schedule excludes
 playable episodes. One transition is useful context about the lineup change; a
 wave of them can still mean the upstream listing parser or page has broken.
 
+## Confirm before alarming
+
+A feed that reads dead is **re-read once**, after a pause, before it is allowed
+to raise an alarm. Only feeds whose deadness would actually alarm are re-probed
+— one that was live yesterday, or one the listing currently claims — so an
+ordinary day costs nothing and prints nothing. When it does fire, the run says
+so:
+
+```
+  re-read 49 feed(s) that looked dead after 45s — 49 were fine on the second read (upstream wobble, not a loss)
+```
+
+This exists because of run #38, on **2026-09-04**, which mailed 98 notable lines
+about 74 shows and every one of them was wrong. archive2 had served 49 feeds as
+`200` with **zero bytes** and truncated 25 more to as little as 1 item. Re-read
+the same day, all 74 were intact at the counts they had before — `garynull` back
+to the same 2017 bytes it had in July, `resistanradio` and two dozen others back
+at 5 items. Nothing had happened to a single episode.
+
+The point is that **a single `GET` cannot tell that from the July outage**, which
+looked byte-for-byte identical and lasted days. The difference is only visible in
+a second reading, so the scanner takes one. A loss that is still a loss on the
+second read alarms exactly as before — `selftest.js` requires it to, because a
+fix that suppresses false alarms by going blind to real ones is worse than the
+noise it removed.
+
+`SCAN_RECHECK_MS` overrides the 45-second pause; `--no-recheck` skips the second
+pass entirely.
+
+That run also produced **two** notable lines per dead feed, the second of them
+self-contradictory — "advertises a podcast XML button but `/xml/salsasho.xml` is
+HTTP 200". `CLAIM_MISMATCH` was `claimed && !live`, which swept up every claimed
+feed that answered `200` with nothing in it. It is now `claimed && status !== 200`:
+the kind exists for feeds that **do not exist**, because that is what let the
+server invent episodes off `hasRSS` on 2026-07-29. A feed that answers `200` with
+no items has nothing to invent from, and `FEED_LOST` already reports it.
+
 ## Load
 
 122 feeds, ~500 KB, **every run** — assume a full sweep and no savings.
@@ -137,6 +174,10 @@ An earlier note here claimed **98/98 `304`** and "near-zero after the first run"
 That was measured from two runs minutes apart, inside a single rebuild window. It
 was a true measurement of the wrong thing, and it does not describe the daily job.
 Conditional GET is kept because it costs nothing and pays off on back-to-back runs.
+
+The confirmation pass above adds a second sweep, but only over the feeds that
+looked dead — normally none, and at worst one extra pass plus the 45-second
+pause, which still lands far inside the timeout.
 
 Concurrency is pinned at **5** and should stay there. This is a small station's
 Apache, and the full sweep at 5-wide takes about ten seconds — comfortably inside

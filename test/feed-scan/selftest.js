@@ -18,7 +18,8 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { diff, parseFeed, slugsFromDropdown, slugsFromRows, NOTABLE, splitNotable, DELIST_ALARM_AT } = require('./scan.js');
+const { diff, parseFeed, slugsFromDropdown, slugsFromRows, NOTABLE, splitNotable,
+  DELIST_ALARM_AT, live, claimMismatch, suspectSlugs } = require('./scan.js');
 
 let pass = 0;
 const failures = [];
@@ -380,6 +381,99 @@ check('parseFeed reports zero items rather than throwing on junk', () => {
 check('slug parsers survive an unrecognisable page by returning nothing', () => {
   assert.deepStrictEqual(slugsFromDropdown('<html>nope</html>'), []);
   assert.deepStrictEqual(slugsFromRows('<html>nope</html>'), []);
+});
+
+// ---------------------------------------------------------------------------
+// 2026-09-04: the scan mailed 98 NOTABLE lines about 74 shows, and every one of
+// them was wrong. archive2 had served 49 feeds as HTTP 200 with zero bytes and
+// truncated 25 more to as little as 1 item; re-read the same day, all 74 were
+// intact at the counts they had before. Two separate defects made that mail.
+// These exercise the class of each — not the 49 slugs it happened to hit.
+console.log('\nconfirm-before-alarming (the 2026-09-04 false alarm):');
+
+// Defect 1: one dark feed produced TWO notable changes, the second of them a
+// sentence that contradicted itself — "advertises a podcast XML button but
+// /xml/x.xml is HTTP 200". CLAIM_MISMATCH is for a feed that is NOT THERE.
+check('a claimed feed going 200-with-zero-bytes is FEED_LOST ALONE, not also CLAIM_MISMATCH', () => {
+  const c = diff(
+    state({ salsasho: liveFeed({ slug: 'salsasho', claimed: true }) }, 5),
+    { maxItems: 0, feeds: { salsasho: { slug: 'salsasho', status: 200, bytes: 0, items: 0, empty: true, claimed: true } } });
+  assert.deepStrictEqual(kinds(c), ['FEED_LOST'], 'one event must not raise two alarms: ' + kinds(c));
+});
+
+check('a claimed feed going 200-with-no-items is FEED_LOST ALONE too', () => {
+  const c = diff(
+    state({ city: liveFeed({ slug: 'city', claimed: true }) }, 5),
+    { maxItems: 0, feeds: { city: { slug: 'city', status: 200, bytes: 900, items: 0, claimed: true } } });
+  assert.deepStrictEqual(kinds(c), ['FEED_LOST'], kinds(c));
+});
+
+// ...and the narrowing must not have blinded the kind it exists for. This is
+// the 2026-07-29 regression, the one that put invented episodes on the site.
+check('CLAIM_MISMATCH still fires when a claimed feed genuinely is not there', () => {
+  const c = diff(
+    state({ manrat: { slug: 'manrat', status: 404, claimed: false } }, 5),
+    { maxItems: 5, feeds: { manrat: { slug: 'manrat', status: 404, claimed: true } } });
+  assert.ok(kinds(c).includes('CLAIM_MISMATCH'), kinds(c));
+  assert.match(c.find((x) => x.kind === 'CLAIM_MISMATCH').detail, /no feed there at all/);
+});
+
+check('claimMismatch is about absence, not emptiness', () => {
+  assert.strictEqual(claimMismatch({ status: 404, claimed: true }), true);
+  assert.strictEqual(claimMismatch({ status: 200, empty: true, items: 0, claimed: true }), false);
+  assert.strictEqual(claimMismatch({ status: 404, claimed: false }), false);
+});
+
+// Defect 2: nothing re-read a feed before declaring it dead. A feed that reads
+// empty once must be looked at a second time; the alarm may only rest on the
+// second reading.
+check('a feed that was live and now reads empty is re-probed before it can alarm', () => {
+  const results = [{ slug: 'garynull', status: 200, bytes: 0, items: 0, empty: true }];
+  const prev = state({ garynull: liveFeed({ slug: 'garynull' }) }, 5);
+  assert.deepStrictEqual(suspectSlugs(results, prev, new Map()), ['garynull']);
+});
+
+check('a claimed feed that 404s is re-probed before it can alarm', () => {
+  const results = [{ slug: 'manrat', status: 404 }];
+  assert.deepStrictEqual(
+    suspectSlugs(results, state({}, 5), new Map([['manrat', true]])), ['manrat']);
+});
+
+check('a healthy feed and a long-dead unclaimed one are NOT re-probed', () => {
+  const results = [liveFeed({ slug: 'dn' }), { slug: 'gone', status: 404 }];
+  const prev = state({ dn: liveFeed({ slug: 'dn' }), gone: { slug: 'gone', status: 404 } }, 5);
+  assert.deepStrictEqual(suspectSlugs(results, prev, new Map()), [],
+    'a second sweep every day over feeds we already know are dead is load for nothing');
+});
+
+// The shape of the actual event: a mass wobble. Not one feed — most of them at
+// once, which is the signature that should never have reached a mailbox
+// unconfirmed. Every affected slug must be queued for a second reading.
+check('a mass wobble sends EVERY affected feed for a second reading', () => {
+  const slugs = ['ablitionshow', 'censored2', 'city', 'garynull', 'kwave', 'news', 'salsasho'];
+  const prevFeeds = Object.fromEntries(slugs.map((g) => [g, liveFeed({ slug: g, claimed: true })]));
+  const results = slugs.map((g) => ({ slug: g, status: 200, bytes: 0, items: 0, empty: true }));
+  assert.deepStrictEqual(suspectSlugs(results, state(prevFeeds, 5), new Map()).sort(), slugs.slice().sort());
+});
+
+// §3a.5: an assertion of absence has to prove it can still see the thing. If
+// the feeds really are gone, the second reading is still empty and the alarm
+// MUST arrive — otherwise this whole fix is just a way to sleep through July.
+check('a loss confirmed by the second reading still alarms', () => {
+  const stillDead = { slug: 'dn', status: 200, bytes: 0, items: 0, empty: true, claimed: true };
+  const { notable } = splitNotable(diff(
+    state({ dn: liveFeed({ slug: 'dn', claimed: true }) }, 5),
+    { maxItems: 0, feeds: { dn: stillDead } }));
+  assert.deepStrictEqual(kinds(notable), ['FEED_LOST'], 'a real outage must still mail');
+  // and it is still a suspect on the next run only if the listing keeps claiming it
+  assert.deepStrictEqual(suspectSlugs([stillDead], state({ dn: stillDead }, 5), new Map()), []);
+});
+
+check('live() agrees with the three things it replaced', () => {
+  assert.strictEqual(live({ status: 200, items: 5 }), true);
+  assert.strictEqual(live({ status: 200, items: 0 }), false);
+  assert.strictEqual(live({ status: 200, items: 5, empty: true }), false);
+  assert.strictEqual(live({ status: 404, items: 5 }), false);
 });
 
 console.log(`\n${pass} passed, ${failures.length} failed`);
