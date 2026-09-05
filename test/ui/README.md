@@ -109,3 +109,38 @@ it.
   `run.sh` deletes the profile on every run, so suites never inherit each
   other's state — but if you run a file by hand against a long-lived browser,
   clear those keys first.
+
+## Two checks that cannot pass headless (measured 2026-09-04)
+
+`outlink-tests.js` reports **2 failed** and `live-info-tests.js` **1 failed** on
+a clean tree, on this machine, in headless *and* in real headed Chrome. Both are
+harness limits, not app bugs. They are recorded here because the obvious reading
+— "external links are broken" — is wrong, and was chased once already.
+
+**`outlink-tests.js`: `this tab navigated to the external site` and the
+`SELF-TEST` beside it.** A CDP-dispatched click does not produce a cross-origin
+top-level navigation or a popup in this browser, so nothing moves and no second
+tab appears. What was ruled out, in order: the suite's own `Network.setBlockedURLs`
+(removing it changes nothing); reachability (`https://wbai.org/schedule/` returns
+200 in ~2s from here); and click aim (`elementFromPoint` at the dispatched
+coordinates returns the link itself, in the viewport, with the right href).
+
+The app was then measured directly and is **correct**: on a coarse pointer the
+`click` handler in app.js ("Leaving for somewhere else") fires, `defaultPrevented`
+is `true`, and it assigns `location.href`. Only the browser's completion of that
+navigation is missing. Note the desktop half fails with **no app code involved
+at all** — `matchMedia('(hover:none) and (pointer:coarse)')` is false there, so
+the click is native `target="_blank"` — which is the clearest sign the gap is the
+harness.
+
+**`live-info-tests.js`: `a second Escape does close the player`.** That file's own
+header explains it: a dispatched Escape permanently stops this headless browser
+producing frames for any document navigated afterwards. The check sits after the
+first Escape and inherits exactly that.
+
+**So verify these two by hand, once, when the behaviour changes:** open the app in
+a phone-sized window, tap a station-menu link — it must replace this tab, and
+Back must return to the app — then open the live player and press Escape twice.
+Making them pass by rewriting the assertion to something a synthetic click *can*
+satisfy would be worse than the honest red, per §3a: it would assert a
+declaration rather than the effect a listener experiences.
