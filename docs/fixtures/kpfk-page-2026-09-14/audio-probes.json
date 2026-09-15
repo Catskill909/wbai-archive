@@ -1,0 +1,58 @@
+[
+  {
+    "id": "139555",
+    "altid": "soundwaves",
+    "url": "https://archive.kpfk.org/mp3/kpfk_260914_012524soundwaves.mp3",
+    "result": "206 audio/mpeg 1",
+    "error": ""
+  },
+  {
+    "id": "139388",
+    "altid": "meif",
+    "url": "https://archive.kpfk.org/mp3/kpfk_260906_134440meif.mp3",
+    "result": "206 audio/mpeg 1",
+    "error": ""
+  },
+  {
+    "id": "138831",
+    "altid": "larb",
+    "url": "https://archive.kpfk.org/mp3/kpfk_260813_142144larb.mp3",
+    "result": "206 audio/mpeg 1",
+    "error": ""
+  },
+  {
+    "id": "138747",
+    "altid": "workingvoices",
+    "url": "https://archive.kpfk.org/mp3/kpfk_260810_051213workingvoices.mp3",
+    "result": "206 audio/mpeg 1",
+    "error": ""
+  },
+  {
+    "id": "138745",
+    "altid": "ecojustiradio",
+    "url": "https://archive.kpfk.org/mp3/kpfk_260810_045904ecojustiradio.mp3",
+    "result": "206 audio/mpeg 1",
+    "error": ""
+  },
+  {
+    "id": "138146",
+    "altid": "somethihappenibhour",
+    "url": "https://archive.kpfk.org/mp3/kpfk_260721_045101somethihappenibhour.mp3",
+    "result": "206 audio/mpeg 1",
+    "error": ""
+  },
+  {
+    "id": "138147",
+    "altid": "somethihappenibhour",
+    "url": "https://archive.kpfk.org/mp3/kpfk_260721_045014somethihappenibhour.mp3",
+    "result": "404 text/html; charset=iso-8859-1 355",
+    "error": ""
+  },
+  {
+    "id": 139483,
+    "altid": "aware",
+    "url": "https://archive.kpfk.org/mp3/kpfk_260910_130000aware.mp3",
+    "result": "206 audio/mpeg 1",
+    "error": ""
+  }
+]

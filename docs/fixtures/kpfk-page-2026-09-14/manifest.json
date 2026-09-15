@@ -1,0 +1,77 @@
+[
+  {
+    "file": "audio-probes.json",
+    "bytes": 1492,
+    "sha256": "2fd78bcca9b24fe6b713d4cba89aec9196c1db647a63515aef82f2c7acb25bf7"
+  },
+  {
+    "file": "fe_catalog_kpfk.json",
+    "bytes": 520453,
+    "sha256": "3d2f01a5c5febe58ea5440992ef79e97b0cc1b1152df9989ddee35749cc1a2bf"
+  },
+  {
+    "file": "fe_catalog_kpfk.json.headers",
+    "bytes": 215,
+    "sha256": "9f58302e1c4bd3d53d44856d2dfd04e2de033012c449776e47e80122ed9f3650"
+  },
+  {
+    "file": "fe_schedule_kpfk_1789282800.json",
+    "bytes": 58489,
+    "sha256": "a76b9a06393cf173f02e543c7221b6c09c0dd3f0370a10b834fb64610f105063"
+  },
+  {
+    "file": "fe_schedule_kpfk_1789282800.json.headers",
+    "bytes": 214,
+    "sha256": "de88fbec63a706d78650c7f8f41517114cf0450dc7f1a9af7ff703d5f4bbce64"
+  },
+  {
+    "file": "fe_schedule_kpfk_1789887600.json",
+    "bytes": 55409,
+    "sha256": "c5e12432bba708d169f77228195697ba62330782e013273e691a2a41d2b09bc2"
+  },
+  {
+    "file": "fe_schedule_kpfk_1789887600.json.headers",
+    "bytes": 214,
+    "sha256": "a6af4e82d892e161a01fe4304d1f615084bc8733ec7ccbeda2089557e2282545"
+  },
+  {
+    "file": "fe_schedule_kpfk_1790492400.json",
+    "bytes": 55406,
+    "sha256": "69a5417a3bfad5d625f9950e9f5a2f205541f5a5f71aaae2b1c5bc824dacbba8"
+  },
+  {
+    "file": "fe_schedule_kpfk_1790492400.json.headers",
+    "bytes": 214,
+    "sha256": "969fb6340fd490156181c0eae4dc233d3a82f57c81cd2c214a51408e14855962"
+  },
+  {
+    "file": "fe_schedule_kpfk_index.json",
+    "bytes": 626,
+    "sha256": "b4cf61300595674292d9f127e8d47800cdc196e107fd537c68606106991eec88"
+  },
+  {
+    "file": "fe_schedule_kpfk_index.json.headers",
+    "bytes": 212,
+    "sha256": "45e07ec427a3a0f11353c13fb30bb3c2605f86ad1321c1c3f8b1edb7aab132f2"
+  },
+  {
+    "file": "page-rows.json",
+    "bytes": 579418,
+    "sha256": "f1385ff12c5fcc614a8d5e99ee5262998577e7455f39c7384ad904b1fab2930c"
+  },
+  {
+    "file": "page.headers.txt",
+    "bytes": 159,
+    "sha256": "46b74b02c9e910dc45335f6df5978ef12968930508f49f138d65f80c64a4058c"
+  },
+  {
+    "file": "show-classification.csv",
+    "bytes": 17575,
+    "sha256": "e67b88457762490753e1eafb7bd7bd3f58b99a021e1a7f931127225896bece64"
+  },
+  {
+    "file": "summary.json",
+    "bytes": 3471,
+    "sha256": "cce555092758733c892f020956a84b6f22ba43a315ed358e05daf9d9f87abeea"
+  }
+]

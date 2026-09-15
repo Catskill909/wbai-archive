@@ -1,0 +1,139 @@
+{
+  "pageUrl": "https://archive.kpfk.org/",
+  "catalogUrl": "https://archive.kpfk.org/fe_feed/fe_catalog_kpfk.json",
+  "catalogUpdated": 1789436702,
+  "pageRows": 1743,
+  "pageShowCount": 108,
+  "catalogEpisodes": 1143,
+  "catalogShowCount": 109,
+  "directoryRecords": 184,
+  "classifications": {
+    "directory_only_unconfirmed": 73,
+    "recorded": 109,
+    "scheduled_without_recordings": 2
+  },
+  "sharedEpisodeIds": 1128,
+  "pageOnlyEpisodes": 615,
+  "pageOnlyZeroDuration": 609,
+  "pageOnlyPositiveDuration": [
+    {
+      "id": "139555",
+      "altid": "soundwaves",
+      "airDate": 1789374324,
+      "mp3Url": "https://archive.kpfk.org/mp3/kpfk_260914_012524soundwaves.mp3",
+      "title": "Soundwaves",
+      "dateText": "Monday, September 14, 2026 1:25 am",
+      "length": "0:34:29",
+      "daysLeft": "13",
+      "durationSec": 2069
+    },
+    {
+      "id": "139388",
+      "altid": "meif",
+      "airDate": 1788727480,
+      "mp3Url": "https://archive.kpfk.org/mp3/kpfk_260906_134440meif.mp3",
+      "title": "Middle East In Focus",
+      "dateText": "Sunday, September 6, 2026 1:44 pm",
+      "length": "0:15:13",
+      "daysLeft": "51",
+      "durationSec": 913
+    },
+    {
+      "id": "138831",
+      "altid": "larb",
+      "airDate": 1786656104,
+      "mp3Url": "https://archive.kpfk.org/mp3/kpfk_260813_142144larb.mp3",
+      "title": "LARB Radio Hour",
+      "dateText": "Thursday, August 13, 2026 2:21 pm",
+      "length": "0:08:10",
+      "daysLeft": "27",
+      "durationSec": 490
+    },
+    {
+      "id": "138747",
+      "altid": "workingvoices",
+      "airDate": 1786363933,
+      "mp3Url": "https://archive.kpfk.org/mp3/kpfk_260810_051213workingvoices.mp3",
+      "title": "Working Voices",
+      "dateText": "Monday, August 10, 2026 5:12 am",
+      "length": "0:44:30",
+      "daysLeft": "24",
+      "durationSec": 2670
+    },
+    {
+      "id": "138745",
+      "altid": "ecojustiradio",
+      "airDate": 1786363144,
+      "mp3Url": "https://archive.kpfk.org/mp3/kpfk_260810_045904ecojustiradio.mp3",
+      "title": "Eco-Justice Radio",
+      "dateText": "Monday, August 10, 2026 4:59 am",
+      "length": "0:00:08",
+      "daysLeft": "24",
+      "durationSec": 8
+    },
+    {
+      "id": "138146",
+      "altid": "somethihappenibhour",
+      "airDate": 1784634661,
+      "mp3Url": "https://archive.kpfk.org/mp3/kpfk_260721_045101somethihappenibhour.mp3",
+      "title": "Something's Happening B Hour 2",
+      "dateText": "Tuesday, July 21, 2026 4:51 am",
+      "length": "0:08:51",
+      "daysLeft": "4",
+      "durationSec": 531
+    }
+  ],
+  "catalogOnlyEpisodeIds": [
+    "138318",
+    "138345",
+    "138478",
+    "138504",
+    "138643",
+    "138668",
+    "138808",
+    "138971",
+    "138998",
+    "139134",
+    "139159",
+    "139301",
+    "139325",
+    "139458",
+    "139483"
+  ],
+  "timestampDifferences": [
+    {
+      "id": "137824",
+      "page": 1784620803,
+      "catalog": 1784620800
+    },
+    {
+      "id": "137984",
+      "page": 1784624447,
+      "catalog": 1784624400
+    },
+    {
+      "id": "138145",
+      "page": 1784628018,
+      "catalog": 1784628000
+    },
+    {
+      "id": "138283",
+      "page": 1784631642,
+      "catalog": 1784631600
+    },
+    {
+      "id": "138780",
+      "page": 1786480915,
+      "catalog": 1786478400
+    },
+    {
+      "id": "138832",
+      "page": 1786655663,
+      "catalog": 1786654800
+    }
+  ],
+  "pageDateRange": [
+    "2026-06-20T06:01:00-07:00",
+    "2026-09-14T20:01:00-07:00"
+  ]
+}

@@ -1,5 +1,7 @@
 # Pacifica JSON front-end feeds — analysis and migration path
 
+> **September 14, 2026 update:** KPFK now publishes a different nested catalog schema, channels, dated schedules, and episode `pub` information. Use [the KPFK audit and phased migration plan](kpfk-json-migration-plan.md) for new work. The August KPFT measurements below remain historical evidence; their schema and missing-feature assumptions must not be applied to KPFK.
+
 **Status: analysis only. No code has been written and nothing in the app reads
 these files.** This documents what the feeds actually contain, what they would
 replace, and the order in which to adopt them — so that when a cloned station

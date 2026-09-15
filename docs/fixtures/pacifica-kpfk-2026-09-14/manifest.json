@@ -1,0 +1,60 @@
+{
+  "capturedDateLocal": "2026-09-14",
+  "captureTimezone": "America/New_York",
+  "baseUrl": "https://archive.kpfk.org/fe_feed/",
+  "sourceCommitReviewed": "f2ea8e886c8afd22a53f2ba16f62c1b6388d7585",
+  "summary": {
+    "shows": 184,
+    "episodes": 1143,
+    "showsWithEpisodes": 109,
+    "showsWithoutEpisodes": 75,
+    "episodesBySource": {
+      "2kpfk": 137,
+      "kpfk": 1006
+    },
+    "typeDisagreements": 361,
+    "maximumPublishedEntries": 2
+  },
+  "files": [
+    {
+      "file": "fe_catalog_kpfk.json",
+      "bytes": 520453,
+      "sha256": "d3ba3360980b244036626e2485752d85c1b9c974832b04bb8c965a5a09c27602"
+    },
+    {
+      "file": "fe_channels.json",
+      "bytes": 251,
+      "sha256": "dcaf98e19aa0349b8719aa64bc81eb9a9dd72f687d5fa8afb60dd6ca474aa8d0"
+    },
+    {
+      "file": "fe_nowplaying_kpfk.json",
+      "bytes": 803,
+      "sha256": "39767fb96742c64e74f7524aff7591616237caf71ce3b07cd45ddc3a0ff8aeb9"
+    },
+    {
+      "file": "fe_schedule_kpfk_1789282800.json",
+      "bytes": 58489,
+      "sha256": "3cf5ade3bd2df8621c4cc4ed4a72cf2fd9400a001501be58b0f10492ff34bd6e"
+    },
+    {
+      "file": "fe_schedule_kpfk_1789887600.json",
+      "bytes": 55409,
+      "sha256": "5b585c3d01f4afaa01faab79f4ef0d83863942cc2fefd422ba39d7fd995caec9"
+    },
+    {
+      "file": "fe_schedule_kpfk_1790492400.json",
+      "bytes": 55406,
+      "sha256": "dba250c1569b643f740b3035ecc874191e639cdac16dc837ba39fb1ac73c3a97"
+    },
+    {
+      "file": "fe_schedule_kpfk_index.json",
+      "bytes": 626,
+      "sha256": "b59a78491b6eeec0c6f5b91b1fd4e30156c324c76ea4ff2e61c18bc910dae85c"
+    },
+    {
+      "file": "fe_schedule_stamp.json",
+      "bytes": 60,
+      "sha256": "9866a3ce955a20a107fbac9a72c0781d230c58b07a76cb26422c695af2fa93f3"
+    }
+  ]
+}
