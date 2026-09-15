@@ -1,5 +1,10 @@
 # CLAUDE.md — working rules for this repo
 
+> **Active development has moved to the KPFK Archive** (`/Users/paulhenshaw/Desktop/kpfk-archive`)
+> as of 2026-09-15. This repo is the live WBAI app, maintenance-only — see
+> [HANDOFF.md](HANDOFF.md). `docs/kpfk*` here are frozen planning copies; the
+> maintained ones live in the KPFK repo.
+
 Guardrails that exist because we lost hours (and tokens) to them. Follow them.
 
 ## 1. NEVER-STALE RULE — you may have been testing code that wasn't loaded

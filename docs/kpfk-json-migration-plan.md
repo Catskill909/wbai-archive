@@ -1,3 +1,7 @@
+> **Frozen copy (2026-09-15).** Active development has moved to the KPFK Archive repo
+> (`kpfk-archive`), which holds the maintained version of this plan and everything built
+> from it. See this repo's [HANDOFF.md](../HANDOFF.md).
+
 # KPFK Pacifica JSON audit and phased migration
 
 Audit: September 14, 2026, approximately 9:17–9:21 p.m. EDT (September 15 UTC).
