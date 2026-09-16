@@ -48,10 +48,10 @@ for i in $(seq 1 60); do
   sleep 0.25
 done
 
-# Both suites share the one browser. Neither is allowed to hide the other's
-# failure, so run them regardless and exit non-zero if either did.
+# The suites share the one browser. None is allowed to hide another's
+# failure, so run them all regardless and exit non-zero if any did.
 rc=0
-for suite in layout-tests.js sort-tests.js; do
+for suite in layout-tests.js sort-tests.js export-tests.js; do
   echo
   echo "--- $suite"
   CDP_PORT=$PORT BASE="$BASE" STUDIO_PASSWORD="$PASSWORD" \

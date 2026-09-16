@@ -67,6 +67,14 @@ an archived broadcast.
   - No flash of the wrong light/dark theme when the page loads
 - **Private station dashboard** — a password-protected view for staff: archive
   stats, listening figures, and one-click maintenance tools.
+- **Exports from the studio** — listening figures for any dates (CSV or JSON),
+  every episode the archive holds by New York air date, every show with its data
+  gaps, and a printable report a board can save as PDF. The files hold the same
+  counters the dashboard shows and nothing else: still no identifier of any kind.
+  See [docs/exports.md](docs/exports.md).
+- **Move it to another server** — the studio downloads a backup of every usage
+  month and every episode the archive has kept, and restores it on a new install
+  with a preview first and an undo after. Episodes merge; nothing is removed.
 - **Listener insights, with privacy built in** — see how long people actually
   listen, plays, searches, and how far the station's reach extends — without
   ever tracking who anyone is.
@@ -98,6 +106,10 @@ attack surface at zero.
 | `GET /api/showinfo/<altid>` | One show, resolved on demand from archive2's per-show endpoint — works for any show, not just what's on air | 1 hr |
 | `GET /pix/<file>`  | Image proxy for show artwork (allow-listed `*_med_*.jpg` names)    | 1 day  |
 | `POST /api/ev`     | Usage beacon from the page — an event name, and for a play the media URL, and for a page view the browser's timezone (bucketed to one of three labels and discarded). No identifier of any kind; answers `204` to everything. Not registered at all when `USAGE_TRACKING=off` | — |
+| `GET /api/studio/export?dataset=<listening\|inventory\|coverage>&from=&to=&format=<csv\|json\|readme>` | Studio download (signed-in only). CSV takes `&table=`. Coverage takes no dates. See [docs/exports.md](docs/exports.md) | — |
+| `GET /studio/report?from=&to=` | Printable report (signed-in; otherwise redirects to `/studio`). Print → Save as PDF | — |
+| `GET /api/studio/backup` | Studio download (signed-in only): every usage month and `feeds.json`, checksummed | — |
+| `POST /api/studio/import/preview` · `/apply` · `/undo` | Studio restore (signed-in, CSRF). Preview writes nothing; months replace, episodes merge; apply saves copies first; undo puts them back | — |
 | `GET /studio`      | Password-gated station view. **Only exists when `STUDIO_PASSWORD` is set** — otherwise the route is never registered and the path falls through like any other unknown one | — |
 | `GET /healthz`     | Health check for the container / load balancer, plus the bundle version, storage identity (`storage.mounted` and `storage.instanceId` are what tell you a persistent volume is really mounted — see below) and feed state (`feeds.held: 0` with `lastHarvest` set is the one condition that empties the listing) | —      |
 
@@ -235,6 +247,7 @@ can't be verified in a desktop devtools viewport.
 ```
 .
 ├── server.js                     # zero-dependency Node server (static + proxies)
+├── lib/export/                   # pure builders for the studio's exports and backups
 ├── package.json                  # metadata + start script (no dependencies)
 ├── Dockerfile                    # node:24-alpine, runs as non-root
 ├── docker-compose.yml            # local + Coolify compose reference
@@ -244,6 +257,7 @@ can't be verified in a desktop devtools viewport.
 │   ├── app.js                    # front-end logic (API, players, Media Session)
 │   ├── manifest.webmanifest      # PWA metadata (name, icons, colors, display)
 │   ├── studio.css, studio.js     # the studio's layout and logic (inert without a session)
+│   ├── report.css, report.js     # the printable report's styles and Print button
 │   ├── assets/                   # station logo (header.png) + app icon
 │   └── data/shows-fallback.json  # offline snapshot fallback
 ├── admin/                        # the studio's markup — NOT under public/, which
@@ -271,13 +285,15 @@ can't be verified in a desktop devtools viewport.
 │   ├── ui/                       # listing, rows, reload, clock
 │   ├── share/                    # Open Graph / share cards (no browser)
 │   ├── storage/                  # mount-probe parser (no browser)
-│   ├── studio/                   # the /studio auth gate (no browser)
+│   ├── studio/                   # the /studio auth gate (no browser); layout + export dialog (browser)
+│   ├── exports/                  # exports, backup/restore, Dockerfile coverage (no browser)
 │   └── feed-scan/                # upstream feed drift vs a stored snapshot
 └── docs/
     ├── ARCHITECTURE.md           # how the server and proxies fit together
     ├── DEVELOPMENT.md            # code map, conventions, each built feature
     ├── ROADMAP.md                # what doesn't exist yet
     ├── admin-page.md             # the studio: design, phases, storage rules
+    ├── exports.md                # studio exports, backup & restore (WBAI specifics)
     ├── schedule-dev.md           # the derived weekly schedule: why, and what shipped
     ├── TAURI.md                  # desktop build steps
     ├── casting-dev.md            # Cast/AirPlay: built, removed, and why

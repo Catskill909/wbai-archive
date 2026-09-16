@@ -200,8 +200,9 @@ replace the volume, take a copy (`docker cp`); see
   (the upstream scanner's diff and notable/routine split, entirely offline),
   `test/feed-merge/` (episodes that rotate out of upstream's 5-item window must
   survive the next harvest), `test/photomap/`, `test/storage/` (the mount-probe
-  parser), `test/studio/` (the auth gate, against a real server process) and
-  `test/usage/` (a counter must reach the disk before the process is killed).
+  parser), `test/studio/` (the auth gate, against a real server process),
+  `test/usage/` (a counter must reach the disk before the process is killed) and
+  `test/exports/` (exports, backup/restore on two real servers, Dockerfile coverage).
   The browser suites are per-directory
   `./run.sh` scripts. Add new offline suites to `npm test` in the same commit
   that writes them — `test/feed-scan/selftest.js` sat outside it until
@@ -269,6 +270,12 @@ replace the volume, take a copy (`docker cp`); see
   is on screen at any time. Its
   suite is `test/episode-rail/run.sh` (headless Chrome, fixtures
   derived from the live listing rather than hardcoded ids that rotate out).
+- **Studio exports and backup/restore** (ported from KPFK 2026-09-16) — Export
+  dialog in the studio header; pure builders in `lib/export/`, routes in
+  `server.js`. Read `docs/exports.md` first. A WBAI backup carries `feeds.json`
+  as well as `stats/`, and a restore **merges** episodes (never removes); keep it
+  that way, for the reason in §4. `lib/` must stay in the Dockerfile's COPY lines —
+  `test/exports/dockerfile.test.js` enforces it.
 - **Usage counters** live in `public/track.js` (loaded separately from `app.js`
   so counting can never affect playback) and `POST /api/ev`. They carry **no
   identifier of any kind** — no cookie, no session, no stored or hashed IP — and

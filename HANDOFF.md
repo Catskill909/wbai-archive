@@ -1,6 +1,6 @@
 # HANDOFF — WBAI Archive
 
-**Updated:** 2026-09-16 — next job: port the studio exports from KPFK (below).
+**Updated:** 2026-09-16 — studio exports ported from KPFK (below); not yet verified on the live deploy.
 
 ## Status: maintenance-only
 
@@ -12,81 +12,40 @@ live at https://kpfk-archive.supersoul.top). Start new work there and read its
 This repo stays the **live WBAI app**. Change it only for WBAI fixes or deliberate
 ports from KPFK. It is healthy and needs nothing right now.
 
-## NEXT JOB: port the studio Export features from KPFK (Paul, 2026-09-16)
+## DONE 2026-09-16: studio Export features ported from KPFK
 
-A **deliberate port** into this app only. WBAI stays a separate app: its own code,
-data, commits, deploy (port **8080** locally, https://wbai.supersoul.top live).
-Nothing is shared with KPFK at runtime; KPFK is only the reference implementation.
+Built, tested locally, pushed to `main`. **Not yet verified on the live deploy** —
+that is the one open step: after Coolify redeploys, sign in to
+https://wbai.supersoul.top/studio, open **Export**, download a Listening CSV, an
+Archive CSV and a backup, open the printable report, and confirm `/healthz`
+`studioVersion` changed (it now has four parts: studio.js, studio.css, report.css,
+report.js). **Do not click Restore on production** unless moving servers.
 
-### What to port (built and verified live on KPFK, 2026-09-16)
+What WBAI has, and every place it differs from KPFK, is in
+[docs/exports.md](docs/exports.md); the moving guide is in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) "Moving the app to another server".
 
-Reference: `/Users/paulhenshaw/Desktop/kpfk-archive` — read its `docs/exports.md`
-(spec, decisions and an "as built" section per phase) and
-`docs/exports-for-pacifica.md`. KPFK commits, in order: `85f20e1` listening export ·
-`c109440` date spans · `3579191` Export dialog + fetch-then-save downloads ·
-`909afe8` backup/restore/undo · `1448dfe` archive + coverage · `84ea825` printable
-report · `918d498` profile (**not for WBAI**) · `0f0ad11` studio title/System-panel
-cleanups (check which apply to WBAI's XML build).
-
-1. **Export button in the studio header → dialog**, tabs *Reports* and *Backup & restore*.
-2. **Reports:** *Listening* (daily / per show / reach CSV, JSON, read-me; any from/to
-   span, UTC days), *Archive* (episodes / shows, by local air date in
-   `America/New_York`), *Coverage* (every show and its gaps), *Printable report*
-   (`/studio/report`, browser Save as PDF). Presets: this month, last month, this
-   year, all time.
-3. **Backup & restore:** download a backup; restore = preview (writes nothing) →
-   apply (copies aside first) → undo (never deletes).
-
-Most of KPFK's `lib/export/*.js` are pure modules (csv, common, listening,
-inventory, coverage, report, backup) and should carry over; `server.js` routes,
-`admin/studio.html`, `public/studio.js|css`, `public/report.css|js` and the tests
-need adapting. **Compare before copying** — the apps diverged (see below).
-
-### Decisions already made — do not re-ask
-
-- **A WBAI backup = usage `stats/` months + `data/feeds.json`.** `feeds.json` holds
-  episodes WBAI accumulated beyond the ~5 per show upstream still serves; it cannot
-  be re-fetched (CLAUDE.md §4), so a move without it loses archive depth. KPFK's
-  backup has no feeds because Pacifica's JSON can be re-fetched — WBAI's cannot.
-- **Restoring a WBAI backup onto a WBAI server MERGES episodes per show** with this
-  app's own `mergeFeedItems` (keep every episode, no duplicates; restoring twice
-  changes nothing). Usage months **preview, then replace**, with copies saved aside
-  and Undo — as on KPFK. ("Merge" here means within WBAI's own data only.)
-- **No published schedule on WBAI** (the schedule is derived from archive rows): the
-  coverage column `in_published_schedule` does not apply — drop it.
-- **No station profile on WBAI:** do not offer the profile export.
-- Station timezone setting: on hold (KPFK HANDOFF item 2) — not part of this port.
-
-### WBAI data to map onto (checked 2026-09-16)
-
-- `feeds.json` / `feedStore`: `{ slug: { lastModified, fetchedAt, channel: { title },
-  items: [{ mp3, bytes, title, dt, durationSec, desc, category }] } }` — 128 shows,
-  ~7 items each locally. `episodeRecords()` does not exist here; the studio reads
-  `feedStore` directly.
-- `showinfo.json` (descriptions, per show), `programs.json` (scraped program
-  directory), `photomap.json`, `known-slugs.json`, `stats/` (same month-file format
-  as KPFK — the usage code originated here).
-- WBAI files **do** carry byte sizes (KPFK's do not).
-
-### Lessons from the KPFK build — keep them
-
-- **Downloads: fetch, then save as a Blob**, and show the result or the error in the
-  dialog. Plain `<a download>` links "started but downloaded nothing" on the live
-  KPFK site and failed silently.
-- **Browser tests must use real clicks and assert a finished file on disk**
-  (`Page.setDownloadBehavior`), not `fetch()` of the URL. Layout checks must measure
-  overflowing *text* (`scrollWidth` vs `clientWidth`, text-node rects), not just
-  element boxes. Plant each bug and see the test fail (CLAUDE.md §3a).
-- **CSP** (`style-src 'self'`): no inline style or script anywhere, including the
-  printable report; SVG charts drawn with attributes.
-- **CSS specificity:** `.studio-table td { white-space: nowrap }` silently overrode
-  the export card rules — scope them as `.studio-table.export-plan …`.
-- **Titles in exports are never slugs** (empty cell if nothing names a show); on
-  screen the slug is the last resort.
-- **All writes to `stats/` or `feeds.json` via `writeJsonAtomic`;** the storage-safety
-  pre-commit guard blocks raw writes and deletes. Undo moves files, never deletes.
-- **Read the generated PDF / files yourself** — on KPFK that found a feed change and a
-  "0m for 14 seconds" bug that every test passed.
+- **Reports:** Listening (UTC days), Archive (every episode `feeds.json` holds, by
+  New York air date, with file sizes), Coverage (every listed or held show: feed,
+  artwork, description, host, program directory, recency), Printable report.
+  No station profile export.
+- **Backup = `stats/` months + `feeds.json`.** Months preview-then-replace; episodes
+  merge per show with `mergeFeedItems` (server's copy wins; twice = once). Copies go
+  to `DATA_DIR/imports/pre-import-<time>/`; undo takes out exactly the episodes a
+  restore added and deletes nothing. Refused while a feed harvest is in flight.
+- **New `lib/` directory → `COPY lib ./lib` in the Dockerfile.** Without it the
+  container would crash at boot; `test/exports/dockerfile.test.js` now fails if a
+  local `require()` is not copied into the image.
+- **Tests:** `test/exports/{export,backup,dockerfile}.test.js` in `npm test`; the
+  browser dialog suite `test/studio/export-tests.js` runs from `test/studio/run.sh`.
+  Ten bugs planted, each seen to fail. The planting found a blind probe: the
+  "preview writes nothing" snapshot compared bytes only, so a write of identical
+  content passed; it now compares inode and mtime too.
+- **From KPFK `0f0ad11`:** only the title lookup applied (studio screens name a show
+  from its show record when no feed does). The System-panel counts are
+  JSON-station-only and were not ported.
+- **Found in the data:** `…/pix/WBAI_it_.jpg` is the feed image of 17 shows — a
+  generic picture, not artwork; coverage treats an image on 4+ shows accordingly.
 
 ## State at a glance (checked 2026-09-15)
 

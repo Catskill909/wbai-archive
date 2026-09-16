@@ -362,6 +362,32 @@ A copy taken *after* the volume was replaced is a copy of nothing — check
 The same applies locally: `./data` is gitignored, so `git clean -xdf` deletes it
 and your laptop's accumulated `feeds.json` with it.
 
+## Moving the app to another server
+
+No VPS access needed — it is all in the studio (**Export → Backup & restore**).
+
+1. **On the old server:** *Download backup*. One JSON file: every usage month and
+   every episode `feeds.json` has kept, each checksummed. Counters and public
+   programme data only — no identifier of any kind. Keep it: the episodes older
+   than WBAI's feeds' ~5-item window exist nowhere else.
+2. **Deploy the new server** as above, with its own persistent volume and a
+   `STUDIO_PASSWORD`. Let it boot and harvest; it fetches what the feeds list today.
+3. **On the new server:** *Choose backup file*. The preview writes nothing: it shows
+   each month (New / Replaced / Already the same / Kept) and how many episodes would
+   be added to which shows.
+4. *Restore*. Months in the backup replace the new server's; **episodes merge** —
+   the new server keeps everything it fetched, gains the backup's older episodes, and
+   its own copy of a shared episode wins. Copies of everything it changes go to
+   `DATA_DIR/imports/pre-import-<time>/` first.
+5. Check the studio: Every feed's episode count and the Archive export should now
+   include the old server's episodes. *Undo this restore* puts the new server back
+   exactly (it moves files aside; nothing is deleted).
+
+Restoring the same file twice changes nothing. A restore is refused for a minute
+while the server is checking WBAI's feeds. The new server keeps its own
+`storage.instanceId` — a restore moves data, not identity — so the §4 persistence
+check (compare `instanceId` across two deploys) still applies to it.
+
 ## Troubleshooting
 
 ### Descriptions missing from the show modal

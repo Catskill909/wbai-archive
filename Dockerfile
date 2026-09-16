@@ -7,6 +7,9 @@ WORKDIR /app
 # Only source is needed; there are no dependencies to install.
 COPY package.json ./
 COPY server.js ./
+# Pure modules server.js requires (studio exports). test/exports checks every
+# local require() has a COPY here — a missing one crashes the container at boot.
+COPY lib ./lib
 COPY public ./public
 
 # The studio's HTML. Deliberately NOT under public/ — anything in that directory

@@ -29,6 +29,14 @@
       </a>
     </h1>
     <div class="studio-bar-actions">
+      <!-- Export opens a dialog rather than living on the page: it will hold
+           every dataset (docs/exports.md), and it is an action, not a report. -->
+      <button class="studio-btn studio-btn--export" id="exportOpen" type="button" aria-haspopup="dialog">
+        <svg class="export-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+          <path d="M12 3v12m0 0l-5-5m5 5l5-5M4 17v3h16v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Export
+      </button>
       <!-- Same markup and behaviour as the listener app's toggle: the icon is
            driven entirely by the --sun token in styles.css, so it is already
            correct on the first paint, before studio.js has run. -->
@@ -339,6 +347,246 @@
        interrupt whatever a screen-reader user is currently reading. -->
   <p class="studio-error" id="loadError" role="alert" aria-live="polite" hidden></p>
 </main>
+
+<!-- Export. A native <dialog>: focus is trapped, Esc closes, the page behind
+     is inert — no library, nothing to keep in sync. Download fetches the file,
+     saves it, and SAYS what happened: a plain <a download> link handed failures
+     to the browser, where they were invisible (2026-09-16). -->
+<dialog class="export-dialog" id="exportDialog" aria-labelledby="exportTitle">
+  <form class="export-form" id="exportForm" novalidate>
+    <header class="export-head">
+      <div>
+        <h2 class="export-title" id="exportTitle">Export data</h2>
+        <p class="export-lede">
+          Reports for Excel, Google Sheets or Pacifica, and a backup for moving
+          this app and its archive to another server. Nothing in any of these files identifies a
+          listener.
+        </p>
+      </div>
+      <button class="export-close" id="exportClose" type="button" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+          <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </header>
+
+    <div class="export-tabs" role="tablist" aria-label="Export">
+      <button class="export-tab" id="tabReports" type="button" role="tab" aria-selected="true" aria-controls="paneReports">Reports</button>
+      <button class="export-tab" id="tabBackup" type="button" role="tab" aria-selected="false" aria-controls="paneBackup" tabindex="-1">Backup &amp; restore</button>
+    </div>
+
+    <div class="export-pane" id="paneReports" role="tabpanel" aria-labelledby="tabReports">
+    <fieldset class="export-step" id="exportWhat">
+      <legend class="export-legend"><span class="export-num">1</span> What to export</legend>
+      <div class="export-datasets" role="radiogroup" aria-label="Dataset">
+        <label class="export-dataset">
+          <input type="radio" name="exportDataset" value="listening" checked>
+          <span class="export-dataset-name">Listening</span>
+          <span class="export-dataset-desc">Plays, time listened, page views, reach</span>
+        </label>
+        <label class="export-dataset">
+          <input type="radio" name="exportDataset" value="inventory">
+          <span class="export-dataset-name">Archive</span>
+          <span class="export-dataset-desc">Every episode this app holds</span>
+        </label>
+        <label class="export-dataset">
+          <input type="radio" name="exportDataset" value="coverage">
+          <span class="export-dataset-name">Coverage</span>
+          <span class="export-dataset-desc">Where program data is thin</span>
+        </label>
+        <label class="export-dataset">
+          <input type="radio" name="exportDataset" value="report">
+          <span class="export-dataset-name">Printable report</span>
+          <span class="export-dataset-desc">For a board or funder, as PDF</span>
+        </label>
+      </div>
+
+      <p class="export-empty" id="exportEmpty" hidden></p>
+
+      <div class="export-choices" data-dataset="listening">
+          <label class="export-choice">
+            <input type="radio" name="exportFile" value="listening:csv:daily" checked>
+            <span class="export-choice-body">
+              <span class="export-choice-title">Daily totals <span class="export-tag">CSV</span></span>
+              <span class="export-choice-desc">One row per day: page views, episode plays, live tune-ins, searches, shares and time listened.</span>
+            </span>
+          </label>
+          <label class="export-choice">
+            <input type="radio" name="exportFile" value="listening:csv:shows">
+            <span class="export-choice-body">
+              <span class="export-choice-title">Per show <span class="export-tag">CSV</span></span>
+              <span class="export-choice-desc">Plays and time listened for every show, most listened first.</span>
+            </span>
+          </label>
+          <label class="export-choice">
+            <input type="radio" name="exportFile" value="listening:csv:reach">
+            <span class="export-choice-body">
+              <span class="export-choice-title">Reach <span class="export-tag">CSV</span></span>
+              <span class="export-choice-desc">Page views grouped by the timezone listeners&rsquo; browsers report.</span>
+            </span>
+          </label>
+          <label class="export-choice">
+            <input type="radio" name="exportFile" value="listening:json">
+            <span class="export-choice-body">
+              <span class="export-choice-title">Everything <span class="export-tag">JSON</span></span>
+              <span class="export-choice-desc">All three tables in one file, with an explanation of every column. For Pacifica and other tools.</span>
+            </span>
+          </label>
+      </div>
+      <div class="export-choices" data-dataset="inventory" hidden>
+          <label class="export-choice">
+            <input type="radio" name="exportFile" value="inventory:csv:episodes">
+            <span class="export-choice-body">
+              <span class="export-choice-title">Episodes <span class="export-tag">CSV</span></span>
+              <span class="export-choice-desc">One row per episode: show, title, air date and time, length, file size, category, host and audio link.</span>
+            </span>
+          </label>
+          <label class="export-choice">
+            <input type="radio" name="exportFile" value="inventory:csv:shows">
+            <span class="export-choice-body">
+              <span class="export-choice-title">Shows <span class="export-tag">CSV</span></span>
+              <span class="export-choice-desc">One row per show: episodes held, oldest and newest air date, total length and size.</span>
+            </span>
+          </label>
+          <label class="export-choice">
+            <input type="radio" name="exportFile" value="inventory:json">
+            <span class="export-choice-body">
+              <span class="export-choice-title">Everything <span class="export-tag">JSON</span></span>
+              <span class="export-choice-desc">Both tables in one file, with an explanation of every column.</span>
+            </span>
+          </label>
+      </div>
+      <div class="export-choices" data-dataset="coverage" hidden>
+          <label class="export-choice">
+            <input type="radio" name="exportFile" value="coverage:csv:shows">
+            <span class="export-choice-body">
+              <span class="export-choice-title">Every show <span class="export-tag">CSV</span></span>
+              <span class="export-choice-desc">Every show WBAI&rsquo;s archive names: whether it has a podcast feed, artwork, description, host, a program directory entry, episodes held and how recent the newest is.</span>
+            </span>
+          </label>
+          <label class="export-choice">
+            <input type="radio" name="exportFile" value="coverage:json">
+            <span class="export-choice-body">
+              <span class="export-choice-title">Everything <span class="export-tag">JSON</span></span>
+              <span class="export-choice-desc">The same rows plus a summary of the gaps, with an explanation of every column.</span>
+            </span>
+          </label>
+      </div>
+      <div class="export-choices" data-dataset="report" hidden>
+        <p class="export-copy">
+          One page with everything for the dates you pick: listening at a glance,
+          minutes per day, most listened shows, reach, what the archive aired, and
+          the program data gaps to fix at WBAI&rsquo;s archive. It opens in a new tab; use
+          <strong>Print or save as PDF</strong> there.
+        </p>
+      </div>
+      <p class="export-readme" id="exportReadmeRow">
+        What do the columns mean?
+        <button class="export-link" id="exportReadme" type="button">Download the read-me</button>
+      </p>
+    </fieldset>
+
+    <fieldset class="export-step" id="exportDates">
+      <legend class="export-legend"><span class="export-num">2</span> Dates</legend>
+      <p class="export-copy" id="exportClock"></p>
+      <div class="export-presets" id="exportPresets" role="group" aria-label="Quick dates">
+        <button class="win-btn" type="button" data-preset="thisMonth">This month</button>
+        <button class="win-btn" type="button" data-preset="lastMonth">Last month</button>
+        <button class="win-btn" type="button" data-preset="thisYear">This year</button>
+        <button class="win-btn" type="button" data-preset="all">All time</button>
+      </div>
+      <div class="export-span">
+        <label class="studio-field">
+          <span class="studio-field-label">From</span>
+          <input class="studio-input" id="exportFrom" type="date" required>
+        </label>
+        <label class="studio-field">
+          <span class="studio-field-label">To</span>
+          <input class="studio-input" id="exportTo" type="date" required>
+        </label>
+      </div>
+      <p class="export-summary" id="exportSpanNote" aria-live="polite"></p>
+    </fieldset>
+
+    <footer class="export-foot">
+      <p class="export-status" id="exportStatus" role="status" aria-live="polite"></p>
+      <div class="export-actions">
+        <button class="studio-btn studio-btn--quiet" id="exportCancel" type="button">Close</button>
+        <button class="studio-btn export-go" id="exportGo" type="submit">Download</button>
+      </div>
+    </footer>
+    </div>
+
+    <!-- Backup & restore: moving the station's figures and archive to another
+         server (docs/exports.md "1c"). Restore always previews first and writes
+         nothing until the button that names what it will change. -->
+    <div class="export-pane" id="paneBackup" role="tabpanel" aria-labelledby="tabBackup" hidden>
+      <section class="export-step">
+        <h3 class="export-legend"><span class="export-num">1</span> Download a backup</h3>
+        <p class="export-copy">
+          Every month this app has counted and every episode it has kept, in one
+          file. Keep it somewhere safe, or restore it on a new server to move the
+          station&rsquo;s figures and archive there. The episodes matter most: WBAI&rsquo;s
+          feeds list only the newest few per show, and the older ones this app kept
+          cannot be fetched again from anywhere.
+        </p>
+        <div class="export-row">
+          <button class="studio-btn export-go" id="backupDownload" type="button">Download backup</button>
+        </div>
+        <p class="export-status" id="backupStatus" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="export-step">
+        <h3 class="export-legend"><span class="export-num">2</span> Restore from a backup</h3>
+        <p class="export-copy">
+          Choose a backup file made by this app for this station. You will see
+          exactly what would change before anything is written.
+        </p>
+        <div class="export-row">
+          <label class="export-file">
+            <input id="restoreFile" type="file" accept=".json,application/json">
+            <span class="studio-btn" aria-hidden="true">Choose backup file&hellip;</span>
+            <span class="export-file-name" id="restoreFileName">No file chosen</span>
+          </label>
+        </div>
+        <div class="export-preview" id="restorePreview" hidden>
+          <p class="export-copy" id="restoreSummary"></p>
+          <!-- Episodes merge rather than replace, so they are described on their
+               own, above the months: nothing on this server is removed by them. -->
+          <div class="export-feeds" id="restoreFeeds">
+            <p class="export-feeds-line">
+              <span class="plan-badge" id="restoreFeedsBadge"></span>
+              <span id="restoreFeedsText"></span>
+            </p>
+            <ul class="export-feeds-shows" id="restoreFeedsShows"></ul>
+          </div>
+          <div class="table-wrap">
+            <table class="studio-table export-plan">
+              <thead>
+                <tr><th scope="col">Month</th><th scope="col">In the backup</th><th scope="col">On this server</th><th scope="col">What happens</th></tr>
+              </thead>
+              <tbody id="restorePlan"></tbody>
+            </table>
+          </div>
+          <p class="export-warn" id="restoreWarn" hidden></p>
+          <div class="export-row">
+            <button class="studio-btn export-go" id="restoreApply" type="button">Restore</button>
+          </div>
+        </div>
+        <p class="export-status" id="restoreStatus" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="export-step" id="undoStep" hidden>
+        <h3 class="export-legend">Last restore</h3>
+        <p class="export-copy" id="undoSummary"></p>
+        <div class="export-row">
+          <button class="studio-btn" id="restoreUndo" type="button">Undo this restore</button>
+        </div>
+        <p class="export-status" id="undoStatus" role="status" aria-live="polite"></p>
+      </section>
+    </div>
+  </form>
+</dialog>
 
 <!-- One shared tooltip for every chart. Positioned by studio.js through the
      CSSOM, which CSP permits — only style attributes parsed from markup are

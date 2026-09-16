@@ -18,6 +18,13 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { toCsv } = require('./lib/export/csv');
+const listeningExport = require('./lib/export/listening');
+const backupLib = require('./lib/export/backup');
+const inventoryExport = require('./lib/export/inventory');
+const coverageExport = require('./lib/export/coverage');
+const exportCommon = require('./lib/export/common');
+const reportLib = require('./lib/export/report');
 
 const PORT = process.env.PORT || 8080;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -2017,7 +2024,7 @@ function appVersion() {
 // DEPLOYMENT.md) would fire falsely on every studio deploy. Keeping them apart
 // also leaves appVersion()'s meaning — the listener bundle — unchanged.
 function studioVersion() {
-  return `${fileVer('/studio.js')}.${fileVer('/studio.css')}`;
+  return `${fileVer('/studio.js')}.${fileVer('/studio.css')}.${fileVer('/report.css')}.${fileVer('/report.js')}`;
 }
 
 /**
@@ -2564,29 +2571,27 @@ function usageWindowFromUrl(url) {
   return USAGE_WINDOWS.has(n) ? n : 30;
 }
 
+/** The words a reach bucket is shown as — here and in exports alike. */
+function zoneLabel(b) {
+  return b === 'local' ? STATION_TZ
+    : b === 'national' ? 'Elsewhere in the US'
+    : b === 'intl' ? 'International'
+    : 'Not reported';
+}
+
 /** Recent days, newest last, plus the totals the dashboard leads with. */
 function usageReport(days = 30) {
   const out = [];
   const window = recentDays(days);
-  for (const { day: d, rec } of window) {
-    out.push({
-      day: d,
-      pageviews: rec ? rec.pageviews : 0,
-      plays: rec ? rec.plays : 0,
-      live: rec ? rec.live : 0,
-      searches: rec ? rec.searches : 0,
-      shares: rec ? rec.shares : 0,
-      listenSeconds: (rec && rec.listenSeconds) || 0,
-      liveSeconds: (rec && rec.liveSeconds) || 0,
-    });
-  }
+  // dayCounters is shared with the listening export, so the dashboard and a
+  // downloaded file read a day record the same way.
+  for (const { day: d, rec } of window) out.push({ day: d, ...listeningExport.dayCounters(rec) });
   const byShow = sumBySlug(window, 'byShow');
   const secsByShow = sumBySlug(window, 'secondsByShow');
   // Reach. Goes through sumBySlug for the same reason every other total does —
   // reading statsStore.days directly falls off the cliff at the month rollover.
   const byZone = sumBySlug(window, 'byZone');
   const zoneTotal = ZONE_BUCKETS.reduce((n, b) => n + (byZone.get(b) || 0), 0);
-  const titles = feedStore;
   const firstWithData = window.find((w) => w.rec);
   return {
     since: (firstWithData && firstWithData.day) || today(),
@@ -2606,10 +2611,7 @@ function usageReport(days = 30) {
       total: zoneTotal,
       buckets: ZONE_BUCKETS.map((b) => ({
         key: b,
-        label: b === 'local' ? STATION_TZ
-          : b === 'national' ? 'Elsewhere in the US'
-          : b === 'intl' ? 'International'
-          : 'Not reported',
+        label: zoneLabel(b),
         count: byZone.get(b) || 0,
         pct: zoneTotal ? Math.round(((byZone.get(b) || 0) / zoneTotal) * 1000) / 10 : 0,
       })),
@@ -2630,7 +2632,7 @@ function usageReport(days = 30) {
     topShows: [...new Set([...byShow.keys(), ...secsByShow.keys()])]
       .map((slug) => ({
         slug,
-        title: (titles[slug] && titles[slug].channel && titles[slug].channel.title) || slug,
+        title: studioShowTitle(slug),
         plays: byShow.get(slug) || 0,
         seconds: secsByShow.get(slug) || 0,
       }))
@@ -2664,12 +2666,533 @@ function showHistory(slug) {
     const t = monthTotalsFor(slug, statsMonthDays(m));
     return { month: m, plays: t.plays, seconds: t.seconds };
   });
-  const rec = feedStore[slug];
   return {
     slug,
-    title: (rec && rec.channel && rec.channel.title) || slug,
+    title: studioShowTitle(slug),
     months,
   };
+}
+
+// ------------------------------------------------------------- exports
+/**
+ * Downloads for the studio: listening, archive (inventory), coverage, and the
+ * printable report. Ported from the KPFK archive (2026-09-16); the shape and
+ * every decision behind it are in docs/exports.md, the data work is in the pure
+ * builders under lib/export/, and this is only the plumbing.
+ */
+
+/**
+ * A show title for the studio's own screens: the export lookup, and the slug
+ * only when nothing names the show — a chart row has to print something.
+ */
+function studioShowTitle(slug) { return exportShowTitle(slug) || slug; }
+
+/**
+ * A show title for a file that leaves the building, or '' — never a slug.
+ *
+ * The feed first, then the show record the now-playing harvest keeps, which
+ * still names a show whose feed we do not hold. An empty cell is honest; a slug
+ * masquerading as a title is not (KPFK's 2026-09-15 bug).
+ */
+function exportShowTitle(key) {
+  const named = (t) => {
+    const title = String(t || '').trim();
+    return title && title !== key ? title : '';
+  };
+  const rec = feedStore[key];
+  return named(rec && rec.channel && rec.channel.title) || named(showInfo[key] && showInfo[key].name);
+}
+
+/** A real calendar date in YYYY-MM-DD form — `2026-02-30` is not one. */
+function isIsoDate(v) {
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+    && !Number.isNaN(Date.parse(v + 'T00:00:00Z'))
+    && new Date(v + 'T00:00:00Z').toISOString().slice(0, 10) === v;
+}
+
+/** The earliest date a listening export may start: the 1st of the oldest stats month. */
+function exportFirstDate() { return listStatsMonths()[0] + '-01'; }
+
+/**
+ * The export datasets. Each names its tables, how its dates work, and how to
+ * build it; the route, the index and the studio all read this one table, so a
+ * dataset cannot be offered by one and refused by another.
+ *
+ *   span 'utc'   — listening: counters were bucketed per UTC day when recorded.
+ *   span 'local' — inventory: episodes selected by air date in the station's timezone.
+ *   span null    — coverage: a snapshot of right now; dates do not apply.
+ *
+ * No `profile` dataset: WBAI has no station profile (KPFK's is its JSON config).
+ */
+const EXPORT_DATASETS = {
+  listening: {
+    lib: listeningExport,
+    span: 'utc',
+    bounds() { return { firstDate: exportFirstDate(), today: today() }; },
+    hasData() { return listStatsMonths().some((m) => Object.keys(statsMonthDays(m) || {}).length > 0); },
+    build({ from, to, generatedAt }) {
+      const months = listStatsMonths();
+      return listeningExport.buildListeningExport({
+        station: STATION_ID, stationTimezone: STATION_TZ, from, to,
+        monthDays: (m) => (months.includes(m) ? statsMonthDays(m) : {}), titleFor: exportShowTitle,
+        zones: ZONE_BUCKETS.map((b) => ({ key: b, label: zoneLabel(b) })),
+        generatedAt,
+      });
+    },
+  },
+  inventory: {
+    lib: inventoryExport,
+    span: 'local',
+    bounds() {
+      const todayLocal = exportCommon.localDateTime(Date.now() / 1000, STATION_TZ).date;
+      let oldest = Infinity;
+      for (const rec of Object.values(feedStore)) {
+        for (const it of (rec && rec.items) || []) if (it.dt > 0 && it.dt < oldest) oldest = it.dt;
+      }
+      return { firstDate: oldest === Infinity ? todayLocal : exportCommon.localDateTime(oldest, STATION_TZ).date, today: todayLocal };
+    },
+    hasData() { return Object.values(feedStore).some((r) => r && r.items && r.items.length); },
+    build({ from, to, generatedAt }) {
+      return inventoryExport.buildInventory({
+        station: STATION_ID, stationTimezone: STATION_TZ, from, to, feeds: feedStore,
+        titleFor: exportShowTitle, generatedAt,
+      });
+    },
+  },
+  coverage: {
+    lib: coverageExport,
+    span: null,
+    bounds() { return null; },
+    hasData() { return Object.keys(feedStore).length > 0 || knownSlugs.size > 0; },
+    // The only dataset that cannot be built empty: it IS the list of shows.
+    canBuild() { return this.hasData(); },
+    build({ generatedAt }) {
+      const programs = programCache.programs || {};
+      return coverageExport.buildCoverage({
+        station: STATION_ID, stationTimezone: STATION_TZ, feeds: feedStore, knownSlugs,
+        showInfo, photoMap: photoMapStore,
+        // The same approximate title match the studio's coverage meters use.
+        inDirectory: (key, title) => Object.hasOwn(programs, normTitle(title)),
+        titleFor: exportShowTitle, now: Date.now(), generatedAt,
+      });
+    },
+  },
+};
+
+/** What the studio's export picker needs, per dataset: its tables, whether it
+ *  holds anything, and the span it can cover. Presets are computed from
+ *  `today` here, never from the browser's clock. */
+function exportsIndex() {
+  const months = listStatsMonths().reverse().map((m) => ({
+    month: m,
+    daysWithData: Object.values(statsMonthDays(m) || {}).filter(Boolean).length,
+  }));
+  return {
+    station: STATION_ID,
+    stationTimezone: STATION_TZ,
+    schemaVersion: listeningExport.SCHEMA_VERSION,
+    hasData: months.some((m) => m.daysWithData > 0),
+    firstDate: exportFirstDate(),
+    today: today(),
+    months,
+    datasets: [
+      ...Object.entries(EXPORT_DATASETS).map(([name, d]) => ({
+        name,
+        tables: Object.keys(d.lib.COLUMNS),
+        formats: d.formats || ['csv', 'json', 'readme'],
+        span: d.span,
+        hasData: d.hasData(),
+        ...(d.span ? d.bounds() : {}),
+      })),
+      // The printable report is a page, not a file: listening in UTC days and
+      // the archive by local air date, over one span.
+      { name: 'report', tables: [], formats: ['html'], span: 'mixed', hasData: true, ...reportBounds() },
+    ],
+  };
+}
+
+/** The dates a report may cover: from the earlier of the oldest stats month
+ *  and the oldest archive air date, to today (UTC — the later of the clocks). */
+function reportBounds() {
+  const a = EXPORT_DATASETS.listening.bounds(), b = EXPORT_DATASETS.inventory.bounds();
+  return { firstDate: a.firstDate < b.firstDate ? a.firstDate : b.firstDate, today: today() };
+}
+
+/** GET /studio/report?from=&to= — the printable report (docs/exports.md phase 3). */
+function sendReport(req, res) {
+  if (!studioAuthed(req)) {
+    res.writeHead(302, { Location: '/studio', 'Cache-Control': 'no-store', ...securityHeaders() });
+    return res.end();
+  }
+  const q = new URL(req.url, 'http://localhost').searchParams;
+  const b = reportBounds();
+  const from = q.get('from') || today().slice(0, 8) + '01';
+  const to = q.get('to') || today();
+  if (!isIsoDate(from) || !isIsoDate(to) || from > to || from < b.firstDate || to > b.today) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...securityHeaders() });
+    return res.end(`Those dates cannot be reported: choose a span from ${b.firstDate} to ${b.today}.\n`);
+  }
+  const generatedAt = new Date().toISOString();
+  // The inventory builder clamps nothing itself; a report span can start before
+  // the archive's oldest episode (listening is older), which simply selects none.
+  const html = reportLib.renderReport({
+    station: { name: 'WBAI', frequency: '99.5 FM', city: 'New York', logo: '/assets/header.png' },
+    from, to, generatedAt,
+    listening: EXPORT_DATASETS.listening.build({ from, to, generatedAt }),
+    inventory: EXPORT_DATASETS.inventory.build({ from, to, generatedAt }),
+    coverage: EXPORT_DATASETS.coverage.canBuild() ? EXPORT_DATASETS.coverage.build({ generatedAt }) : null,
+  });
+  const body = Buffer.from(stampAssets(html), 'utf8');
+  res.writeHead(200, {
+    'Content-Type': MIME['.html'],
+    'Content-Length': body.length,
+    'Cache-Control': 'private, no-store',
+    'Vary': 'Cookie',
+    'X-App-Version': appVersion(),
+    ...securityHeaders(),
+  });
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
+
+/** `GET /api/studio/export` — one dataset, one span, one format. */
+function sendExport(req, res) {
+  const q = new URL(req.url, 'http://localhost').searchParams;
+  const name = q.get('dataset'), from = q.get('from'), to = q.get('to'), format = q.get('format');
+  if (!Object.hasOwn(EXPORT_DATASETS, name)) return sendStudioJson(res, { error: 'unknown dataset' }, 400);
+  const d = EXPORT_DATASETS[name];
+  const tables = Object.keys(d.lib.COLUMNS);
+  const table = q.get('table') || tables[0];
+  if (!(d.formats || ['csv', 'json', 'readme']).includes(format)) return sendStudioJson(res, { error: 'unknown format' }, 400);
+  if (format === 'csv' && !tables.includes(table)) return sendStudioJson(res, { error: 'unknown table' }, 400);
+  // An empty listening or archive export is headers and zero rows, not an
+  // error (docs/exports.md test plan); only a dataset with nothing to build
+  // from at all is refused.
+  if (d.canBuild && !d.canBuild()) {
+    return sendStudioJson(res, { error: 'no shows are known yet — the archive has not been read' }, 409);
+  }
+  // Bounded by the data that can exist. For listening that also gates the
+  // file reads, so a query string never becomes a path.
+  if (d.span) {
+    const b = d.bounds();
+    if (!isIsoDate(from) || !isIsoDate(to) || from > to || from < b.firstDate || to > b.today) {
+      return sendStudioJson(res, { error: 'bad date span', ...b }, 400);
+    }
+  }
+
+  const data = d.build({ from, to, generatedAt: new Date().toISOString() });
+  let body, type, file;
+  if (format === 'csv') {
+    body = toCsv(d.lib.COLUMNS[table], data[table]);
+    type = 'text/csv; charset=utf-8'; file = d.lib.exportFilename(data.manifest, table, 'csv');
+  } else if (format === 'json') {
+    body = JSON.stringify(data, null, 2) + '\n';
+    type = 'application/json; charset=utf-8'; file = d.lib.exportFilename(data.manifest, null, 'json');
+  } else {
+    body = d.lib.manifestText(data.manifest);
+    type = 'text/plain; charset=utf-8'; file = d.lib.exportFilename(data.manifest, null, 'readme');
+  }
+  const buf = Buffer.from(body, 'utf8');
+  res.writeHead(200, {
+    'Content-Type': type,
+    'Content-Length': buf.length,
+    // The filename is built only from the station id and validated tokens.
+    'Content-Disposition': `attachment; filename="${file}"`,
+    'Cache-Control': 'private, no-store',
+    'Vary': 'Cookie',
+    ...securityHeaders(),
+  });
+  res.end(req.method === 'HEAD' ? undefined : buf);
+}
+
+// ------------------------------------------------------- backup & import
+/**
+ * Moving the station's data to another server (docs/exports.md "1c"). A WBAI
+ * backup is every stats month, the studio settings, and the feed store —
+ * lib/export/backup.js builds, validates and plans; this touches the volume.
+ *
+ * Every write goes through writeJsonAtomic, and nothing is ever deleted:
+ *   - apply copies this server's affected months AND feeds.json into
+ *     DATA_DIR/imports/pre-import-<time>/ before writing anything, with a
+ *     manifest naming every episode the restore adds;
+ *   - undo saves the post-import state beside those copies, writes the month
+ *     copies back, MOVES (renames) a month the import added into that folder,
+ *     and takes out of the feed store exactly the episodes the import added.
+ * The folder is outside stats/, so listStatsMonths() can never read it as data.
+ */
+const IMPORTS_DIR = path.join(DATA_DIR, 'imports');
+// feeds.json is ~0.7 MB and grows ~2 MB a year (mergeFeedItems); the months are
+// a few KB each. Generous for a decade; small enough to refuse a mistake.
+const IMPORT_BODY_LIMIT = 32 * 1024 * 1024;
+const IMPORT_PREFIX = 'pre-import-';
+const IMPORT_COOLDOWN_MS = 3000;
+let importLastRun = 0;
+
+/** This server's months as they are right now, raw — memory for the current
+ *  month (counters not yet flushed included), files for the rest. */
+function currentStatsMonths() {
+  const out = {};
+  for (const m of listStatsMonths()) {
+    if (m === statsMonth) {
+      if (Object.keys(statsStore.days || {}).length) out[m] = statsStore;
+      continue;
+    }
+    const mo = readJsonFile(statsMonthPath(m), null);
+    if (mo) out[m] = mo;
+  }
+  return out;
+}
+function backupShaped(months) {
+  const out = {};
+  for (const [m, mo] of Object.entries(months)) out[m] = backupLib.backupMonth(mo, STATION_ID, m);
+  return out;
+}
+
+function sendBackup(req, res) {
+  const backup = backupLib.buildBackup({
+    station: STATION_ID,
+    createdAt: new Date().toISOString(),
+    appVersion: appVersion(),
+    sourceInstanceId: storageDiag.instanceId,
+    months: backupShaped(currentStatsMonths()),
+    settings: {},
+    feeds: backupLib.backupFeeds(feedStore),
+  });
+  const buf = Buffer.from(JSON.stringify(backup, null, 2) + '\n', 'utf8');
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': buf.length,
+    'Content-Disposition': `attachment; filename="${STATION_ID}-backup-${today()}.json"`,
+    'Cache-Control': 'private, no-store',
+    'Vary': 'Cookie',
+    ...securityHeaders(),
+  });
+  res.end(req.method === 'HEAD' ? undefined : buf);
+}
+
+/** Binds an apply to the exact bytes that were previewed, for this session. */
+function importToken(req, body) {
+  const raw = parseCookies(req.headers.cookie)[STUDIO_COOKIE] || '';
+  const hash = crypto.createHash('sha256').update(body).digest('hex');
+  return crypto.createHmac('sha256', studioKey).update('import\0' + raw + '\0' + hash).digest('base64url');
+}
+
+function importDirs() {
+  let names = [];
+  try { names = fs.readdirSync(IMPORTS_DIR); } catch (e) { /* no restore has ever run */ }
+  return names.filter((n) => n.startsWith(IMPORT_PREFIX)).sort().reverse();
+}
+/** The most recent import, if any, with whether it can still be undone. */
+function lastImport() {
+  for (const name of importDirs()) {
+    const manifest = readJsonFile(path.join(IMPORTS_DIR, name, 'manifest.json'), null);
+    if (manifest) {
+      const { feedsAdded, ...rest } = manifest;
+      // The per-episode list is for undo, not for the page.
+      return { name, ...rest, undoable: !manifest.undoneAt };
+    }
+  }
+  return null;
+}
+
+/** Parse + validate an uploaded backup, or answer the request with why not. */
+function readBackupBody(res, body) {
+  let parsed;
+  try { parsed = JSON.parse(body); } catch (e) {
+    sendStudioJson(res, { ok: false, errors: ['This file is not valid JSON, so it is not a backup made by this app.'] }, 422);
+    return null;
+  }
+  const v = backupLib.validateBackup(parsed, { station: STATION_ID, thisMonth: thisMonth() });
+  if (!v.ok) { sendStudioJson(res, { ok: false, errors: v.errors }, 422); return null; }
+  return { parsed, v };
+}
+
+/** Feed changes are episodes, not months: whether anything would be written. */
+function feedsPlanFor(v) { return backupLib.planFeeds(v.feeds, feedStore, mergeFeedItems); }
+
+function applyImport(plan, feedsPlan, v, parsed) {
+  flushFile(statsMonthPath(statsMonth));
+  const raw = currentStatsMonths();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const dir = path.join(IMPORTS_DIR, IMPORT_PREFIX + stamp);
+  const replaced = plan.filter((p) => p.action === 'replace').map((p) => p.month);
+  const added = plan.filter((p) => p.action === 'new').map((p) => p.month);
+  const gaining = feedsPlan.shows.filter((s) => s.adds.length);
+  // 1. The copies, and the manifest that says what they are — before any change.
+  for (const m of replaced) writeJsonAtomic(path.join(dir, `${m}.json`), raw[m]);
+  if (gaining.length) writeJsonAtomic(path.join(dir, 'feeds.json'), feedStore);
+  writeJsonAtomic(path.join(dir, 'manifest.json'), {
+    station: STATION_ID, importedAt: new Date().toISOString(), replaced, added,
+    feedsNewShows: gaining.filter((s) => s.action === 'new').map((s) => s.slug),
+    feedsEpisodesAdded: feedsPlan.episodesAdded,
+    feedsAdded: Object.fromEntries(gaining.map((s) => [s.slug, s.adds])),
+    backup: { createdAt: parsed.createdAt || null, sourceInstanceId: parsed.sourceInstanceId || null },
+    undoneAt: null,
+  });
+  // 2. The imported months. The current month is also swapped in memory, so
+  // the next beacon lands on the imported counters rather than on stale ones.
+  for (const m of [...replaced, ...added].sort()) {
+    const mo = JSON.parse(JSON.stringify(v.months[m]));
+    writeJsonAtomic(statsMonthPath(m), mo);
+    if (m === statsMonth) statsStore = mo;
+  }
+  // 3. The episodes, merged per show with the harvest's own merge. This
+  // server's copy of an episode is passed as `fresh`, so it wins a collision.
+  // A show the restore adds gets no fetch state: the next sweep fetches it
+  // unconditionally rather than trusting a Last-Modified it never saw.
+  for (const s of gaining) {
+    const inc = v.feeds[s.slug];
+    const cur = feedStore[s.slug];
+    feedStore[s.slug] = cur && cur.items && cur.items.length
+      ? Object.assign({}, cur, { items: mergeFeedItems(inc.items, cur.items) })
+      : { lastModified: '', fetchedAt: 0, channel: Object.assign({}, inc.channel), items: mergeFeedItems(inc.items, []) };
+  }
+  if (gaining.length) {
+    feedStoreVersion++;
+    writeJsonAtomic(FEEDS_PATH, feedStore);
+    // The listing is built from the store; drop the cached one so restored
+    // episodes are served on the next request rather than in five minutes.
+    archiveCache.clear();
+  }
+  console.log(`[studio] import: replaced ${replaced.length} month(s) [${replaced.join(', ')}], added ${added.length} [${added.join(', ')}]; `
+    + `added ${feedsPlan.episodesAdded} episode(s) across ${gaining.length} show(s); copies in ${path.basename(dir)}`);
+  return { folder: path.basename(dir), replaced, added, episodesAdded: feedsPlan.episodesAdded, showsGaining: gaining.length };
+}
+
+function undoImport(last) {
+  const dir = path.join(IMPORTS_DIR, last.name);
+  const manifest = readJsonFile(path.join(dir, 'manifest.json'), {});
+  // Check every copy is readable before changing anything.
+  const copies = {};
+  for (const m of last.replaced) {
+    copies[m] = readJsonFile(path.join(dir, `${m}.json`), null);
+    if (!copies[m]) throw new Error(`the saved copy of ${m} is missing or unreadable in ${last.name}`);
+  }
+  flushFile(statsMonthPath(statsMonth));
+  const now = currentStatsMonths();
+  for (const m of last.replaced) {
+    // What the import put there (plus anything counted since) is kept too.
+    if (now[m]) writeJsonAtomic(path.join(dir, `undone-${m}.json`), now[m]);
+    writeJsonAtomic(statsMonthPath(m), copies[m]);
+    if (m === statsMonth) statsStore = copies[m];
+  }
+  for (const m of last.added) {
+    if (m === statsMonth) {
+      writeJsonAtomic(path.join(dir, `undone-${m}.json`), statsStore);
+      statsStore = { station: STATION_ID, month: m, days: {} };
+    }
+    // Moved, not deleted: the month leaves the live set and stays recoverable.
+    if (fs.existsSync(statsMonthPath(m))) fs.renameSync(statsMonthPath(m), path.join(dir, `imported-${m}.json`));
+  }
+  // Episodes: take out exactly the ones the import added, and nothing a
+  // harvest has fetched since. The whole store as it stood before this undo is
+  // saved first, so the removed episodes stay recoverable.
+  const feedsAdded = manifest.feedsAdded || {};
+  let removedEpisodes = 0;
+  if (Object.keys(feedsAdded).length) {
+    writeJsonAtomic(path.join(dir, 'undone-feeds.json'), feedStore);
+    for (const [slug, mp3s] of Object.entries(feedsAdded)) {
+      const rec = feedStore[slug];
+      if (!rec || !rec.items) continue;
+      const drop = new Set(mp3s);
+      const items = rec.items.filter((it) => !drop.has(it.mp3));
+      removedEpisodes += rec.items.length - items.length;
+      if (!items.length && (manifest.feedsNewShows || []).includes(slug)) delete feedStore[slug];
+      else feedStore[slug] = Object.assign({}, rec, { items });
+    }
+    feedStoreVersion++;
+    writeJsonAtomic(FEEDS_PATH, feedStore);
+    archiveCache.clear();
+  }
+  writeJsonAtomic(path.join(dir, 'manifest.json'), { ...manifest, undoneAt: new Date().toISOString() });
+  console.log(`[studio] import undone: restored ${last.replaced.length}, moved aside ${last.added.length}, `
+    + `took out ${removedEpisodes} episode(s) (${last.name})`);
+  return { restored: last.replaced, removed: last.added, removedEpisodes };
+}
+
+/**
+ * A harvest in flight read each show's record before it awaited the network,
+ * and writes `merge(that record, fresh)` back when it lands — so a restore or
+ * undo in between would be overwritten, silently. Refused instead; they take
+ * seconds, and the page says to try again.
+ */
+function feedsBusy() { return !!(feedsInFlight || archiveInFlight); }
+const FEEDS_BUSY = 'WBAI\'s feeds are being checked right now. Try again in a minute.';
+
+/** POST /api/studio/import/{preview,apply,undo} — auth, CSRF, then the step. */
+async function studioImport(req, res, pathOnly) {
+  if (!studioAuthed(req)) return sendStudioJson(res, { error: 'unauthorized' }, 401);
+  if (!secretEquals(req.headers['x-studio-csrf'] || '', studioCsrf(req))) {
+    return sendStudioJson(res, { error: 'bad token' }, 403);
+  }
+  // The cooldown guards against a double-click writing twice, so it is checked
+  // for the writing steps and started only when one of them actually writes —
+  // a request refused for a missing preview must not lock out the retry.
+  if (pathOnly !== '/api/studio/import/preview') {
+    const wait = IMPORT_COOLDOWN_MS - (Date.now() - importLastRun);
+    if (wait > 0) return sendStudioJson(res, { error: 'cooling down', retryInSec: Math.ceil(wait / 1000) }, 429);
+  }
+  if (pathOnly === '/api/studio/import/undo') {
+    const last = lastImport();
+    if (!last || !last.undoable) return sendStudioJson(res, { ok: false, error: 'There is no restore to undo.' }, 409);
+    if (last.feedsEpisodesAdded && feedsBusy()) return sendStudioJson(res, { ok: false, error: FEEDS_BUSY }, 409);
+    importLastRun = Date.now();
+    try { return sendStudioJson(res, { ok: true, ...undoImport(last), lastImport: lastImport() }); }
+    catch (e) {
+      console.error('[studio] import undo failed:', e.message);
+      return sendStudioJson(res, { ok: false, error: 'Undo failed: ' + e.message }, 500);
+    }
+  }
+
+  const body = await readBody(req, IMPORT_BODY_LIMIT);
+  // Token before validation on apply: a file that differs from the previewed
+  // one is refused for THAT reason, whatever else may be wrong with it.
+  if (pathOnly === '/api/studio/import/apply'
+    && !secretEquals(req.headers['x-import-token'] || '', importToken(req, body))) {
+    return sendStudioJson(res, { ok: false, error: 'Preview this file before restoring it.' }, 409);
+  }
+  const got = readBackupBody(res, body);
+  if (!got) return;
+  const plan = backupLib.planImport(got.v.months, backupShaped(currentStatsMonths()));
+  const feedsPlan = feedsPlanFor(got.v);
+  const changes = plan.filter((p) => p.action === 'new' || p.action === 'replace').length;
+
+  if (pathOnly === '/api/studio/import/preview') {
+    const { shows, ...feedTotals } = feedsPlan;
+    return sendStudioJson(res, {
+      ok: true,
+      backup: {
+        station: got.parsed.station,
+        createdAt: got.parsed.createdAt || null,
+        months: Object.keys(got.v.months).length,
+        sameServer: !!got.parsed.sourceInstanceId && got.parsed.sourceInstanceId === storageDiag.instanceId,
+      },
+      plan,
+      changes,
+      // Totals plus the shows that would change, named — not every episode URL.
+      feeds: {
+        ...feedTotals,
+        shows: shows.filter((s) => s.adds.length).map((s) => ({
+          slug: s.slug, title: exportShowTitle(s.slug) || got.v.feeds[s.slug].channel.title || s.slug,
+          action: s.action, adds: s.adds.length, serverEpisodes: s.serverEpisodes,
+        })),
+      },
+      token: importToken(req, body),
+    });
+  }
+  if (pathOnly === '/api/studio/import/apply') {
+    if (!changes && !feedsPlan.episodesAdded) {
+      return sendStudioJson(res, { ok: true, replaced: [], added: [], episodesAdded: 0, showsGaining: 0, lastImport: lastImport() });
+    }
+    if (feedsPlan.episodesAdded && feedsBusy()) return sendStudioJson(res, { ok: false, error: FEEDS_BUSY }, 409);
+    importLastRun = Date.now();
+    try { return sendStudioJson(res, { ok: true, ...applyImport(plan, feedsPlan, got.v, got.parsed), lastImport: lastImport() }); }
+    catch (e) {
+      console.error('[studio] import failed:', e.message);
+      return sendStudioJson(res, { ok: false, error: 'The restore failed part-way: ' + e.message
+        + '. What it had not reached is unchanged; Undo restores the rest.', lastImport: lastImport() }, 500);
+    }
+  }
+  return sendStudioJson(res, { error: 'not found' }, 404);
 }
 
 // -------------------------------------------------------------- the studio
@@ -2971,7 +3494,7 @@ function studioStats(usageDays = 30) {
     }
     shows.push({
       slug,
-      title: (rec && rec.channel && rec.channel.title) || slug,
+      title: studioShowTitle(slug),
       episodes: items.length,
       seconds: showSeconds,
       bytes: showBytes,
@@ -3197,6 +3720,10 @@ function studioApi(req, res, pathOnly) {
   if (pathOnly === '/api/studio/usage') {
     return sendStudioJson(res, usageReport(usageWindowFromUrl(req.url)));
   }
+  if (pathOnly === '/api/studio/exports') return sendStudioJson(res, exportsIndex());
+  if (pathOnly === '/api/studio/export') return sendExport(req, res);
+  if (pathOnly === '/api/studio/backup') return sendBackup(req, res);
+  if (pathOnly === '/api/studio/import/status') return sendStudioJson(res, { lastImport: lastImport() });
   if (pathOnly === '/api/studio/stats') {
     refreshProgramsIfStale();
     return sendStudioJson(res, studioStats(usageWindowFromUrl(req.url)));
@@ -3281,6 +3808,15 @@ const server = http.createServer(async (req, res) => {
       try { return await ingestEvent(req, res); }
       catch (e) { res.writeHead(204, securityHeaders()); return res.end(); }
     }
+    if (STUDIO_ENABLED && pathOnly.startsWith('/api/studio/import/')) {
+      try { return await studioImport(req, res, pathOnly); }
+      catch (e) {
+        // readBody rejects an over-limit upload by destroying the request;
+        // anything else here is a bug worth seeing in the log.
+        console.warn('[studio] import request failed:', e.message);
+        return sendStudioJson(res, { ok: false, errors: ['The upload could not be read: ' + e.message] }, 400);
+      }
+    }
     if (STUDIO_ENABLED && pathOnly === '/api/studio/action') {
       try { return await studioAction(req, res); }
       catch (e) { return sendStudioJson(res, { error: 'bad request' }, 400); }
@@ -3304,6 +3840,7 @@ const server = http.createServer(async (req, res) => {
   // the listener app (notFound() falls back to index.html for any path without
   // an extension). When the studio is disabled these ifs are skipped entirely
   // and that fallback is exactly what we want to happen.
+  if (STUDIO_ENABLED && pathOnly === '/studio/report') return sendReport(req, res);
   if (STUDIO_ENABLED && (pathOnly === '/studio' || pathOnly === '/studio/')) {
     return sendStudioHtml(req, res, studioAuthed(req) ? 'studio.html' : 'login.html');
   }

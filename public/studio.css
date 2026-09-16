@@ -770,6 +770,417 @@
   font-weight: 600;
 }
 
+/* --------------------------------------------------------------- export */
+
+.studio-btn--export {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 600;
+}
+.export-icon { flex: none; }
+
+/* The dialog. Generous padding and a single column: it is used rarely and read
+   carefully, so space is worth more here than density. */
+.export-dialog {
+  width: min(40rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 0;
+  border: 1px solid var(--outline-strong);
+  border-radius: 16px;
+  background: var(--surface-1);
+  color: var(--ink);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.export-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.export-form {
+  display: grid;
+  gap: 1.75rem;
+  padding: 1.75rem 1.75rem 0;
+}
+
+.export-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.export-title {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.export-lede {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--ink-dim);
+  max-width: 44ch;
+}
+.export-close {
+  margin-left: auto;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+.export-close:hover { background: var(--surface-3); color: var(--ink); }
+.export-close:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+
+.export-empty {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink-dim);
+  line-height: 1.5;
+}
+
+.export-step {
+  margin: 0;
+  padding: 1.5rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--outline);
+  min-width: 0;
+  display: grid;
+  gap: 1rem;
+}
+/* `display: grid` would otherwise override the hidden attribute used for the
+   no-data state and the inactive tab. */
+.export-step[hidden], .export-pane[hidden], .export-preview[hidden], .export-choices[hidden] { display: none; }
+
+/* Dataset picker: three equal cards in a row, stacking on a phone. The radio
+   itself is hidden; the whole card is the target and the border says which. */
+.export-datasets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.6rem;
+}
+.export-dataset {
+  position: relative;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.export-dataset input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.export-dataset:hover { border-color: var(--outline-strong); }
+.export-dataset:has(input:checked) { border-color: var(--accent); background: var(--surface-3); }
+.export-dataset:has(input:focus-visible) { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.export-dataset-name { font-weight: 600; }
+.export-dataset-desc { font-size: 0.85rem; line-height: 1.4; color: var(--ink-dim); }
+
+/* Dates that do not apply (Coverage) are shown switched off, with the reason,
+   rather than hidden — the step numbering stays put. */
+.export-step:disabled .export-presets,
+.export-step:disabled .export-span,
+.export-step:disabled .export-summary { opacity: 0.45; }
+
+.export-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: -0.75rem;
+  border-bottom: 1px solid var(--outline);
+}
+.export-tab {
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.7rem 0.9rem;
+  min-height: 2.75rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+.export-tab:hover { color: var(--ink); }
+.export-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.export-tab:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+
+.export-pane { display: grid; gap: 1.75rem; }
+/* The tab bar already draws the line above a pane's first step. */
+.export-pane > .export-step:first-child { border-top: 0; padding-top: 0.25rem; }
+.export-copy {
+  margin: 0;
+  font-size: 0.93rem;
+  line-height: 1.55;
+  color: var(--ink-dim);
+  max-width: 52ch;
+}
+.export-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+
+/* The native file input is kept (it is what makes the picker open on every
+   platform, and screen readers announce it) but drawn as the studio button
+   beside the chosen file's name. */
+.export-file {
+  position: relative;
+  max-width: 100%;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+.export-file input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.export-file:focus-within .studio-btn { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.export-file:hover .studio-btn { background: var(--surface-3); }
+.export-file-name { min-width: 0; font-size: 0.9rem; color: var(--ink-dim); overflow-wrap: anywhere; }
+
+.export-preview { display: grid; gap: 1rem; }
+.export-plan .plan-muted { color: var(--ink-faint); }
+.plan-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.plan-badge--new { color: var(--good); background: var(--good-bg); }
+.plan-badge--replace { color: var(--warn); background: var(--warn-bg); }
+.plan-badge--identical, .plan-badge--kept { color: var(--ink-dim); background: var(--surface-3); }
+/* Episodes merge (never replace), so "Added" shares the calm "New" colour. */
+.plan-badge--merge { color: var(--good); background: var(--good-bg); }
+.export-feeds { display: grid; gap: 0.5rem; padding: 0.85rem 1rem; border-radius: 10px; background: var(--surface-2); }
+.export-feeds-line { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.export-feeds-line .plan-badge { margin-right: 0.4rem; }
+.export-feeds-shows { margin: 0; padding-left: 1.2rem; font-size: 0.9rem; color: var(--ink-dim); overflow-wrap: anywhere; }
+.export-feeds-shows:empty { display: none; }
+.export-feeds .plan-muted { color: var(--ink-faint); }
+.export-warn {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  background: var(--warn-bg);
+  color: var(--ink);
+  line-height: 1.5;
+  font-size: 0.92rem;
+}
+.export-legend {
+  float: left;          /* lets the legend sit inside the grid like a heading */
+  width: 100%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.export-num {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.export-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Two date fields side by side, stacking only when there is no room. */
+.export-span {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1rem;
+}
+.export-summary {
+  margin: -0.25rem 0 0;
+  font-size: 0.9rem;
+  color: var(--ink-dim);
+}
+.export-summary.is-bad { color: var(--danger); }
+
+.export-choices {
+  display: grid;
+  gap: 0.6rem;
+}
+/* A whole card is the hit target; the radio stays visible so the choice reads
+   as a choice, not as four buttons. */
+.export-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.export-choice:hover { border-color: var(--outline-strong); }
+.export-choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--surface-3);
+}
+.export-choice input {
+  flex: none;
+  margin: 0.2rem 0 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+.export-choice input:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
+.export-choice-body { display: grid; gap: 0.25rem; }
+.export-choice-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+.export-choice-desc {
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+.export-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--outline-strong);
+  color: var(--ink-dim);
+}
+
+.export-readme {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-dim);
+}
+.export-link {
+  font: inherit;
+  padding: 0.35rem 0.1rem;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.export-link:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+
+/* Pinned to the bottom of the dialog while the choices scroll: on a laptop
+   screen the dialog is taller than the window, and a Download button you have
+   to hunt for is the one thing this dialog must not have. */
+.export-foot {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  gap: 0.85rem;
+  margin: 0 -1.75rem;
+  padding: 1rem 1.75rem 1.5rem;
+  border-top: 1px solid var(--outline);
+  background: var(--surface-1);
+}
+.export-status:empty { display: none; }
+.export-status {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+.export-status.is-ok { color: var(--good); }
+.export-status.is-bad { color: var(--danger); }
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+.export-go {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 600;
+  padding-inline: 1.5rem;
+}
+.export-go:hover { filter: brightness(1.08); background: var(--accent); }
+.export-go:disabled { filter: none; }
+
+/* The restore plan is drawn as one card per month at every width. As a table
+   its fourth column — "What happens", the one that matters — was clipped by the
+   dialog on a laptop and needed a sideways scroll on a phone. Labels come from
+   data-label (no inline style: CSP). Semantics stay a table for screen readers. */
+/* Selectors carry .studio-table as well: `.studio-table td` (nowrap, borders)
+   comes later in this file with equal weight and silently won — text would not
+   wrap and ran across the neighbouring card column. */
+.studio-table.export-plan thead { display: none; }
+.studio-table.export-plan, .studio-table.export-plan tbody, .studio-table.export-plan tr, .studio-table.export-plan td { display: block; width: auto; }
+.export-preview .table-wrap { max-height: none; overflow: visible; border-bottom: 0; }
+.studio-table.export-plan tr {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem 1.25rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.6rem;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.studio-table.export-plan td { border: 0; padding: 0; min-width: 0; white-space: normal; }
+.studio-table.export-plan td::before {
+  content: attr(data-label);
+  display: block;
+  margin-bottom: 0.15rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.studio-table.export-plan td.plan-month { font-weight: 600; font-size: 1rem; }
+.studio-table.export-plan td.plan-month::before { content: none; }
+@media (min-width: 600px) {
+  .studio-table.export-plan tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .studio-table.export-plan td.plan-month { grid-column: 1 / -1; }
+}
+
+@media (max-width: 480px) {
+  .export-dialog { width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); border-radius: 14px; }
+  .export-form { padding: 1.25rem 1.1rem 0; gap: 1.4rem; }
+  .export-foot { margin: 0 -1.1rem; padding: 0.85rem 1.1rem 1.1rem; }
+  .export-actions .studio-btn { flex: 1; }
+}
+
 /* ----------------------------------------------------------- table */
 
 .studio-field--inline { max-width: 18rem; margin-bottom: 0.85rem; }
