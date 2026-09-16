@@ -3452,7 +3452,10 @@
   @media (prefers-reduced-motion:reduce){
     .card-art.play-btn, .card-play, .card-fade{transition:opacity .18s ease;}
     @media (hover:hover) and (pointer:fine){
-      .card-art.play-btn:hover{transform:none;}
+      /* Name the lift's own selector too: .card-art.play-btn:hover alone (0,3,0)
+         lost to .card-wrap:hover .card.card-art.play-btn (0,5,0), so reduced
+         motion still lifted the card. test/motion/reduced-motion-hover-tests.js */
+      .card-art.play-btn:hover, .card-wrap:hover .card.card-art.play-btn{transform:none;}
     }
   }
 

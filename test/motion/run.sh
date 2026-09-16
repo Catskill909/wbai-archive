@@ -62,3 +62,10 @@ done
 # Node 20 needs the flag for a WebSocket client; Node 21+ has it natively.
 node --experimental-websocket motion-tests.js 2>&1 \
   | grep -v ExperimentalWarning | grep -v 'Use \`node'
+
+# Reduced-motion hover sweep, same browser: every :hover rule that moves an
+# element must not move it when the OS asks for reduced motion. APP_URL lets a
+# station build on another port (KPFK: 8081) run it.
+CDP_PORT=$PORT APP_URL="${APP_URL:-http://localhost:8080}" \
+  node --experimental-websocket reduced-motion-hover-tests.js 2>&1 \
+  | grep -v ExperimentalWarning | grep -v 'Use \`node'
