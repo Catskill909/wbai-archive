@@ -3620,6 +3620,48 @@
     :root:not([data-theme]) .sheet-art-zoom-badge{ right:calc(6px + var(--sheet-mat)); bottom:calc(6px + var(--sheet-mat)); }
   }
 
+  /* ---- Light mode only: the small artworks get the card's container too ----
+     Player bar art (44px, 52px on phones), the sheet's docked mini player (44px)
+     and the past-episodes header (48px). Unlike the list and sheet tiles their
+     image is in normal flow at 100%, so the mat is just padding: the image
+     shrinks inside it on its own. Same pieces as above — --surface-3 as an inset
+     spread shadow, 16% outline, --elev-1, station placeholder clipped to the
+     content box (no asset path restated). --mini-r is the outer radius so the
+     phone player keeps its proportions; the image radius is that minus the mat.
+     The player-bar art keeps its teal hover cue, as the outer ring over elev-2.
+     Dark mode is untouched — same two scopes as the blocks above. */
+  .player-art, .sheet-player-art, .sheet-archive-art{ --mini-mat:3px; --mini-r:12px; }
+  .sheet-archive-art{ --mini-r:13px; }
+  @media (max-width:560px){ .player-art{ --mini-r:13px; } }
+  :root[data-theme="light"] :is(.player-art, .sheet-player-art, .sheet-archive-art){
+    padding:var(--mini-mat); border-radius:var(--mini-r);
+    background-origin:content-box; background-clip:content-box;
+    box-shadow:0 0 0 1px rgba(30,20,15,.16), var(--elev-1), inset 0 0 0 var(--mini-mat) var(--surface-3);
+  }
+  :root[data-theme="light"] :is(.player-art, .sheet-player-art, .sheet-archive-art) img{
+    border-radius:calc(var(--mini-r) - var(--mini-mat));
+  }
+  @media (hover:hover) and (pointer:fine){
+    :root[data-theme="light"] .player-art.player-open:hover{
+      box-shadow:0 0 0 1px var(--accent-2), var(--elev-2), inset 0 0 0 var(--mini-mat) var(--surface-3);
+    }
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme]) :is(.player-art, .sheet-player-art, .sheet-archive-art){
+      padding:var(--mini-mat); border-radius:var(--mini-r);
+      background-origin:content-box; background-clip:content-box;
+      box-shadow:0 0 0 1px rgba(30,20,15,.16), var(--elev-1), inset 0 0 0 var(--mini-mat) var(--surface-3);
+    }
+    :root:not([data-theme]) :is(.player-art, .sheet-player-art, .sheet-archive-art) img{
+      border-radius:calc(var(--mini-r) - var(--mini-mat));
+    }
+    @media (hover:hover) and (pointer:fine){
+      :root:not([data-theme]) .player-art.player-open:hover{
+        box-shadow:0 0 0 1px var(--accent-2), var(--elev-2), inset 0 0 0 var(--mini-mat) var(--surface-3);
+      }
+    }
+  }
+
   /* ================= Touch overrides (coarse pointers) =================
      Last in the file on purpose — see the note in the touch base layer. */
   @media (pointer: coarse){
