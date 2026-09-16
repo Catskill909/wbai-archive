@@ -3543,6 +3543,48 @@
     :root:not([data-theme]) .card-wrap:hover{ transform:none; }
   }
 
+  /* ---- Light mode only: list-view thumbnails get the card's container ----
+     The same problem and the same answer as the gallery card above, at 60px:
+     dark artwork met the white row with a hard edge. There is no wrapper to
+     pad, so the button is its own mat. Its existing background (the station
+     placeholder over --surface-2) is clipped to the content box rather than
+     restated, so this block carries no station asset path and ports as-is;
+     the mat itself is painted by an inset spread shadow, listed last so the
+     elevation's top highlight stays on top of it. The image is inset by the
+     mat because it is absolutely positioned against the padding box.
+     Dark mode is untouched — same two scopes as the card block. */
+  .show-thumb{ --thumb-mat:3px; }
+  :root[data-theme="light"] .show-thumb{
+    padding:var(--thumb-mat); border-radius:14px;
+    background-origin:content-box; background-clip:content-box;
+    box-shadow:0 0 0 1px rgba(30,20,15,.16), var(--elev-1), inset 0 0 0 var(--thumb-mat) var(--surface-3);
+  }
+  :root[data-theme="light"] .show-thumb img{
+    inset:var(--thumb-mat); width:calc(100% - 2 * var(--thumb-mat)); height:calc(100% - 2 * var(--thumb-mat));
+    border-radius:calc(14px - var(--thumb-mat));
+  }
+  @media (hover:hover) and (pointer:fine){
+    :root[data-theme="light"] .row.body:hover .show-thumb,:root[data-theme="light"] .show-cell:hover .show-thumb{
+      box-shadow:0 0 0 1px rgba(30,20,15,.18), var(--elev-2), inset 0 0 0 var(--thumb-mat) var(--surface-3);
+    }
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme]) .show-thumb{
+      padding:var(--thumb-mat); border-radius:14px;
+      background-origin:content-box; background-clip:content-box;
+      box-shadow:0 0 0 1px rgba(30,20,15,.16), var(--elev-1), inset 0 0 0 var(--thumb-mat) var(--surface-3);
+    }
+    :root:not([data-theme]) .show-thumb img{
+      inset:var(--thumb-mat); width:calc(100% - 2 * var(--thumb-mat)); height:calc(100% - 2 * var(--thumb-mat));
+      border-radius:calc(14px - var(--thumb-mat));
+    }
+    @media (hover:hover) and (pointer:fine){
+      :root:not([data-theme]) .row.body:hover .show-thumb,:root:not([data-theme]) .show-cell:hover .show-thumb{
+        box-shadow:0 0 0 1px rgba(30,20,15,.18), var(--elev-2), inset 0 0 0 var(--thumb-mat) var(--surface-3);
+      }
+    }
+  }
+
   /* ================= Touch overrides (coarse pointers) =================
      Last in the file on purpose — see the note in the touch base layer. */
   @media (pointer: coarse){
